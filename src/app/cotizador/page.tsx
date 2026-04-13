@@ -159,24 +159,14 @@ export default function CotizadorPage() {
 
   const enviarWhatsApp = () => {
     const nl = '\n';
-    const validItems = items.filter((i) => i.descripcion && i.precioUnitario > 0);
-    let msg = `*STUDIO 24 - COTIZACION*${nl}Fecha: ${today}${nl}`;
-    if (clienteNombre) msg += `${nl}Dirigida a: *${clienteNombre}*${nl}`;
-    if (clienteEmpresa) msg += `${clienteEmpresa}${nl}`;
-    msg += `${nl}*--- DETALLE ---*${nl}`;
-    validItems.forEach((i) => {
-      msg += `${nl}${i.descripcion}${nl}  ${i.cantidad} x ${formatCurrency(i.precioUnitario)} = *${formatCurrency(i.cantidad * i.precioUnitario)}*${nl}`;
-    });
-    msg += `${nl}———————————${nl}`;
-    msg += `SUBTOTAL: ${formatCurrency(subtotal)}${nl}`;
-    if (conIVA) msg += `IVA (16%): ${formatCurrency(iva)}${nl}`;
-    msg += `*TOTAL: ${formatCurrency(total)}*${nl}`;
-    msg += `${nl}*INFORMACION DE PAGO:*${nl}`;
-    if (cfg.titular) msg += `${cfg.titular}${nl}`;
-    if (cfg.banco) msg += `${cfg.banco}${nl}`;
-    if (cfg.numeroCuenta) msg += `Cuenta: ${cfg.numeroCuenta}${nl}`;
-    if (cfg.clabe) msg += `CLABE: ${cfg.clabe}${nl}`;
-    if (notas) msg += `${nl}_${notas}_${nl}`;
+    const nombre = clienteNombre ? clienteNombre.split(' ')[0] : '';
+    let msg = '';
+    msg += `Hola${nombre ? ` ${nombre}` : ''}! 🧵✨${nl}${nl}`;
+    msg += `Gracias por tu interes en *${cfg.nombreNegocio || 'Studio 24'}*! 🎉${nl}${nl}`;
+    msg += `Te comparto la cotizacion de tu pedido por un total de *${formatCurrency(total)}*${nl}${nl}`;
+    msg += `📎 _Te adjunto el PDF con el detalle completo_${nl}${nl}`;
+    msg += `Cualquier duda o ajuste con toda confianza, estamos para servirte! 💪${nl}${nl}`;
+    msg += `Saludos,${nl}*${cfg.nombreNegocio || 'Studio 24'}*`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
