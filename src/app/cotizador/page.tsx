@@ -180,66 +180,119 @@ export default function CotizadorPage() {
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
-  const imprimirPDF = () => {
-    const win = window.open('', '_blank');
-    if (!win) return;
-    win.document.write(`<!DOCTYPE html><html><head><title>Cotizacion - Studio 24</title><style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: Arial, Helvetica, sans-serif; background: #f0f0f0; padding: 20px; }
-      .page { max-width: 800px; margin: 0 auto; background: white; padding: 60px; }
-      h1 { font-size: 48px; font-weight: 900; letter-spacing: -2px; text-transform: uppercase; margin-bottom: 8px; }
-      .divider { border-top: 2px solid #0a0a0a; margin: 20px 0; }
-      .meta { font-size: 13px; color: #666; }
-      .meta strong { color: #0a0a0a; }
-      table { width: 100%; border-collapse: collapse; margin: 30px 0; }
-      th { text-align: left; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #0a0a0a; padding: 8px 0; }
-      th:nth-child(2), th:nth-child(3), th:nth-child(4) { text-align: right; }
-      td { padding: 10px 0; font-size: 14px; border-bottom: 1px solid #e5e5e5; }
-      td:nth-child(2), td:nth-child(3), td:nth-child(4) { text-align: right; }
-      .totals { text-align: right; margin: 30px 0; }
-      .totals .row { display: flex; justify-content: flex-end; gap: 40px; padding: 8px 0; font-size: 14px; }
-      .totals .row.total { font-size: 18px; font-weight: 900; border-top: 2px solid #0a0a0a; padding-top: 12px; }
-      .pago { margin-top: 40px; padding-top: 20px; border-top: 2px solid #0a0a0a; }
-      .pago h3 { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-      .pago p { font-size: 13px; color: #333; line-height: 1.6; }
-      .logo { font-size: 36px; font-weight: 900; color: #c72a09; letter-spacing: -1px; }
-      .footer { display: flex; justify-content: space-between; align-items: flex-end; }
-      @media print { body { padding: 0; background: white; } .page { padding: 40px; } }
-    </style></head><body><div class="page">
-      <h1>COTIZACION</h1>
-      <div class="divider"></div>
-      <div class="meta">
-        <p>Fecha: ${today}</p>
-        ${clienteNombre ? `<p style="margin-top:16px"><strong>Dirigida a:</strong></p><p>${clienteNombre}</p>` : ''}
-        ${clienteEmpresa ? `<p>${clienteEmpresa}</p>` : ''}
-      </div>
-      <div class="divider"></div>
-      <table>
-        <thead><tr><th>DESCRIPCION</th><th>CANTIDAD</th><th>PRECIO</th><th>TOTAL</th></tr></thead>
-        <tbody>
-          ${items.filter((i) => i.descripcion && i.precioUnitario > 0).map((i) => `
-            <tr><td>${i.descripcion}</td><td>${i.cantidad}</td><td>$ ${i.precioUnitario.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td><td>$ ${(i.cantidad * i.precioUnitario).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td></tr>
-          `).join('')}
-        </tbody>
-      </table>
-      <div class="totals">
-        <div class="row"><span>SUBTOTAL</span><span>$ ${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span></div>
-        ${conIVA ? `<div class="row"><span>IVA (16%)</span><span>$ ${iva.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span></div>` : ''}
-        <div class="row total"><span>TOTAL</span><span>$ ${total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span></div>
-      </div>
-      <div class="pago">
-        <div class="footer">
-          <div>
-            <h3>INFORMACION DE PAGO</h3>
-            <p>${cfg.titular}<br>${cfg.banco}<br>${cfg.numeroCuenta ? `Numero de cuenta: ${cfg.numeroCuenta}` : ''}${cfg.clabe ? `<br>Cuenta clabe: ${cfg.clabe}` : ''}</p>
-            ${notas ? `<p style="margin-top:12px;color:#666">Notas: ${notas}</p>` : ''}
-          </div>
-          <div class="logo">${cfg.nombreNegocio || 'STCH'}</div>
-        </div>
-      </div>
-    </div></body></html>`);
-    win.document.close();
-    setTimeout(() => { win.print(); }, 500);
+  const descargarPDF = async () => {
+    const { default: jsPDF } = await import('jspdf');
+    const doc = new jsPDF('p', 'mm', 'letter');
+    const w = doc.internal.pageSize.getWidth();
+    let y = 25;
+
+    // Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(36);
+    doc.text('COTIZACION', 20, y);
+    y += 5;
+    doc.setDrawColor(10, 10, 10);
+    doc.setLineWidth(0.5);
+    doc.line(20, y, w - 20, y);
+    y += 10;
+
+    // Meta
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100);
+    doc.text(`Fecha: ${today}`, 20, y);
+    y += 8;
+    if (clienteNombre) {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(10);
+      doc.text('Dirigida a:', 20, y);
+      y += 5;
+      doc.setFont('helvetica', 'normal');
+      doc.text(clienteNombre, 20, y);
+      y += 5;
+      if (clienteEmpresa) { doc.text(clienteEmpresa, 20, y); y += 5; }
+    }
+    y += 3;
+    doc.line(20, y, w - 20, y);
+    y += 10;
+
+    // Table header
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(10);
+    doc.text('DESCRIPCION', 20, y);
+    doc.text('CANTIDAD', 110, y, { align: 'right' });
+    doc.text('PRECIO', 145, y, { align: 'right' });
+    doc.text('TOTAL', w - 20, y, { align: 'right' });
+    y += 2;
+    doc.setLineWidth(0.3);
+    doc.line(20, y, w - 20, y);
+    y += 6;
+
+    // Table rows
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    const validItems = items.filter((i) => i.descripcion && i.precioUnitario > 0);
+    validItems.forEach((item) => {
+      doc.text(item.descripcion, 20, y);
+      doc.text(String(item.cantidad), 110, y, { align: 'right' });
+      doc.text(`$ ${item.precioUnitario.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, 145, y, { align: 'right' });
+      doc.text(`$ ${(item.cantidad * item.precioUnitario).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, w - 20, y, { align: 'right' });
+      y += 2;
+      doc.setDrawColor(220);
+      doc.setLineWidth(0.1);
+      doc.line(20, y, w - 20, y);
+      y += 6;
+    });
+
+    // Totals
+    y += 5;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('SUBTOTAL', 145, y, { align: 'right' });
+    doc.text(`$ ${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, w - 20, y, { align: 'right' });
+    y += 7;
+    if (conIVA) {
+      doc.text('IVA (16%)', 145, y, { align: 'right' });
+      doc.text(`$ ${iva.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, w - 20, y, { align: 'right' });
+      y += 7;
+    }
+    doc.setDrawColor(10);
+    doc.setLineWidth(0.5);
+    doc.line(130, y - 3, w - 20, y - 3);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('TOTAL', 145, y + 2, { align: 'right' });
+    doc.text(`$ ${total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, w - 20, y + 2, { align: 'right' });
+
+    // Payment info
+    y += 20;
+    doc.setDrawColor(10);
+    doc.setLineWidth(0.5);
+    doc.line(20, y, w - 20, y);
+    y += 8;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text('INFORMACION DE PAGO', 20, y);
+    y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(50);
+    if (cfg.titular) { doc.text(cfg.titular, 20, y); y += 5; }
+    if (cfg.banco) { doc.text(cfg.banco, 20, y); y += 5; }
+    if (cfg.numeroCuenta) { doc.text(`Numero de cuenta: ${cfg.numeroCuenta}`, 20, y); y += 5; }
+    if (cfg.clabe) { doc.text(`Cuenta clabe: ${cfg.clabe}`, 20, y); y += 5; }
+    if (notas) { y += 3; doc.setTextColor(120); doc.text(`Notas: ${notas}`, 20, y); }
+
+    // Logo text
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(28);
+    doc.setTextColor(199, 42, 9);
+    doc.text(cfg.nombreNegocio || 'STCH', w - 20, y, { align: 'right' });
+
+    // Save
+    const filename = `cotizacion_${clienteNombre ? clienteNombre.replace(/\s+/g, '_').toLowerCase() : 'studio24'}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    doc.save(filename);
   };
 
   if (!mounted) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" /></div>;
@@ -444,9 +497,9 @@ export default function CotizadorPage() {
               </div>
             )}
 
-            <button onClick={imprimirPDF} className="w-full bg-[#0a0a0a] text-white py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors flex items-center justify-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z" /></svg>
-              Imprimir / PDF
+            <button onClick={descargarPDF} className="w-full bg-[#0a0a0a] text-white py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors flex items-center justify-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+              Descargar PDF
             </button>
 
             <button onClick={enviarWhatsApp} className="w-full bg-[#25D366] text-white py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#20bd5a] transition-colors flex items-center justify-center gap-2">
