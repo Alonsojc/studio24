@@ -158,8 +158,26 @@ export default function CotizadorPage() {
   };
 
   const enviarWhatsApp = () => {
-    const text = encodeURIComponent(generarTexto());
-    window.open(`https://wa.me/?text=${text}`, '_blank');
+    const nl = '\n';
+    const validItems = items.filter((i) => i.descripcion && i.precioUnitario > 0);
+    let msg = `*STUDIO 24 - COTIZACION*${nl}Fecha: ${today}${nl}`;
+    if (clienteNombre) msg += `${nl}Dirigida a: *${clienteNombre}*${nl}`;
+    if (clienteEmpresa) msg += `${clienteEmpresa}${nl}`;
+    msg += `${nl}*--- DETALLE ---*${nl}`;
+    validItems.forEach((i) => {
+      msg += `${nl}${i.descripcion}${nl}  ${i.cantidad} x ${formatCurrency(i.precioUnitario)} = *${formatCurrency(i.cantidad * i.precioUnitario)}*${nl}`;
+    });
+    msg += `${nl}———————————${nl}`;
+    msg += `SUBTOTAL: ${formatCurrency(subtotal)}${nl}`;
+    if (conIVA) msg += `IVA (16%): ${formatCurrency(iva)}${nl}`;
+    msg += `*TOTAL: ${formatCurrency(total)}*${nl}`;
+    msg += `${nl}*INFORMACION DE PAGO:*${nl}`;
+    if (cfg.titular) msg += `${cfg.titular}${nl}`;
+    if (cfg.banco) msg += `${cfg.banco}${nl}`;
+    if (cfg.numeroCuenta) msg += `Cuenta: ${cfg.numeroCuenta}${nl}`;
+    if (cfg.clabe) msg += `CLABE: ${cfg.clabe}${nl}`;
+    if (notas) msg += `${nl}_${notas}_${nl}`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   const imprimirPDF = () => {
