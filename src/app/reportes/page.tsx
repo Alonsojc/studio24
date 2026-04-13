@@ -19,7 +19,7 @@ const Pie = dynamic(() => import('recharts').then((m) => m.Pie), { ssr: false })
 const Cell = dynamic(() => import('recharts').then((m) => m.Cell), { ssr: false });
 const Legend = dynamic(() => import('recharts').then((m) => m.Legend), { ssr: false });
 
-const COLORS = ['#c72a09', '#0a0a0a', '#323232', '#737373', '#a3a3a3', '#d4d4d4', '#e63e1a', '#404040'];
+const COLORS = ['#c72a09', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#ec4899', '#0891b2', '#65a30d'];
 
 export default function ReportesPage() {
   const [ingresos, setIngresos] = useState<Ingreso[]>([]);
