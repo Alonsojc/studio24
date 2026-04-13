@@ -1,4 +1,4 @@
-import { FormaPago, ConceptoIngreso, CategoriaEgreso } from './types';
+import { FormaPago, ConceptoIngreso, CategoriaEgreso, EstadoPedido } from './types';
 
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('es-MX', {
@@ -58,4 +58,30 @@ export function todayString(): string {
 
 export function calcIVA(monto: number): number {
   return Math.round(monto * 0.16 * 100) / 100;
+}
+
+export function estadoPedidoLabel(e: EstadoPedido): string {
+  const map: Record<EstadoPedido, string> = {
+    pendiente: 'Pendiente',
+    diseno: 'En Diseno',
+    aprobado: 'Aprobado',
+    en_maquina: 'En Maquina',
+    terminado: 'Terminado',
+    entregado: 'Entregado',
+    cancelado: 'Cancelado',
+  };
+  return map[e] || e;
+}
+
+export function estadoPedidoColor(e: EstadoPedido): string {
+  const map: Record<EstadoPedido, string> = {
+    pendiente: 'bg-amber-100 text-amber-700',
+    diseno: 'bg-blue-100 text-blue-700',
+    aprobado: 'bg-purple-100 text-purple-700',
+    en_maquina: 'bg-orange-100 text-orange-700',
+    terminado: 'bg-green-100 text-green-700',
+    entregado: 'bg-neutral-100 text-neutral-500',
+    cancelado: 'bg-red-100 text-red-600',
+  };
+  return map[e] || 'bg-neutral-100 text-neutral-500';
 }

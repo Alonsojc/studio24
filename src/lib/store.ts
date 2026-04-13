@@ -1,12 +1,13 @@
 'use client';
 
-import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente } from './types';
+import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente, Pedido } from './types';
 
 const KEYS = {
   clientes: 'bordados_clientes',
   proveedores: 'bordados_proveedores',
   egresos: 'bordados_egresos',
   ingresos: 'bordados_ingresos',
+  pedidos: 'bordados_pedidos',
   egresosRecurrentes: 'bordados_egresos_recurrentes',
   recurrentesLog: 'bordados_recurrentes_log',
 } as const;
@@ -75,6 +76,12 @@ export const getEgresosRecurrentes = () => getItems<EgresoRecurrente>(KEYS.egres
 export const addEgresoRecurrente = (e: EgresoRecurrente) => addItem(KEYS.egresosRecurrentes, e);
 export const updateEgresoRecurrente = (e: EgresoRecurrente) => updateItem(KEYS.egresosRecurrentes, e);
 export const deleteEgresoRecurrente = (id: string) => deleteItem<EgresoRecurrente>(KEYS.egresosRecurrentes, id);
+
+// Pedidos
+export const getPedidos = () => getItems<Pedido>(KEYS.pedidos);
+export const addPedido = (p: Pedido) => addItem(KEYS.pedidos, p);
+export const updatePedido = (p: Pedido) => updateItem(KEYS.pedidos, p);
+export const deletePedido = (id: string) => deleteItem<Pedido>(KEYS.pedidos, id);
 
 // Log de meses ya procesados para recurrentes (evita duplicados)
 export function getRecurrentesLog(): string[] {

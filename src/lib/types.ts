@@ -72,6 +72,26 @@ export interface EgresoRecurrente {
   createdAt: string;
 }
 
+export type EstadoPedido = 'pendiente' | 'diseno' | 'aprobado' | 'en_maquina' | 'terminado' | 'entregado' | 'cancelado';
+
+export interface Pedido {
+  id: string;
+  clienteId: string;
+  descripcion: string;
+  concepto: ConceptoIngreso;
+  piezas: number;
+  precioUnitario: number;
+  montoTotal: number;
+  estado: EstadoPedido;
+  maquina: string;
+  fechaPedido: string;
+  fechaEntrega: string;
+  fechaEntregaReal: string;
+  urgente: boolean;
+  notas: string;
+  createdAt: string;
+}
+
 export interface Ingreso {
   id: string;
   fecha: string;
