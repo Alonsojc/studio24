@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import { Cliente, Proveedor, Egreso, Ingreso } from './types';
+import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente } from './types';
 
 export function getSeedClientes(): Cliente[] {
   return [
@@ -49,5 +49,13 @@ export function getSeedIngresos(clienteIds: string[]): Ingreso[] {
     { id: uuid(), fecha: '2026-04-02', clienteId: clienteIds[0] || '', descripcion: 'Camisas corporativas bordadas x25', concepto: 'bordado_y_prenda', monto: 4375, iva: 700, montoTotal: 5075, formaPago: 'transferencia', factura: true, numeroFactura: 'ING-007', notas: 'Logo frontal y nombre en manga', createdAt: '2026-04-02T10:00:00Z' },
     { id: uuid(), fecha: '2026-04-08', clienteId: clienteIds[1] || '', descripcion: 'Servilletas bordadas para evento', concepto: 'solo_bordado', monto: 1200, iva: 192, montoTotal: 1392, formaPago: 'tarjeta', factura: true, numeroFactura: 'ING-008', notas: '50 servilletas con iniciales', createdAt: '2026-04-08T10:00:00Z' },
     { id: uuid(), fecha: '2026-04-12', clienteId: clienteIds[2] || '', descripcion: 'Reparacion de bordado en vestido', concepto: 'reparacion', monto: 350, iva: 0, montoTotal: 350, formaPago: 'efectivo', factura: false, numeroFactura: '', notas: '', createdAt: '2026-04-12T10:00:00Z' },
+  ];
+}
+
+export function getSeedRecurrentes(): EgresoRecurrente[] {
+  return [
+    { id: uuid(), descripcion: 'Suscripcion Canva Pro', categoria: 'programas', subcategoria: 'Canva', proveedorId: '', monto: 129, formaPago: 'tarjeta', factura: false, diaDelMes: 1, activo: true, createdAt: '2026-01-01T10:00:00Z' },
+    { id: uuid(), descripcion: 'Suscripcion Adobe Photoshop', categoria: 'programas', subcategoria: 'Photoshop', proveedorId: '', monto: 232, formaPago: 'tarjeta', factura: true, diaDelMes: 1, activo: true, createdAt: '2026-01-01T10:00:00Z' },
+    { id: uuid(), descripcion: 'Renta del local', categoria: 'renta', subcategoria: '', proveedorId: '', monto: 3500, formaPago: 'transferencia', factura: false, diaDelMes: 25, activo: true, createdAt: '2026-01-01T10:00:00Z' },
   ];
 }

@@ -1,12 +1,14 @@
 'use client';
 
-import { Cliente, Proveedor, Egreso, Ingreso } from './types';
+import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente } from './types';
 
 const KEYS = {
   clientes: 'bordados_clientes',
   proveedores: 'bordados_proveedores',
   egresos: 'bordados_egresos',
   ingresos: 'bordados_ingresos',
+  egresosRecurrentes: 'bordados_egresos_recurrentes',
+  recurrentesLog: 'bordados_recurrentes_log',
 } as const;
 
 function getItems<T>(key: string): T[] {
@@ -67,3 +69,24 @@ export const getIngresos = () => getItems<Ingreso>(KEYS.ingresos);
 export const addIngreso = (i: Ingreso) => addItem(KEYS.ingresos, i);
 export const updateIngreso = (i: Ingreso) => updateItem(KEYS.ingresos, i);
 export const deleteIngreso = (id: string) => deleteItem<Ingreso>(KEYS.ingresos, id);
+
+// Egresos Recurrentes
+export const getEgresosRecurrentes = () => getItems<EgresoRecurrente>(KEYS.egresosRecurrentes);
+export const addEgresoRecurrente = (e: EgresoRecurrente) => addItem(KEYS.egresosRecurrentes, e);
+export const updateEgresoRecurrente = (e: EgresoRecurrente) => updateItem(KEYS.egresosRecurrentes, e);
+export const deleteEgresoRecurrente = (id: string) => deleteItem<EgresoRecurrente>(KEYS.egresosRecurrentes, id);
+
+// Log de meses ya procesados para recurrentes (evita duplicados)
+export function getRecurrentesLog(): string[] {
+  if (typeof window === 'undefined') return [];
+  const data = localStorage.getItem(KEYS.recurrentesLog);
+  return data ? JSON.parse(data) : [];
+}
+
+export function addRecurrenteLog(key: string): void {
+  const log = getRecurrentesLog();
+  if (!log.includes(key)) {
+    log.push(key);
+    localStorage.setItem(KEYS.recurrentesLog, JSON.stringify(log));
+  }
+}

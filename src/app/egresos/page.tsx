@@ -2,8 +2,12 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getEgresos, addEgreso, updateEgreso, deleteEgreso, getProveedores } from '@/lib/store';
-import { Egreso, Proveedor, CategoriaEgreso, FormaPago } from '@/lib/types';
+import {
+  getEgresos, addEgreso, updateEgreso, deleteEgreso,
+  getProveedores,
+  getEgresosRecurrentes, addEgresoRecurrente, updateEgresoRecurrente, deleteEgresoRecurrente,
+} from '@/lib/store';
+import { Egreso, Proveedor, EgresoRecurrente, CategoriaEgreso, FormaPago } from '@/lib/types';
 import { formatCurrency, formatDate, formaPagoLabel, categoriaLabel, todayString, calcIVA } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
@@ -32,12 +36,31 @@ function emptyEgreso(): Omit<Egreso, 'id' | 'createdAt'> {
   };
 }
 
+function emptyRecurrente(): Omit<EgresoRecurrente, 'id' | 'createdAt'> {
+  return {
+    descripcion: '',
+    categoria: 'programas',
+    subcategoria: '',
+    proveedorId: '',
+    monto: 0,
+    formaPago: 'tarjeta',
+    factura: false,
+    diaDelMes: 1,
+    activo: true,
+  };
+}
+
 export default function EgresosPage() {
   const [egresos, setEgresos] = useState<Egreso[]>([]);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
+  const [recurrentes, setRecurrentes] = useState<EgresoRecurrente[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [recModalOpen, setRecModalOpen] = useState(false);
+  const [recPanelOpen, setRecPanelOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingRecId, setEditingRecId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyEgreso());
+  const [recForm, setRecForm] = useState(emptyRecurrente());
   const [filterCat, setFilterCat] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [mounted, setMounted] = useState(false);
@@ -45,6 +68,7 @@ export default function EgresosPage() {
   const reload = useCallback(() => {
     setEgresos(getEgresos().sort((a, b) => b.fecha.localeCompare(a.fecha)));
     setProveedores(getProveedores());
+    setRecurrentes(getEgresosRecurrentes());
   }, []);
 
   useEffect(() => {
@@ -54,6 +78,7 @@ export default function EgresosPage() {
 
   if (!mounted) return <div className="p-8">Cargando...</div>;
 
+  // --- Egreso CRUD ---
   const openNew = () => {
     setEditingId(null);
     setForm(emptyEgreso());
@@ -92,6 +117,47 @@ export default function EgresosPage() {
     }
   };
 
+  // --- Recurrente CRUD ---
+  const openNewRec = () => {
+    setEditingRecId(null);
+    setRecForm(emptyRecurrente());
+    setRecModalOpen(true);
+  };
+
+  const openEditRec = (r: EgresoRecurrente) => {
+    setEditingRecId(r.id);
+    setRecForm({ ...r });
+    setRecModalOpen(true);
+  };
+
+  const handleSaveRec = () => {
+    if (!recForm.descripcion || recForm.monto <= 0) return;
+    const data: EgresoRecurrente = {
+      ...(recForm as EgresoRecurrente),
+      id: editingRecId || uuid(),
+      createdAt: editingRecId ? (recForm as EgresoRecurrente).createdAt : new Date().toISOString(),
+    };
+    if (editingRecId) {
+      updateEgresoRecurrente(data);
+    } else {
+      addEgresoRecurrente(data);
+    }
+    setRecModalOpen(false);
+    reload();
+  };
+
+  const handleDeleteRec = (id: string) => {
+    if (confirm('Eliminar este egreso recurrente?')) {
+      deleteEgresoRecurrente(id);
+      reload();
+    }
+  };
+
+  const toggleRecActivo = (r: EgresoRecurrente) => {
+    updateEgresoRecurrente({ ...r, activo: !r.activo });
+    reload();
+  };
+
   const proveedorName = (id: string) => proveedores.find((p) => p.id === id)?.nombre || '';
 
   const months = Array.from(
@@ -112,21 +178,120 @@ export default function EgresosPage() {
     ? subcategoriasProgramas
     : [];
 
+  const recSubcategorias = recForm.categoria === 'insumos'
+    ? subcategoriasInsumo
+    : recForm.categoria === 'programas'
+    ? subcategoriasProgramas
+    : [];
+
+  const totalRecurrenteMensual = recurrentes
+    .filter((r) => r.activo)
+    .reduce((s, r) => s + r.monto + (r.factura ? calcIVA(r.monto) : 0), 0);
+
   return (
     <div>
       <PageHeader
         title="Egresos"
         description="Control de gastos del negocio"
         action={
-          <button
-            onClick={openNew}
-            className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
-          >
-            + Nuevo Egreso
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setRecPanelOpen(!recPanelOpen)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+                recPanelOpen
+                  ? 'bg-purple-100 text-purple-700 border-purple-300'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300'
+              }`}
+            >
+              Recurrentes ({recurrentes.filter((r) => r.activo).length})
+            </button>
+            <button
+              onClick={openNew}
+              className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+            >
+              + Nuevo Egreso
+            </button>
+          </div>
         }
       />
 
+      {/* Panel de Recurrentes */}
+      {recPanelOpen && (
+        <div className="bg-white rounded-xl border border-purple-200 p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-semibold text-purple-700 uppercase tracking-wide">
+                Egresos Recurrentes Mensuales
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Se generan automaticamente cada mes. Total mensual: <span className="font-semibold text-red-600">{formatCurrency(totalRecurrenteMensual)}</span>
+              </p>
+            </div>
+            <button
+              onClick={openNewRec}
+              className="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-purple-700"
+            >
+              + Nuevo Recurrente
+            </button>
+          </div>
+
+          {recurrentes.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">
+              Sin egresos recurrentes. Agrega gastos fijos como renta, suscripciones, etc.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {recurrentes.map((r) => (
+                <div
+                  key={r.id}
+                  className={`flex items-center justify-between py-3 px-4 rounded-lg border ${
+                    r.activo ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-100 opacity-60'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => toggleRecActivo(r)}
+                      className={`w-8 h-5 rounded-full transition-colors relative ${
+                        r.activo ? 'bg-purple-500' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${
+                          r.activo ? 'left-3.5' : 'left-0.5'
+                        }`}
+                      />
+                    </button>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{r.descripcion}</p>
+                      <p className="text-xs text-gray-500">
+                        {categoriaLabel(r.categoria)}
+                        {r.subcategoria && ` / ${r.subcategoria}`}
+                        {' '}&middot; Dia {r.diaDelMes} de cada mes
+                        {' '}&middot; {formaPagoLabel(r.formaPago)}
+                        {r.factura && <span className="text-emerald-600"> &middot; Con factura</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-red-600">
+                      {formatCurrency(r.monto + (r.factura ? calcIVA(r.monto) : 0))}
+                      <span className="text-xs text-gray-400 font-normal">/mes</span>
+                    </span>
+                    <button onClick={() => openEditRec(r)} className="text-purple-600 hover:text-purple-800 text-xs">
+                      Editar
+                    </button>
+                    <button onClick={() => handleDeleteRec(r.id)} className="text-red-500 hover:text-red-700 text-xs">
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Filtros */}
       <div className="flex gap-3 mb-6 flex-wrap">
         <select
           value={filterCat}
@@ -154,6 +319,7 @@ export default function EgresosPage() {
         </div>
       </div>
 
+      {/* Tabla de Egresos */}
       {filtered.length === 0 ? (
         <EmptyState
           icon="💸"
@@ -227,6 +393,7 @@ export default function EgresosPage() {
         </div>
       )}
 
+      {/* Modal Egreso */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -375,6 +542,144 @@ export default function EgresosPage() {
               className="bg-purple-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-purple-700"
             >
               {editingId ? 'Guardar Cambios' : 'Registrar Egreso'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Recurrente */}
+      <Modal
+        open={recModalOpen}
+        onClose={() => setRecModalOpen(false)}
+        title={editingRecId ? 'Editar Egreso Recurrente' : 'Nuevo Egreso Recurrente'}
+      >
+        <div className="space-y-4">
+          <div className="bg-purple-50 rounded-lg p-3 text-xs text-purple-700">
+            Los egresos recurrentes se generan automaticamente cada mes en la fecha que indiques.
+            Ideal para renta, suscripciones de software, servicios fijos, etc.
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Descripcion *</label>
+            <input
+              type="text"
+              value={recForm.descripcion}
+              onChange={(e) => setRecForm({ ...recForm, descripcion: e.target.value })}
+              placeholder="Ej: Suscripcion Canva Pro"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Categoria</label>
+              <select
+                value={recForm.categoria}
+                onChange={(e) => setRecForm({ ...recForm, categoria: e.target.value as CategoriaEgreso, subcategoria: '' })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              >
+                {categorias.map((c) => (
+                  <option key={c} value={c}>{categoriaLabel(c)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Dia del mes</label>
+              <select
+                value={recForm.diaDelMes}
+                onChange={(e) => setRecForm({ ...recForm, diaDelMes: Number(e.target.value) })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              >
+                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>Dia {d}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {recSubcategorias.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Subcategoria</label>
+              <select
+                value={recForm.subcategoria}
+                onChange={(e) => setRecForm({ ...recForm, subcategoria: e.target.value })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">Seleccionar...</option>
+                {recSubcategorias.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Proveedor</label>
+            <select
+              value={recForm.proveedorId}
+              onChange={(e) => setRecForm({ ...recForm, proveedorId: e.target.value })}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Sin proveedor</option>
+              {proveedores.map((p) => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Monto mensual (sin IVA) *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={recForm.monto || ''}
+                onChange={(e) => setRecForm({ ...recForm, monto: parseFloat(e.target.value) || 0 })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Forma de Pago</label>
+              <select
+                value={recForm.formaPago}
+                onChange={(e) => setRecForm({ ...recForm, formaPago: e.target.value as FormaPago })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              >
+                {formasPago.map((fp) => (
+                  <option key={fp} value={fp}>{formaPagoLabel(fp)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={recForm.factura}
+              onChange={(e) => setRecForm({ ...recForm, factura: e.target.checked })}
+              className="w-4 h-4 accent-purple-600"
+            />
+            <span className="text-sm text-gray-700">Tiene factura (IVA 16%)</span>
+            {recForm.factura && recForm.monto > 0 && (
+              <span className="text-xs text-gray-400 ml-2">
+                Total con IVA: {formatCurrency(recForm.monto + calcIVA(recForm.monto))}
+              </span>
+            )}
+          </label>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={() => setRecModalOpen(false)}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSaveRec}
+              className="bg-purple-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-purple-700"
+            >
+              {editingRecId ? 'Guardar Cambios' : 'Crear Recurrente'}
             </button>
           </div>
         </div>

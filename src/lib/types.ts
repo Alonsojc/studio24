@@ -58,6 +58,20 @@ export interface Egreso {
   createdAt: string;
 }
 
+export interface EgresoRecurrente {
+  id: string;
+  descripcion: string;
+  categoria: CategoriaEgreso;
+  subcategoria: string;
+  proveedorId: string;
+  monto: number;
+  formaPago: FormaPago;
+  factura: boolean;
+  diaDelMes: number; // 1-28, dia en que se genera
+  activo: boolean;
+  createdAt: string;
+}
+
 export interface Ingreso {
   id: string;
   fecha: string;
