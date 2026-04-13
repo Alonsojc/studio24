@@ -13,6 +13,7 @@ import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
 import ActionMenu from '@/components/ActionMenu';
+import { downloadCSV } from '@/lib/csv';
 
 const categorias: CategoriaEgreso[] = ['programas', 'mercancia', 'insumos', 'servicios', 'maquinaria', 'publicidad', 'renta', 'otro'];
 const formasPago: FormaPago[] = ['efectivo', 'tarjeta', 'transferencia', 'otro'];
@@ -154,8 +155,14 @@ export default function EgresosPage() {
           <option value="all">Todos los meses</option>
           {months.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
-        <div className="ml-auto text-xs text-neutral-400 font-medium">
-          Total: <span className="font-black text-[#c72a09] text-sm">{formatCurrency(totalFiltered)}</span> &middot; {filtered.length} registros
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-neutral-400 font-medium">Total: <span className="font-black text-[#c72a09] text-sm">{formatCurrency(totalFiltered)}</span> &middot; {filtered.length}</span>
+          {filtered.length > 0 && (
+            <button onClick={() => downloadCSV(`egresos_${new Date().toISOString().slice(0,10)}`, ['Fecha','Descripcion','Categoria','Subcategoria','Proveedor','Monto','IVA','Total','Forma de Pago','Factura','No. Factura'], filtered.map((e) => [e.fecha, e.descripcion, categoriaLabel(e.categoria), e.subcategoria, proveedorName(e.proveedorId), String(e.monto), String(e.iva), String(e.montoTotal), formaPagoLabel(e.formaPago), e.factura ? 'Si' : 'No', e.numeroFactura]))} className="text-[10px] font-bold tracking-[0.05em] text-neutral-400 hover:text-[#c72a09] uppercase transition-colors flex items-center gap-1">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+              CSV
+            </button>
+          )}
         </div>
       </div>
 

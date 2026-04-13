@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { getClientes, getProveedores, getEgresos, getIngresos } from '@/lib/store';
-import { getSeedClientes, getSeedProveedores, getSeedEgresos, getSeedIngresos, getSeedRecurrentes } from '@/lib/seed';
+import { getSeedClientes, getSeedProveedores, getSeedEgresos, getSeedIngresos, getSeedRecurrentes, getSeedPedidos } from '@/lib/seed';
 import { generarEgresosRecurrentes } from '@/lib/recurrentes';
 
 const SEED_KEY = 'bordados_seeded';
@@ -26,12 +26,14 @@ export default function SeedData() {
         const egresos = getSeedEgresos(proveedorIds);
         const ingresos = getSeedIngresos(clienteIds);
         const recurrentes = getSeedRecurrentes();
+        const pedidos = getSeedPedidos(clienteIds);
 
         localStorage.setItem('bordados_clientes', JSON.stringify(clientes));
         localStorage.setItem('bordados_proveedores', JSON.stringify(proveedores));
         localStorage.setItem('bordados_egresos', JSON.stringify(egresos));
         localStorage.setItem('bordados_ingresos', JSON.stringify(ingresos));
         localStorage.setItem('bordados_egresos_recurrentes', JSON.stringify(recurrentes));
+        localStorage.setItem('bordados_pedidos', JSON.stringify(pedidos));
       }
       localStorage.setItem(SEED_KEY, '1');
       window.location.reload();

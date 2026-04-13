@@ -1,21 +1,24 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getIngresos, getEgresos, getClientes } from '@/lib/store';
-import { Ingreso, Egreso } from '@/lib/types';
-import { formatCurrency, formatDate, formaPagoLabel, conceptoLabel, categoriaLabel } from '@/lib/helpers';
+import Link from 'next/link';
+import { getIngresos, getEgresos, getClientes, getPedidos } from '@/lib/store';
+import { Ingreso, Egreso, Pedido } from '@/lib/types';
+import { formatCurrency, formatDate, formaPagoLabel, conceptoLabel, categoriaLabel, estadoPedidoLabel, estadoPedidoColor } from '@/lib/helpers';
 import StatCard from '@/components/StatCard';
 import PageHeader from '@/components/PageHeader';
 
 export default function Dashboard() {
   const [ingresos, setIngresos] = useState<Ingreso[]>([]);
   const [egresos, setEgresos] = useState<Egreso[]>([]);
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [totalClientes, setTotalClientes] = useState(0);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setIngresos(getIngresos());
     setEgresos(getEgresos());
+    setPedidos(getPedidos());
     setTotalClientes(getClientes().length);
     setMounted(true);
   }, []);
@@ -139,6 +142,50 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Active Orders */}
+      {(() => {
+        const activos = pedidos.filter((p) => p.estado !== 'entregado' && p.estado !== 'cancelado');
+        const urgentes = activos.filter((p) => p.urgente);
+        const vencidos = activos.filter((p) => p.fechaEntrega && new Date(p.fechaEntrega) < new Date());
+        const clientes = [...new Set(activos.map((p) => p.clienteId))];
+        if (activos.length === 0) return null;
+        return (
+          <div className="bg-[#0a0a0a] rounded-2xl p-6 mb-10">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="text-[10px] font-bold tracking-[0.12em] text-white/30 uppercase">Pedidos Activos</h3>
+                <p className="text-xs text-white/20 mt-0.5">{activos.length} pedidos &middot; {clientes.length} clientes &middot; {formatCurrency(activos.reduce((s, p) => s + p.montoTotal, 0))} en produccion</p>
+              </div>
+              <Link href="/pedidos" className="text-[10px] font-bold tracking-[0.08em] text-[#c72a09] uppercase hover:underline">Ver todos</Link>
+            </div>
+            {urgentes.length > 0 && (
+              <div className="bg-[#c72a09]/10 border border-[#c72a09]/20 rounded-xl p-3 mb-4">
+                <p className="text-xs font-bold text-[#c72a09]">{urgentes.length} pedido{urgentes.length > 1 ? 's' : ''} urgente{urgentes.length > 1 ? 's' : ''}</p>
+                {urgentes.map((p) => (
+                  <p key={p.id} className="text-xs text-white/50 mt-1">{p.descripcion} &middot; {estadoPedidoLabel(p.estado)}{p.fechaEntrega ? ` &middot; Entrega: ${formatDate(p.fechaEntrega)}` : ''}</p>
+                ))}
+              </div>
+            )}
+            {vencidos.length > 0 && !urgentes.some((u) => vencidos.includes(u)) && (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 mb-4">
+                <p className="text-xs font-bold text-amber-400">{vencidos.length} pedido{vencidos.length > 1 ? 's' : ''} vencido{vencidos.length > 1 ? 's' : ''}</p>
+              </div>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+              {(['pendiente', 'diseno', 'aprobado', 'en_maquina', 'terminado'] as const).map((estado) => {
+                const count = activos.filter((p) => p.estado === estado).length;
+                return (
+                  <div key={estado} className="bg-white/[0.04] rounded-xl p-3 text-center">
+                    <p className="text-lg font-black text-white">{count}</p>
+                    <p className="text-[9px] font-bold tracking-[0.08em] text-white/25 uppercase mt-0.5">{estadoPedidoLabel(estado)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Recent Transactions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente } from './types';
+import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente, Pedido } from './types';
 
 export function getSeedClientes(): Cliente[] {
   return [
@@ -57,5 +57,16 @@ export function getSeedRecurrentes(): EgresoRecurrente[] {
     { id: uuid(), descripcion: 'Suscripcion Canva Pro', categoria: 'programas', subcategoria: 'Canva', proveedorId: '', monto: 129, formaPago: 'tarjeta', factura: false, diaDelMes: 1, activo: true, createdAt: '2026-01-01T10:00:00Z' },
     { id: uuid(), descripcion: 'Suscripcion Adobe Photoshop', categoria: 'programas', subcategoria: 'Photoshop', proveedorId: '', monto: 232, formaPago: 'tarjeta', factura: true, diaDelMes: 1, activo: true, createdAt: '2026-01-01T10:00:00Z' },
     { id: uuid(), descripcion: 'Renta del local', categoria: 'renta', subcategoria: '', proveedorId: '', monto: 3500, formaPago: 'transferencia', factura: false, diaDelMes: 25, activo: true, createdAt: '2026-01-01T10:00:00Z' },
+  ];
+}
+
+export function getSeedPedidos(clienteIds: string[]): Pedido[] {
+  return [
+    { id: uuid(), clienteId: clienteIds[0] || '', descripcion: 'Playeras polo con logo x30', concepto: 'bordado_y_prenda', piezas: 30, precioUnitario: 175, montoTotal: 5250, estado: 'en_maquina', maquina: 'Maquina 1', fechaPedido: '2026-04-08', fechaEntrega: '2026-04-18', fechaEntregaReal: '', urgente: false, notas: 'Logo frontal pecho izquierdo', createdAt: '2026-04-08T10:00:00Z' },
+    { id: uuid(), clienteId: clienteIds[3] || '', descripcion: 'Uniformes escolares con escudo x40', concepto: 'solo_bordado', piezas: 40, precioUnitario: 100, montoTotal: 4000, estado: 'diseno', maquina: '', fechaPedido: '2026-04-10', fechaEntrega: '2026-04-22', fechaEntregaReal: '', urgente: false, notas: 'Escudo nuevo ciclo escolar', createdAt: '2026-04-10T10:00:00Z' },
+    { id: uuid(), clienteId: clienteIds[1] || '', descripcion: 'Mandiles bordados para evento', concepto: 'bordado_y_prenda', piezas: 15, precioUnitario: 180, montoTotal: 2700, estado: 'aprobado', maquina: 'Maquina 2', fechaPedido: '2026-04-11', fechaEntrega: '2026-04-15', fechaEntregaReal: '', urgente: true, notas: 'Evento este fin de semana', createdAt: '2026-04-11T10:00:00Z' },
+    { id: uuid(), clienteId: clienteIds[2] || '', descripcion: 'Bordado personalizado en chamarra', concepto: 'solo_bordado', piezas: 1, precioUnitario: 450, montoTotal: 450, estado: 'pendiente', maquina: '', fechaPedido: '2026-04-13', fechaEntrega: '2026-04-20', fechaEntregaReal: '', urgente: false, notas: 'Nombre y diseno de flores', createdAt: '2026-04-13T10:00:00Z' },
+    { id: uuid(), clienteId: clienteIds[4] || '', descripcion: 'Gorras con logo bordado x20', concepto: 'bordado_y_prenda', piezas: 20, precioUnitario: 135, montoTotal: 2700, estado: 'terminado', maquina: 'Maquina 1', fechaPedido: '2026-04-05', fechaEntrega: '2026-04-12', fechaEntregaReal: '', urgente: false, notas: 'Listas para recoger', createdAt: '2026-04-05T10:00:00Z' },
+    { id: uuid(), clienteId: clienteIds[0] || '', descripcion: 'Camisas corporativas x10', concepto: 'bordado_y_prenda', piezas: 10, precioUnitario: 215, montoTotal: 2150, estado: 'entregado', maquina: 'Maquina 2', fechaPedido: '2026-04-01', fechaEntrega: '2026-04-08', fechaEntregaReal: '2026-04-07', urgente: false, notas: '', createdAt: '2026-04-01T10:00:00Z' },
   ];
 }
