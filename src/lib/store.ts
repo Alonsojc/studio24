@@ -134,7 +134,8 @@ export function importAllData(json: string): void {
 
 export function clearAllData(): void {
   Object.values(KEYS).forEach((key) => localStorage.removeItem(key));
-  localStorage.removeItem('bordados_seeded');
+  // Keep seeded flag so demo data doesn't reload
+  localStorage.setItem('bordados_seeded', '1');
 }
 
 // Next folio
