@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { formatCurrency, calcIVA } from '@/lib/helpers';
+import { getClientes } from '@/lib/store';
+import { Cliente } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
 
 const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
@@ -14,19 +16,65 @@ interface LineItem {
   precioUnitario: number;
 }
 
+const presetsBordado = [
+  { label: 'Bordado Pequeno (< 5cm)', precio: 35 },
+  { label: 'Bordado Mediano (5-10cm)', precio: 65 },
+  { label: 'Bordado Grande (10-20cm)', precio: 120 },
+  { label: 'Bordado Espalda completa', precio: 200 },
+];
+
+const presetsPrenda = [
+  { label: 'Playera Polo', precio: 120 },
+  { label: 'Playera cuello redondo', precio: 80 },
+  { label: 'Camisa', precio: 150 },
+  { label: 'Gorra', precio: 70 },
+  { label: 'Mandil', precio: 90 },
+  { label: 'Chamarra', precio: 280 },
+  { label: 'Overol', precio: 250 },
+  { label: 'Short Slim Formal', precio: 1145 },
+  { label: 'Camisa Paraiso', precio: 1845 },
+  { label: 'Gorras Premium', precio: 380 },
+];
+
+let nextId = 1;
+
 export default function CotizadorPage() {
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [clienteId, setClienteId] = useState('');
   const [clienteNombre, setClienteNombre] = useState('');
   const [clienteEmpresa, setClienteEmpresa] = useState('');
   const [items, setItems] = useState<LineItem[]>([
-    { id: '1', descripcion: '', cantidad: 1, precioUnitario: 0 },
+    { id: String(nextId++), descripcion: '', cantidad: 1, precioUnitario: 0 },
   ]);
   const [conIVA, setConIVA] = useState(false);
   const [notas, setNotas] = useState('');
   const [copied, setCopied] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    setClientes(getClientes());
+    setMounted(true);
+  }, []);
+
+  const selectCliente = (id: string) => {
+    setClienteId(id);
+    const c = clientes.find((c) => c.id === id);
+    if (c) {
+      setClienteNombre(c.nombre);
+      setClienteEmpresa(c.direccion || '');
+    } else {
+      setClienteNombre('');
+      setClienteEmpresa('');
+    }
+  };
+
   const addItem = () => {
-    setItems([...items, { id: String(Date.now()), descripcion: '', cantidad: 1, precioUnitario: 0 }]);
+    setItems([...items, { id: String(nextId++), descripcion: '', cantidad: 1, precioUnitario: 0 }]);
+  };
+
+  const addPreset = (label: string, precio: number) => {
+    setItems([...items, { id: String(nextId++), descripcion: label, cantidad: 1, precioUnitario: precio }]);
   };
 
   const removeItem = (id: string) => {
@@ -84,8 +132,6 @@ export default function CotizadorPage() {
   };
 
   const imprimirPDF = () => {
-    const content = printRef.current;
-    if (!content) return;
     const win = window.open('', '_blank');
     if (!win) return;
     win.document.write(`<!DOCTYPE html><html><head><title>Cotizacion - Studio 24</title><style>
@@ -147,6 +193,8 @@ export default function CotizadorPage() {
     setTimeout(() => { win.print(); }, 500);
   };
 
+  if (!mounted) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" /></div>;
+
   return (
     <div>
       <PageHeader title="Cotizador" description="Genera cotizaciones profesionales" />
@@ -154,53 +202,81 @@ export default function CotizadorPage() {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
         {/* Form */}
         <div className="lg:col-span-3 space-y-6">
-          {/* Cliente */}
+          {/* Cliente - selector from registered clients */}
           <div className="bg-white rounded-2xl border border-neutral-100 p-6">
             <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-4">Cliente</h3>
+            <div className="mb-4">
+              <label className={labelClass}>Seleccionar cliente</label>
+              <select value={clienteId} onChange={(e) => selectCliente(e.target.value)} className={inputClass}>
+                <option value="">-- Escribir manualmente --</option>
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre}{c.telefono ? ` (${c.telefono})` : ''}</option>
+                ))}
+              </select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><label className={labelClass}>Nombre</label><input type="text" value={clienteNombre} onChange={(e) => setClienteNombre(e.target.value)} placeholder="Nombre del contacto" className={inputClass} /></div>
-              <div><label className={labelClass}>Empresa</label><input type="text" value={clienteEmpresa} onChange={(e) => setClienteEmpresa(e.target.value)} placeholder="Nombre de la empresa" className={inputClass} /></div>
+              <div><label className={labelClass}>Nombre</label><input type="text" value={clienteNombre} onChange={(e) => { setClienteNombre(e.target.value); setClienteId(''); }} placeholder="Nombre del contacto" className={inputClass} /></div>
+              <div><label className={labelClass}>Empresa / Direccion</label><input type="text" value={clienteEmpresa} onChange={(e) => setClienteEmpresa(e.target.value)} placeholder="Nombre de la empresa" className={inputClass} /></div>
             </div>
           </div>
 
-          {/* Items */}
+          {/* Quick add presets */}
+          <div className="bg-white rounded-2xl border border-neutral-100 p-6">
+            <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-4">Agregar rapido</h3>
+
+            <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2">Bordado</p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {presetsBordado.map((p) => (
+                <button key={p.label} onClick={() => addPreset(p.label, p.precio)} className="px-3 py-2 rounded-xl border border-neutral-200 hover:border-[#c72a09] hover:bg-[#c72a09]/5 transition-all text-left">
+                  <span className="text-xs font-semibold text-[#0a0a0a] block">{p.label}</span>
+                  <span className="text-[10px] text-neutral-400">{formatCurrency(p.precio)}</span>
+                </button>
+              ))}
+            </div>
+
+            <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2">Prendas</p>
+            <div className="flex flex-wrap gap-2">
+              {presetsPrenda.map((p) => (
+                <button key={p.label} onClick={() => addPreset(p.label, p.precio)} className="px-3 py-2 rounded-xl border border-neutral-200 hover:border-[#c72a09] hover:bg-[#c72a09]/5 transition-all text-left">
+                  <span className="text-xs font-semibold text-[#0a0a0a] block">{p.label}</span>
+                  <span className="text-[10px] text-neutral-400">{formatCurrency(p.precio)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Items table */}
           <div className="bg-white rounded-2xl border border-neutral-100 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Conceptos</h3>
-              <button onClick={addItem} className="text-[10px] font-bold text-[#c72a09] uppercase tracking-wide hover:underline">+ Agregar linea</button>
+              <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Conceptos ({items.length})</h3>
+              <button onClick={addItem} className="bg-[#0a0a0a] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors">+ Linea vacia</button>
             </div>
 
             <div className="space-y-3">
-              {/* Header */}
-              <div className="grid grid-cols-12 gap-3 text-[10px] font-bold tracking-[0.08em] text-neutral-400 uppercase px-1">
-                <div className="col-span-5">Descripcion</div>
-                <div className="col-span-2">Cantidad</div>
-                <div className="col-span-2">Precio</div>
-                <div className="col-span-2 text-right">Total</div>
-                <div className="col-span-1"></div>
-              </div>
-
-              {items.map((item) => (
-                <div key={item.id} className="grid grid-cols-12 gap-3 items-center">
-                  <div className="col-span-5">
-                    <input type="text" value={item.descripcion} onChange={(e) => updateItem(item.id, 'descripcion', e.target.value)} placeholder="Ej: Gorras Premium" className={inputClass} />
+              {items.map((item, idx) => (
+                <div key={item.id} className="flex gap-3 items-start p-3 rounded-xl bg-neutral-50 border border-neutral-100">
+                  <span className="text-[10px] font-bold text-neutral-300 mt-3 w-5 shrink-0">{idx + 1}</span>
+                  <div className="flex-1 grid grid-cols-6 gap-3">
+                    <div className="col-span-3">
+                      <label className="text-[9px] text-neutral-400 font-medium">Descripcion</label>
+                      <input type="text" value={item.descripcion} onChange={(e) => updateItem(item.id, 'descripcion', e.target.value)} placeholder="Ej: Gorras Premium" className={inputClass} />
+                    </div>
+                    <div className="col-span-1">
+                      <label className="text-[9px] text-neutral-400 font-medium">Cant.</label>
+                      <input type="number" min="1" value={item.cantidad} onChange={(e) => updateItem(item.id, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))} className={inputClass} />
+                    </div>
+                    <div className="col-span-1">
+                      <label className="text-[9px] text-neutral-400 font-medium">Precio</label>
+                      <input type="number" step="0.01" min="0" value={item.precioUnitario || ''} onChange={(e) => updateItem(item.id, 'precioUnitario', parseFloat(e.target.value) || 0)} className={inputClass} />
+                    </div>
+                    <div className="col-span-1 flex flex-col">
+                      <label className="text-[9px] text-neutral-400 font-medium">Total</label>
+                      <span className="text-sm font-bold text-[#0a0a0a] mt-2.5">{formatCurrency(item.cantidad * item.precioUnitario)}</span>
+                    </div>
                   </div>
-                  <div className="col-span-2">
-                    <input type="number" min="1" value={item.cantidad} onChange={(e) => updateItem(item.id, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))} className={inputClass} />
-                  </div>
-                  <div className="col-span-2">
-                    <input type="number" step="0.01" min="0" value={item.precioUnitario || ''} onChange={(e) => updateItem(item.id, 'precioUnitario', parseFloat(e.target.value) || 0)} className={inputClass} />
-                  </div>
-                  <div className="col-span-2 text-right text-sm font-bold text-[#0a0a0a]">
-                    {formatCurrency(item.cantidad * item.precioUnitario)}
-                  </div>
-                  <div className="col-span-1 text-center">
-                    {items.length > 1 && (
-                      <button onClick={() => removeItem(item.id)} className="text-neutral-300 hover:text-red-500 transition-colors">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-                      </button>
-                    )}
-                  </div>
+                  <button onClick={() => removeItem(item.id)} className={`mt-6 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${items.length > 1 ? 'text-neutral-300 hover:text-red-500 hover:bg-red-50' : 'text-neutral-100 cursor-not-allowed'}`} disabled={items.length <= 1}>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                  </button>
                 </div>
               ))}
             </div>
@@ -212,6 +288,7 @@ export default function CotizadorPage() {
             <label className="flex items-center gap-2.5 cursor-pointer mb-4">
               <input type="checkbox" checked={conIVA} onChange={(e) => setConIVA(e.target.checked)} className="w-4 h-4 accent-[#c72a09] rounded" />
               <span className="text-sm font-semibold text-[#0a0a0a]">Incluir IVA (16%)</span>
+              {conIVA && subtotal > 0 && <span className="text-xs text-neutral-400 ml-1">{formatCurrency(iva)}</span>}
             </label>
             <div><label className={labelClass}>Notas</label><textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Condiciones, tiempo de entrega..." className={inputClass} /></div>
           </div>
@@ -233,7 +310,6 @@ export default function CotizadorPage() {
                 </div>
               )}
               <div className="w-full h-px bg-neutral-100 my-3" />
-              {/* Items */}
               <div className="space-y-1.5">
                 {items.filter((i) => i.descripcion && i.precioUnitario > 0).map((i) => (
                   <div key={i.id} className="flex justify-between text-xs">
