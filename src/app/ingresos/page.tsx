@@ -12,20 +12,13 @@ import EmptyState from '@/components/EmptyState';
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
 const formasPago: FormaPago[] = ['efectivo', 'tarjeta', 'transferencia', 'otro'];
 
+const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
+const labelClass = "block text-[10px] font-bold tracking-[0.08em] text-neutral-400 uppercase mb-1.5";
+const btnPrimary = "bg-[#c72a09] text-white px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#a82207] transition-colors";
+const btnSecondary = "px-4 py-2.5 text-xs font-semibold text-neutral-400 hover:text-neutral-600 transition-colors";
+
 function emptyIngreso(): Omit<Ingreso, 'id' | 'createdAt'> {
-  return {
-    fecha: todayString(),
-    clienteId: '',
-    descripcion: '',
-    concepto: 'solo_bordado',
-    monto: 0,
-    iva: 0,
-    montoTotal: 0,
-    formaPago: 'efectivo',
-    factura: false,
-    numeroFactura: '',
-    notas: '',
-  };
+  return { fecha: todayString(), clienteId: '', descripcion: '', concepto: 'solo_bordado', monto: 0, iva: 0, montoTotal: 0, formaPago: 'efectivo', factura: false, numeroFactura: '', notas: '' };
 }
 
 export default function IngresosPage() {
@@ -43,166 +36,84 @@ export default function IngresosPage() {
     setClientes(getClientes());
   }, []);
 
-  useEffect(() => {
-    reload();
-    setMounted(true);
-  }, [reload]);
+  useEffect(() => { reload(); setMounted(true); }, [reload]);
 
-  if (!mounted) return <div className="p-8">Cargando...</div>;
+  if (!mounted) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" /></div>;
 
-  const openNew = () => {
-    setEditingId(null);
-    setForm(emptyIngreso());
-    setModalOpen(true);
-  };
-
-  const openEdit = (i: Ingreso) => {
-    setEditingId(i.id);
-    setForm({ ...i });
-    setModalOpen(true);
-  };
-
+  const openNew = () => { setEditingId(null); setForm(emptyIngreso()); setModalOpen(true); };
+  const openEdit = (i: Ingreso) => { setEditingId(i.id); setForm({ ...i }); setModalOpen(true); };
   const handleSave = () => {
     if (!form.descripcion || form.monto <= 0) return;
     const iva = form.factura ? calcIVA(form.monto) : 0;
-    const data: Ingreso = {
-      ...(form as Ingreso),
-      id: editingId || uuid(),
-      iva,
-      montoTotal: form.monto + iva,
-      createdAt: editingId ? (form as Ingreso).createdAt : new Date().toISOString(),
-    };
-    if (editingId) {
-      updateIngreso(data);
-    } else {
-      addIngreso(data);
-    }
-    setModalOpen(false);
-    reload();
+    const data: Ingreso = { ...(form as Ingreso), id: editingId || uuid(), iva, montoTotal: form.monto + iva, createdAt: editingId ? (form as Ingreso).createdAt : new Date().toISOString() };
+    editingId ? updateIngreso(data) : addIngreso(data);
+    setModalOpen(false); reload();
   };
-
-  const handleDelete = (id: string) => {
-    if (confirm('Estas seguro de eliminar este ingreso?')) {
-      deleteIngreso(id);
-      reload();
-    }
-  };
+  const handleDelete = (id: string) => { if (confirm('Eliminar este ingreso?')) { deleteIngreso(id); reload(); } };
 
   const clienteName = (id: string) => clientes.find((c) => c.id === id)?.nombre || '';
-
-  const months = Array.from(
-    new Set(ingresos.map((i) => i.fecha.substring(0, 7)))
-  ).sort().reverse();
-
+  const months = Array.from(new Set(ingresos.map((i) => i.fecha.substring(0, 7)))).sort().reverse();
   const filtered = ingresos.filter((i) => {
     if (filterConcepto !== 'all' && i.concepto !== filterConcepto) return false;
     if (filterMonth !== 'all' && !i.fecha.startsWith(filterMonth)) return false;
     return true;
   });
-
   const totalFiltered = filtered.reduce((s, i) => s + i.montoTotal, 0);
 
   return (
     <div>
-      <PageHeader
-        title="Ingresos"
-        description="Control de ventas y servicios"
-        action={
-          <button
-            onClick={openNew}
-            className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
-          >
-            + Nuevo Ingreso
-          </button>
-        }
-      />
+      <PageHeader title="Ingresos" description="Control de ventas y servicios" action={<button onClick={openNew} className={btnPrimary}>+ Nuevo Ingreso</button>} />
 
-      <div className="flex gap-3 mb-6 flex-wrap">
-        <select
-          value={filterConcepto}
-          onChange={(e) => setFilterConcepto(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-        >
+      <div className="flex gap-3 mb-6 flex-wrap items-center">
+        <select value={filterConcepto} onChange={(e) => setFilterConcepto(e.target.value)} className="border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-medium bg-white focus:outline-none focus:border-[#c72a09]">
           <option value="all">Todos los conceptos</option>
-          {conceptos.map((c) => (
-            <option key={c} value={c}>{conceptoLabel(c)}</option>
-          ))}
+          {conceptos.map((c) => <option key={c} value={c}>{conceptoLabel(c)}</option>)}
         </select>
-        <select
-          value={filterMonth}
-          onChange={(e) => setFilterMonth(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-        >
+        <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-medium bg-white focus:outline-none focus:border-[#c72a09]">
           <option value="all">Todos los meses</option>
-          {months.map((m) => (
-            <option key={m} value={m}>{m}</option>
-          ))}
+          {months.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
-        <div className="ml-auto text-sm text-gray-500 self-center">
-          Total: <span className="font-bold text-emerald-600">{formatCurrency(totalFiltered)}</span>
-          {' '}({filtered.length} registros)
+        <div className="ml-auto text-xs text-neutral-400 font-medium">
+          Total: <span className="font-black text-green-600 text-sm">{formatCurrency(totalFiltered)}</span> &middot; {filtered.length} registros
         </div>
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState
-          icon="💰"
-          title="Sin ingresos"
-          description="Registra tu primera venta o servicio"
-          action={
-            <button onClick={openNew} className="text-emerald-600 font-medium text-sm hover:underline">
-              + Agregar ingreso
-            </button>
-          }
-        />
+        <EmptyState title="Sin ingresos" description="Registra tu primera venta o servicio" action={<button onClick={openNew} className="text-[#c72a09] font-bold text-xs uppercase tracking-wide hover:underline">+ Agregar ingreso</button>} />
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
-                <th className="px-4 py-3">Fecha</th>
-                <th className="px-4 py-3">Descripcion</th>
-                <th className="px-4 py-3">Cliente</th>
-                <th className="px-4 py-3">Concepto</th>
-                <th className="px-4 py-3">Pago</th>
-                <th className="px-4 py-3 text-right">Monto</th>
-                <th className="px-4 py-3 text-center">Factura</th>
-                <th className="px-4 py-3"></th>
+              <tr className="border-b border-neutral-100">
+                <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Fecha</th>
+                <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Descripcion</th>
+                <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Cliente</th>
+                <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Concepto</th>
+                <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Pago</th>
+                <th className="px-5 py-4 text-right text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Monto</th>
+                <th className="px-5 py-4 text-center text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Fact.</th>
+                <th className="px-5 py-4"></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((i) => (
-                <tr key={i.id} className="border-t border-gray-100 hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-600">{formatDate(i.fecha)}</td>
-                  <td className="px-4 py-3 font-medium text-gray-900">{i.descripcion}</td>
-                  <td className="px-4 py-3 text-gray-600">{clienteName(i.clienteId) || '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className="px-2 py-1 rounded-full text-xs bg-emerald-50 text-emerald-700">
-                      {conceptoLabel(i.concepto)}
-                    </span>
+                <tr key={i.id} className="border-b border-neutral-50 hover:bg-neutral-50/50 transition-colors">
+                  <td className="px-5 py-4 text-neutral-400 text-xs">{formatDate(i.fecha)}</td>
+                  <td className="px-5 py-4 font-semibold text-[#0a0a0a]">{i.descripcion}</td>
+                  <td className="px-5 py-4 text-neutral-400 text-xs">{clienteName(i.clienteId) || '—'}</td>
+                  <td className="px-5 py-4"><span className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wide bg-green-50 text-green-700 uppercase">{conceptoLabel(i.concepto)}</span></td>
+                  <td className="px-5 py-4 text-neutral-400 text-xs">{formaPagoLabel(i.formaPago)}</td>
+                  <td className="px-5 py-4 text-right">
+                    <span className="font-bold text-green-600">{formatCurrency(i.montoTotal)}</span>
+                    {i.iva > 0 && <span className="block text-[10px] text-neutral-300">IVA: {formatCurrency(i.iva)}</span>}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{formaPagoLabel(i.formaPago)}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-emerald-600">
-                    {formatCurrency(i.montoTotal)}
-                    {i.iva > 0 && (
-                      <span className="block text-xs text-gray-400">IVA: {formatCurrency(i.iva)}</span>
-                    )}
+                  <td className="px-5 py-4 text-center">
+                    {i.factura ? <span className="w-5 h-5 rounded-full bg-[#c72a09] text-white text-[9px] font-bold inline-flex items-center justify-center">F</span> : <span className="text-neutral-200">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    {i.factura ? (
-                      <span className="text-emerald-600 font-medium">Si</span>
-                    ) : (
-                      <span className="text-gray-400">No</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <button onClick={() => openEdit(i)} className="text-purple-600 hover:text-purple-800 text-xs">
-                        Editar
-                      </button>
-                      <button onClick={() => handleDelete(i.id)} className="text-red-500 hover:text-red-700 text-xs">
-                        Eliminar
-                      </button>
+                  <td className="px-5 py-4">
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => openEdit(i)} className="text-neutral-300 hover:text-[#c72a09] transition-colors"><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg></button>
+                      <button onClick={() => handleDelete(i.id)} className="text-neutral-200 hover:text-red-500 transition-colors"><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg></button>
                     </div>
                   </td>
                 </tr>
@@ -212,139 +123,27 @@ export default function IngresosPage() {
         </div>
       )}
 
-      <Modal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editingId ? 'Editar Ingreso' : 'Nuevo Ingreso'}
-      >
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? 'Editar Ingreso' : 'Nuevo Ingreso'}>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Fecha</label>
-              <input
-                type="date"
-                value={form.fecha}
-                onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Concepto</label>
-              <select
-                value={form.concepto}
-                onChange={(e) => setForm({ ...form, concepto: e.target.value as ConceptoIngreso })}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-              >
-                {conceptos.map((c) => (
-                  <option key={c} value={c}>{conceptoLabel(c)}</option>
-                ))}
-              </select>
-            </div>
+            <div><label className={labelClass}>Fecha</label><input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} className={inputClass} /></div>
+            <div><label className={labelClass}>Concepto</label><select value={form.concepto} onChange={(e) => setForm({ ...form, concepto: e.target.value as ConceptoIngreso })} className={inputClass}>{conceptos.map((c) => <option key={c} value={c}>{conceptoLabel(c)}</option>)}</select></div>
           </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Descripcion</label>
-            <input
-              type="text"
-              value={form.descripcion}
-              onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
-              placeholder="Ej: Bordado de logo en 10 playeras"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Cliente</label>
-            <select
-              value={form.clienteId}
-              onChange={(e) => setForm({ ...form, clienteId: e.target.value })}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="">Sin cliente asignado</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>{c.nombre}</option>
-              ))}
-            </select>
-          </div>
-
+          <div><label className={labelClass}>Descripcion</label><input type="text" value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Ej: Bordado de logo en 10 playeras" className={inputClass} /></div>
+          <div><label className={labelClass}>Cliente</label><select value={form.clienteId} onChange={(e) => setForm({ ...form, clienteId: e.target.value })} className={inputClass}><option value="">Sin cliente</option>{clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Monto (sin IVA)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.monto || ''}
-                onChange={(e) => setForm({ ...form, monto: parseFloat(e.target.value) || 0 })}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Forma de Pago</label>
-              <select
-                value={form.formaPago}
-                onChange={(e) => setForm({ ...form, formaPago: e.target.value as FormaPago })}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-              >
-                {formasPago.map((fp) => (
-                  <option key={fp} value={fp}>{formaPagoLabel(fp)}</option>
-                ))}
-              </select>
-            </div>
+            <div><label className={labelClass}>Monto (sin IVA)</label><input type="number" step="0.01" min="0" value={form.monto || ''} onChange={(e) => setForm({ ...form, monto: parseFloat(e.target.value) || 0 })} className={inputClass} /></div>
+            <div><label className={labelClass}>Forma de Pago</label><select value={form.formaPago} onChange={(e) => setForm({ ...form, formaPago: e.target.value as FormaPago })} className={inputClass}>{formasPago.map((fp) => <option key={fp} value={fp}>{formaPagoLabel(fp)}</option>)}</select></div>
           </div>
-
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.factura}
-                onChange={(e) => setForm({ ...form, factura: e.target.checked })}
-                className="w-4 h-4 accent-emerald-600"
-              />
-              <span className="text-sm text-gray-700">Tiene factura (IVA 16%)</span>
-            </label>
-            {form.factura && form.monto > 0 && (
-              <span className="text-xs text-gray-400">
-                IVA: {formatCurrency(calcIVA(form.monto))} &middot; Total: {formatCurrency(form.monto + calcIVA(form.monto))}
-              </span>
-            )}
+            <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={form.factura} onChange={(e) => setForm({ ...form, factura: e.target.checked })} className="w-4 h-4 accent-[#c72a09] rounded" /><span className="text-sm text-neutral-600">Factura (IVA 16%)</span></label>
+            {form.factura && form.monto > 0 && <span className="text-xs text-neutral-400">IVA: {formatCurrency(calcIVA(form.monto))} &middot; Total: {formatCurrency(form.monto + calcIVA(form.monto))}</span>}
           </div>
-
-          {form.factura && (
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Numero de Factura</label>
-              <input
-                type="text"
-                value={form.numeroFactura}
-                onChange={(e) => setForm({ ...form, numeroFactura: e.target.value })}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Notas</label>
-            <textarea
-              value={form.notas}
-              onChange={(e) => setForm({ ...form, notas: e.target.value })}
-              rows={2}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              onClick={() => setModalOpen(false)}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSave}
-              className="bg-emerald-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700"
-            >
-              {editingId ? 'Guardar Cambios' : 'Registrar Ingreso'}
-            </button>
+          {form.factura && <div><label className={labelClass}>No. Factura</label><input type="text" value={form.numeroFactura} onChange={(e) => setForm({ ...form, numeroFactura: e.target.value })} className={inputClass} /></div>}
+          <div><label className={labelClass}>Notas</label><textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} className={inputClass} /></div>
+          <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
+            <button onClick={() => setModalOpen(false)} className={btnSecondary}>Cancelar</button>
+            <button onClick={handleSave} className={btnPrimary}>{editingId ? 'Guardar' : 'Registrar'}</button>
           </div>
         </div>
       </Modal>
