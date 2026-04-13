@@ -1,6 +1,6 @@
 'use client';
 
-import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente, Pedido, Cotizacion, ConfigNegocio } from './types';
+import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente, Pedido, Cotizacion, ConfigNegocio, Producto } from './types';
 
 const KEYS = {
   clientes: 'bordados_clientes',
@@ -10,6 +10,7 @@ const KEYS = {
   pedidos: 'bordados_pedidos',
   cotizaciones: 'bordados_cotizaciones',
   config: 'bordados_config',
+  productos: 'bordados_productos',
   egresosRecurrentes: 'bordados_egresos_recurrentes',
   recurrentesLog: 'bordados_recurrentes_log',
 } as const;
@@ -84,6 +85,12 @@ export const getPedidos = () => getItems<Pedido>(KEYS.pedidos);
 export const addPedido = (p: Pedido) => addItem(KEYS.pedidos, p);
 export const updatePedido = (p: Pedido) => updateItem(KEYS.pedidos, p);
 export const deletePedido = (id: string) => deleteItem<Pedido>(KEYS.pedidos, id);
+
+// Productos
+export const getProductos = () => getItems<Producto>(KEYS.productos);
+export const addProducto = (p: Producto) => addItem(KEYS.productos, p);
+export const updateProducto = (p: Producto) => updateItem(KEYS.productos, p);
+export const deleteProducto = (id: string) => deleteItem<Producto>(KEYS.productos, id);
 
 // Cotizaciones
 export const getCotizaciones = () => getItems<Cotizacion>(KEYS.cotizaciones);

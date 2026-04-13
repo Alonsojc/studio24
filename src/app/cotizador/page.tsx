@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { formatCurrency, calcIVA } from '@/lib/helpers';
 import { v4 as uuid } from 'uuid';
-import { getClientes, getConfig, addCotizacion, getCotizaciones, getNextFolio } from '@/lib/store';
-import { Cliente, ConfigNegocio, Cotizacion } from '@/lib/types';
+import { getClientes, getConfig, addCotizacion, getCotizaciones, getNextFolio, getProductos } from '@/lib/store';
+import { Cliente, ConfigNegocio, Cotizacion, Producto } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
 
 const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
@@ -17,29 +17,10 @@ interface LineItem {
   precioUnitario: number;
 }
 
-const presetsBordado = [
-  { label: 'Bordado Pequeno (< 5cm)', precio: 35 },
-  { label: 'Bordado Mediano (5-10cm)', precio: 65 },
-  { label: 'Bordado Grande (10-20cm)', precio: 120 },
-  { label: 'Bordado Espalda completa', precio: 200 },
-];
-
-const presetsPrenda = [
-  { label: 'Playera Polo', precio: 120 },
-  { label: 'Playera cuello redondo', precio: 80 },
-  { label: 'Camisa', precio: 150 },
-  { label: 'Gorra', precio: 70 },
-  { label: 'Mandil', precio: 90 },
-  { label: 'Chamarra', precio: 280 },
-  { label: 'Overol', precio: 250 },
-  { label: 'Short Slim Formal', precio: 1145 },
-  { label: 'Camisa Paraiso', precio: 1845 },
-  { label: 'Gorras Premium', precio: 380 },
-];
-
 let nextId = 1;
 
 export default function CotizadorPage() {
+  const [allProductos, setAllProductos] = useState<Producto[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [config, setConfigState] = useState<ConfigNegocio | null>(null);
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
@@ -60,6 +41,7 @@ export default function CotizadorPage() {
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    setAllProductos(getProductos().filter((p) => p.activo));
     setClientes(getClientes());
     setConfigState(getConfig());
     setCotizaciones(getCotizaciones().sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
@@ -67,6 +49,10 @@ export default function CotizadorPage() {
   }, []);
 
   const cfg = config || { nombreNegocio: 'STUDIO 24', titular: '', banco: '', numeroCuenta: '', clabe: '', telefono: '', email: '', direccion: '', logoUrl: '' };
+
+  const presetsBordado = allProductos.filter((p) => p.categoria === 'bordado').map((p) => ({ label: p.nombre, precio: p.precio }));
+  const presetsPrenda = allProductos.filter((p) => p.categoria === 'prenda').map((p) => ({ label: p.nombre, precio: p.precio }));
+  const presetsServicios = allProductos.filter((p) => p.categoria === 'servicio' || p.categoria === 'otro').map((p) => ({ label: p.nombre, precio: p.precio }));
 
   const selectCliente = (id: string) => {
     setClienteId(id);
@@ -294,6 +280,21 @@ export default function CotizadorPage() {
                 <span className="text-xs font-semibold text-neutral-400">Cliente trae prenda</span>
               </button>
             </div>
+
+            {/* Servicios - add directly */}
+            {presetsServicios.length > 0 && (
+              <>
+                <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2 mt-4">Servicios (agregar directo)</p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {presetsServicios.map((p) => (
+                    <button key={p.label} onClick={() => { setItems([...items, { id: String(nextId++), descripcion: p.label, cantidad: 1, precioUnitario: p.precio }]); }} className="px-3 py-2 rounded-xl border border-neutral-200 hover:border-[#c72a09] hover:bg-[#c72a09]/5 transition-all text-left">
+                      <span className="text-xs font-semibold text-[#0a0a0a] block">{p.label}</span>
+                      <span className="text-[10px] text-neutral-400">{formatCurrency(p.precio)}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* Preview & Add */}
             {(selBordado || selPrenda) && (

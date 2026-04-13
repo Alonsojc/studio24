@@ -138,6 +138,17 @@ export interface Cotizacion {
   createdAt: string;
 }
 
+export type CategoriaProducto = 'bordado' | 'prenda' | 'servicio' | 'otro';
+
+export interface Producto {
+  id: string;
+  nombre: string;
+  categoria: CategoriaProducto;
+  precio: number;
+  activo: boolean;
+  createdAt: string;
+}
+
 export interface ConfigNegocio {
   nombreNegocio: string;
   titular: string;

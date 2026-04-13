@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente, Pedido } from './types';
+import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente, Pedido, Producto } from './types';
 
 export function getSeedClientes(): Cliente[] {
   return [
@@ -57,6 +57,28 @@ export function getSeedRecurrentes(): EgresoRecurrente[] {
     { id: uuid(), descripcion: 'Suscripcion Canva Pro', categoria: 'programas', subcategoria: 'Canva', proveedorId: '', monto: 129, formaPago: 'tarjeta', factura: false, diaDelMes: 1, activo: true, createdAt: '2026-01-01T10:00:00Z' },
     { id: uuid(), descripcion: 'Suscripcion Adobe Photoshop', categoria: 'programas', subcategoria: 'Photoshop', proveedorId: '', monto: 232, formaPago: 'tarjeta', factura: true, diaDelMes: 1, activo: true, createdAt: '2026-01-01T10:00:00Z' },
     { id: uuid(), descripcion: 'Renta del local', categoria: 'renta', subcategoria: '', proveedorId: '', monto: 3500, formaPago: 'transferencia', factura: false, diaDelMes: 25, activo: true, createdAt: '2026-01-01T10:00:00Z' },
+  ];
+}
+
+export function getSeedProductos(): Producto[] {
+  const now = '2026-01-01T10:00:00Z';
+  return [
+    // Bordados
+    { id: uuid(), nombre: 'Bordado Pequeno (< 5cm)', categoria: 'bordado', precio: 35, activo: true, createdAt: now },
+    { id: uuid(), nombre: 'Bordado Mediano (5-10cm)', categoria: 'bordado', precio: 65, activo: true, createdAt: now },
+    { id: uuid(), nombre: 'Bordado Grande (10-20cm)', categoria: 'bordado', precio: 120, activo: true, createdAt: now },
+    { id: uuid(), nombre: 'Bordado Espalda completa', categoria: 'bordado', precio: 200, activo: true, createdAt: now },
+    // Prendas
+    { id: uuid(), nombre: 'Playera Polo', categoria: 'prenda', precio: 120, activo: true, createdAt: now },
+    { id: uuid(), nombre: 'Playera cuello redondo', categoria: 'prenda', precio: 80, activo: true, createdAt: now },
+    { id: uuid(), nombre: 'Camisa', categoria: 'prenda', precio: 150, activo: true, createdAt: now },
+    { id: uuid(), nombre: 'Gorra', categoria: 'prenda', precio: 70, activo: true, createdAt: now },
+    { id: uuid(), nombre: 'Mandil', categoria: 'prenda', precio: 90, activo: true, createdAt: now },
+    { id: uuid(), nombre: 'Chamarra', categoria: 'prenda', precio: 280, activo: true, createdAt: now },
+    { id: uuid(), nombre: 'Overol', categoria: 'prenda', precio: 250, activo: true, createdAt: now },
+    // Servicios
+    { id: uuid(), nombre: 'Diseno de logo', categoria: 'servicio', precio: 500, activo: true, createdAt: now },
+    { id: uuid(), nombre: 'Digitalizacion de diseno', categoria: 'servicio', precio: 350, activo: true, createdAt: now },
   ];
 }
 
