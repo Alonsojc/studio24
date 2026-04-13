@@ -49,6 +49,8 @@ export default function CotizadorPage() {
   const [items, setItems] = useState<LineItem[]>([
     { id: String(nextId++), descripcion: '', cantidad: 1, precioUnitario: 0 },
   ]);
+  const [selBordado, setSelBordado] = useState<{ label: string; precio: number } | null>(null);
+  const [selPrenda, setSelPrenda] = useState<{ label: string; precio: number } | null>(null);
   const [conIVA, setConIVA] = useState(false);
   const [notas, setNotas] = useState('');
   const [copied, setCopied] = useState(false);
@@ -82,8 +84,20 @@ export default function CotizadorPage() {
     setItems([...items, { id: String(nextId++), descripcion: '', cantidad: 1, precioUnitario: 0 }]);
   };
 
-  const addPreset = (label: string, precio: number) => {
-    setItems([...items, { id: String(nextId++), descripcion: label, cantidad: 1, precioUnitario: precio }]);
+  const addCombined = () => {
+    if (!selBordado && !selPrenda) return;
+    const parts: string[] = [];
+    let precio = 0;
+    if (selPrenda) { parts.push(selPrenda.label); precio += selPrenda.precio; }
+    if (selBordado) { parts.push(selBordado.label); precio += selBordado.precio; }
+    const desc = parts.join(' + ');
+    setItems([...items, { id: String(nextId++), descripcion: desc, cantidad: 1, precioUnitario: precio }]);
+    setSelBordado(null);
+    setSelPrenda(null);
+  };
+
+  const addCustomItem = () => {
+    setItems([...items, { id: String(nextId++), descripcion: '', cantidad: 1, precioUnitario: 0 }]);
   };
 
   const removeItem = (id: string) => {
@@ -251,36 +265,60 @@ export default function CotizadorPage() {
             </div>
           </div>
 
-          {/* Quick add presets */}
+          {/* Combo builder */}
           <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-            <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-4">Agregar rapido</h3>
+            <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-4">Armar Concepto</h3>
 
-            <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2">Bordado</p>
+            <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2">1. Tipo de bordado {selBordado && <span className="text-[#c72a09]">({selBordado.label})</span>}</p>
             <div className="flex flex-wrap gap-2 mb-4">
               {presetsBordado.map((p) => (
-                <button key={p.label} onClick={() => addPreset(p.label, p.precio)} className="px-3 py-2 rounded-xl border border-neutral-200 hover:border-[#c72a09] hover:bg-[#c72a09]/5 transition-all text-left">
-                  <span className="text-xs font-semibold text-[#0a0a0a] block">{p.label}</span>
+                <button key={p.label} onClick={() => setSelBordado(selBordado?.label === p.label ? null : p)} className={`px-3 py-2 rounded-xl border transition-all text-left ${selBordado?.label === p.label ? 'border-[#c72a09] bg-[#c72a09]/10 ring-1 ring-[#c72a09]/30' : 'border-neutral-200 hover:border-neutral-400'}`}>
+                  <span className={`text-xs font-semibold block ${selBordado?.label === p.label ? 'text-[#c72a09]' : 'text-[#0a0a0a]'}`}>{p.label}</span>
                   <span className="text-[10px] text-neutral-400">{formatCurrency(p.precio)}</span>
                 </button>
               ))}
+              <button onClick={() => setSelBordado(null)} className={`px-3 py-2 rounded-xl border transition-all text-left ${!selBordado ? 'border-[#c72a09] bg-[#c72a09]/10' : 'border-neutral-200 hover:border-neutral-400'}`}>
+                <span className="text-xs font-semibold text-neutral-400">Sin bordado</span>
+              </button>
             </div>
 
-            <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2">Prendas</p>
-            <div className="flex flex-wrap gap-2">
+            <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2">2. Prenda {selPrenda && <span className="text-[#c72a09]">({selPrenda.label})</span>}</p>
+            <div className="flex flex-wrap gap-2 mb-5">
               {presetsPrenda.map((p) => (
-                <button key={p.label} onClick={() => addPreset(p.label, p.precio)} className="px-3 py-2 rounded-xl border border-neutral-200 hover:border-[#c72a09] hover:bg-[#c72a09]/5 transition-all text-left">
-                  <span className="text-xs font-semibold text-[#0a0a0a] block">{p.label}</span>
+                <button key={p.label} onClick={() => setSelPrenda(selPrenda?.label === p.label ? null : p)} className={`px-3 py-2 rounded-xl border transition-all text-left ${selPrenda?.label === p.label ? 'border-[#c72a09] bg-[#c72a09]/10 ring-1 ring-[#c72a09]/30' : 'border-neutral-200 hover:border-neutral-400'}`}>
+                  <span className={`text-xs font-semibold block ${selPrenda?.label === p.label ? 'text-[#c72a09]' : 'text-[#0a0a0a]'}`}>{p.label}</span>
                   <span className="text-[10px] text-neutral-400">{formatCurrency(p.precio)}</span>
                 </button>
               ))}
+              <button onClick={() => setSelPrenda(null)} className={`px-3 py-2 rounded-xl border transition-all text-left ${!selPrenda ? 'border-[#c72a09] bg-[#c72a09]/10' : 'border-neutral-200 hover:border-neutral-400'}`}>
+                <span className="text-xs font-semibold text-neutral-400">Cliente trae prenda</span>
+              </button>
             </div>
+
+            {/* Preview & Add */}
+            {(selBordado || selPrenda) && (
+              <div className="flex items-center gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-[#0a0a0a]">
+                    {[selPrenda?.label, selBordado?.label].filter(Boolean).join(' + ')}
+                  </p>
+                  <p className="text-xs text-neutral-400">
+                    {[selPrenda && formatCurrency(selPrenda.precio), selBordado && formatCurrency(selBordado.precio)].filter(Boolean).join(' + ')}
+                  </p>
+                </div>
+                <span className="text-lg font-black text-[#c72a09]">{formatCurrency((selBordado?.precio || 0) + (selPrenda?.precio || 0))}</span>
+                <button onClick={addCombined} className="bg-[#c72a09] text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide hover:bg-[#a82207] transition-colors shrink-0">
+                  Agregar
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Items table */}
           <div className="bg-white rounded-2xl border border-neutral-100 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Conceptos ({items.length})</h3>
-              <button onClick={addItem} className="bg-[#0a0a0a] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors">+ Linea vacia</button>
+              <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Conceptos ({items.filter((i) => i.descripcion).length})</h3>
+              <button onClick={addCustomItem} className="bg-[#0a0a0a] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors">+ Linea manual</button>
             </div>
 
             <div className="space-y-3">
