@@ -86,11 +86,13 @@ export interface Pedido {
   piezas: number;
   precioUnitario: number;
   montoTotal: number;
+  costoMateriales: number;
   estado: EstadoPedido;
   estadoPago: EstadoPago;
   montoPagado: number;
   maquina: string;
   archivoDiseno: string;
+  fotos: string[];
   checklist: {
     archivoListo: boolean;
     hilosCargados: boolean;

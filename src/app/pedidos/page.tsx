@@ -40,12 +40,22 @@ const pagoLabel: Record<EstadoPago, string> = {
 function emptyPedido(): Omit<Pedido, 'id' | 'createdAt'> {
   return {
     clienteId: '', descripcion: '', concepto: 'solo_bordado', piezas: 1,
-    precioUnitario: 0, montoTotal: 0, estado: 'pendiente', estadoPago: 'pendiente',
-    montoPagado: 0, maquina: '', archivoDiseno: '', checklist: { ...emptyChecklist },
+    precioUnitario: 0, montoTotal: 0, costoMateriales: 0, estado: 'pendiente', estadoPago: 'pendiente',
+    montoPagado: 0, maquina: '', archivoDiseno: '', fotos: [], checklist: { ...emptyChecklist },
     fechaPedido: todayString(), fechaEntrega: '', fechaEntregaReal: '',
     urgente: false, notas: '',
   };
 }
+
+const statusMessages: Record<EstadoPedido, string> = {
+  pendiente: 'Tu pedido ha sido recibido. Te avisamos cuando empecemos el diseno.',
+  diseno: 'Estamos trabajando en el diseno de tu pedido. Te enviaremos una muestra para aprobacion.',
+  aprobado: 'El diseno fue aprobado! Tu pedido entrara a produccion pronto.',
+  en_maquina: 'Tu pedido ya esta en produccion en nuestra maquina bordadora.',
+  terminado: 'Tu pedido esta LISTO! Puedes pasar a recogerlo o coordinamos la entrega.',
+  entregado: 'Gracias por tu compra! Esperamos verte pronto.',
+  cancelado: 'Tu pedido ha sido cancelado.',
+};
 
 export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
@@ -106,6 +116,39 @@ export default function PedidosPage() {
       notas: `Generado desde pedido`, createdAt: new Date().toISOString(),
     };
     addIngreso(ingreso);
+  };
+
+  const repetirPedido = (p: Pedido) => {
+    const nuevo: Pedido = {
+      ...p, id: uuid(), estado: 'pendiente', estadoPago: 'pendiente',
+      montoPagado: 0, fechaPedido: todayString(), fechaEntrega: '',
+      fechaEntregaReal: '', fotos: [],
+      checklist: { ...emptyChecklist },
+      createdAt: new Date().toISOString(),
+    };
+    addPedido(nuevo);
+    reload();
+  };
+
+  const enviarWhatsAppEstado = (p: Pedido) => {
+    const cliente = clientes.find((c) => c.id === p.clienteId);
+    const tel = cliente?.telefono?.replace(/\D/g, '') || '';
+    const msg = `*STUDIO 24*\n\nHola ${cliente?.nombre || ''}!\n\n${statusMessages[p.estado]}\n\nPedido: ${p.descripcion}\nPiezas: ${p.piezas}\n${p.fechaEntrega ? `Entrega estimada: ${formatDate(p.fechaEntrega)}` : ''}\n\nGracias por tu preferencia!`;
+    const url = tel ? `https://wa.me/52${tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+  };
+
+  const addFotoUrl = (p: Pedido, url: string) => {
+    if (!url) return;
+    const updated = { ...p, fotos: [...(p.fotos || []), url] };
+    updatePedido(updated);
+    reload();
+  };
+
+  const removeFoto = (p: Pedido, idx: number) => {
+    const updated = { ...p, fotos: (p.fotos || []).filter((_, i) => i !== idx) };
+    updatePedido(updated);
+    reload();
   };
   const toggleCheck = (p: Pedido, key: keyof typeof emptyChecklist) => {
     const updated = { ...p, checklist: { ...p.checklist, [key]: !p.checklist[key] } };
@@ -169,7 +212,13 @@ export default function PedidosPage() {
                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${pagoColor[p.estadoPago || 'pendiente']}`}>{pagoLabel[p.estadoPago || 'pendiente']}</span>
                         <span className="text-xs font-bold text-[#0a0a0a]">{formatCurrency(p.montoTotal)}</span>
                       </div>
+                      {p.costoMateriales > 0 && (
+                        <p className="text-[10px] text-neutral-300 mt-1">Ganancia: <span className="text-green-600 font-bold">{formatCurrency(p.montoTotal - p.costoMateriales)}</span></p>
+                      )}
                       {p.archivoDiseno && <p className="text-[10px] text-neutral-300 mt-1 truncate">📄 {p.archivoDiseno}</p>}
+                      {(p.fotos || []).length > 0 && (
+                        <div className="flex gap-1 mt-1.5">{(p.fotos || []).slice(0, 3).map((f, i) => <img key={i} src={f} alt="" className="w-8 h-8 rounded-lg object-cover" />)}{(p.fotos || []).length > 3 && <span className="w-8 h-8 rounded-lg bg-neutral-100 flex items-center justify-center text-[9px] font-bold text-neutral-400">+{(p.fotos || []).length - 3}</span>}</div>
+                      )}
                       {p.fechaEntrega && (
                         <p className={`text-[10px] mt-1 font-semibold ${new Date(p.fechaEntrega) < new Date() && p.estado !== 'entregado' ? 'text-red-500' : 'text-neutral-300'}`}>
                           Entrega: {formatDate(p.fechaEntrega)}
@@ -201,6 +250,9 @@ export default function PedidosPage() {
                         ) : <span />}
                         <ActionMenu items={[
                           { label: 'Editar', onClick: () => openEdit(p) },
+                          { label: 'WhatsApp al cliente', onClick: () => enviarWhatsAppEstado(p) },
+                          { label: 'Repetir pedido', onClick: () => repetirPedido(p) },
+                          { label: 'Agregar foto (URL)', onClick: () => { const url = prompt('URL de la foto:'); if (url) addFotoUrl(p, url); } },
                           ...(p.estado !== 'cancelado' ? [{ label: 'Cancelar', onClick: () => moveEstado(p, 'cancelado'), danger: true }] : []),
                           { label: 'Eliminar', onClick: () => handleDelete(p.id), danger: true },
                         ]} />
@@ -252,7 +304,7 @@ export default function PedidosPage() {
                     <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${pagoColor[p.estadoPago || 'pendiente']}`}>{pagoLabel[p.estadoPago || 'pendiente']}</span></td>
                     <td className="px-5 py-4 text-right font-bold text-[#0a0a0a]">{formatCurrency(p.montoTotal)}</td>
                     <td className="px-5 py-4 text-xs text-neutral-400">{p.fechaEntrega ? formatDate(p.fechaEntrega) : '—'}</td>
-                    <td className="px-5 py-4"><div className="flex justify-end"><ActionMenu items={[{ label: 'Editar', onClick: () => openEdit(p) }, ...(nextEstado(p.estado) ? [{ label: `→ ${estadoPedidoLabel(nextEstado(p.estado)!)}`, onClick: () => moveEstado(p, nextEstado(p.estado)!) }] : []), { label: 'Eliminar', onClick: () => handleDelete(p.id), danger: true }]} /></div></td>
+                    <td className="px-5 py-4"><div className="flex justify-end"><ActionMenu items={[{ label: 'Editar', onClick: () => openEdit(p) }, ...(nextEstado(p.estado) ? [{ label: `→ ${estadoPedidoLabel(nextEstado(p.estado)!)}`, onClick: () => moveEstado(p, nextEstado(p.estado)!) }] : []), { label: 'WhatsApp al cliente', onClick: () => enviarWhatsAppEstado(p) }, { label: 'Repetir pedido', onClick: () => repetirPedido(p) }, { label: 'Eliminar', onClick: () => handleDelete(p.id), danger: true }]} /></div></td>
                   </tr>
                 ))}
               </tbody>
@@ -359,8 +411,37 @@ export default function PedidosPage() {
             </div>
           </div>
 
+          {/* Costo de materiales */}
+          <div className="bg-neutral-50 rounded-xl p-4">
+            <h4 className={labelClass}>Costo de Materiales</h4>
+            <div className="grid grid-cols-3 gap-4 mt-2">
+              <div><label className="text-[10px] text-neutral-400 font-medium">Costo materiales</label><input type="number" step="0.01" min="0" value={form.costoMateriales || ''} onChange={(e) => setForm({ ...form, costoMateriales: parseFloat(e.target.value) || 0 })} placeholder="Hilos, tela, etc." className={inputClass} /></div>
+              <div><label className="text-[10px] text-neutral-400 font-medium">Venta total</label><div className="h-[42px] flex items-center text-sm font-bold">{formatCurrency(form.piezas * form.precioUnitario)}</div></div>
+              <div><label className="text-[10px] text-neutral-400 font-medium">Ganancia</label><div className="h-[42px] flex items-center text-sm font-bold text-green-600">{formatCurrency((form.piezas * form.precioUnitario) - (form.costoMateriales || 0))}</div></div>
+            </div>
+          </div>
+
           <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={form.urgente} onChange={(e) => setForm({ ...form, urgente: e.target.checked })} className="w-4 h-4 accent-[#c72a09] rounded" /><span className="text-sm font-semibold text-[#0a0a0a]">Urgente</span></label>
           <div><label className={labelClass}>Notas</label><textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} placeholder="Colores, posiciones, detalles..." className={inputClass} /></div>
+
+          {/* Fotos */}
+          {editingId && (
+            <div>
+              <label className={labelClass}>Fotos del trabajo</label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {(form.fotos || []).map((f, i) => (
+                  <div key={i} className="relative group">
+                    <img src={f} alt="" className="w-16 h-16 rounded-xl object-cover" />
+                    <button onClick={() => setForm({ ...form, fotos: (form.fotos || []).filter((_, idx) => idx !== i) })} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">&times;</button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input type="url" placeholder="URL de la foto" className={`${inputClass} flex-1`} onKeyDown={(e) => { if (e.key === 'Enter') { const val = (e.target as HTMLInputElement).value; if (val) { setForm({ ...form, fotos: [...(form.fotos || []), val] }); (e.target as HTMLInputElement).value = ''; } } }} />
+                <span className="text-[10px] text-neutral-400 self-center">Enter para agregar</span>
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
             <button onClick={() => setModalOpen(false)} className={btnSecondary}>Cancelar</button>
             <button onClick={handleSave} className={btnPrimary}>{editingId ? 'Guardar' : 'Crear Pedido'}</button>
