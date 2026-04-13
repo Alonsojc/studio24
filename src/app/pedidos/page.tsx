@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getPedidos, addPedido, updatePedido, deletePedido, getClientes } from '@/lib/store';
-import { Pedido, Cliente, EstadoPedido, EstadoPago, ConceptoIngreso } from '@/lib/types';
+import { getPedidos, addPedido, updatePedido, deletePedido, getClientes, addIngreso } from '@/lib/store';
+import { Pedido, Cliente, EstadoPedido, EstadoPago, ConceptoIngreso, Ingreso } from '@/lib/types';
 import { formatCurrency, formatDate, conceptoLabel, estadoPedidoLabel, estadoPedidoColor, todayString } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
@@ -85,8 +85,27 @@ export default function PedidosPage() {
   const handleDelete = (id: string) => { if (confirm('Eliminar pedido?')) { deletePedido(id); reload(); } };
   const moveEstado = (p: Pedido, estado: EstadoPedido) => {
     const updated = { ...p, estado };
-    if (estado === 'entregado') updated.fechaEntregaReal = todayString();
+    if (estado === 'entregado') {
+      updated.fechaEntregaReal = todayString();
+      // If fully paid, offer to create Ingreso
+      if ((p.estadoPago === 'pagado' || p.montoPagado >= p.montoTotal) && p.montoTotal > 0) {
+        if (confirm('Pedido entregado y pagado. Crear ingreso automaticamente?')) {
+          crearIngresoDePedido(p);
+        }
+      }
+    }
     updatePedido(updated); reload();
+  };
+
+  const crearIngresoDePedido = (p: Pedido) => {
+    const ingreso: Ingreso = {
+      id: uuid(), fecha: todayString(), clienteId: p.clienteId,
+      descripcion: p.descripcion, concepto: p.concepto,
+      monto: p.montoTotal, iva: 0, montoTotal: p.montoTotal,
+      formaPago: 'transferencia', factura: false, numeroFactura: '',
+      notas: `Generado desde pedido`, createdAt: new Date().toISOString(),
+    };
+    addIngreso(ingreso);
   };
   const toggleCheck = (p: Pedido, key: keyof typeof emptyChecklist) => {
     const updated = { ...p, checklist: { ...p.checklist, [key]: !p.checklist[key] } };
@@ -291,7 +310,7 @@ export default function PedidosPage() {
                       <td className="px-5 py-4 text-right text-xs font-bold text-green-600">{formatCurrency(p.montoPagado || 0)}</td>
                       <td className="px-5 py-4 text-right text-xs font-bold text-red-500">{debe > 0 ? formatCurrency(debe) : '—'}</td>
                       <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${pagoColor[p.estadoPago || 'pendiente']}`}>{pagoLabel[p.estadoPago || 'pendiente']}</span></td>
-                      <td className="px-5 py-4"><div className="flex justify-end"><ActionMenu items={[{ label: 'Editar', onClick: () => openEdit(p) }, { label: 'Eliminar', onClick: () => handleDelete(p.id), danger: true }]} /></div></td>
+                      <td className="px-5 py-4"><div className="flex justify-end"><ActionMenu items={[{ label: 'Editar', onClick: () => openEdit(p) }, ...((p.estadoPago === 'pagado' || p.montoPagado > 0) ? [{ label: 'Crear Ingreso', onClick: () => { crearIngresoDePedido(p); alert('Ingreso creado!'); } }] : []), { label: 'Eliminar', onClick: () => handleDelete(p.id), danger: true }]} /></div></td>
                     </tr>
                   );
                 })}

@@ -121,3 +121,29 @@ export interface Ingreso {
   notas: string;
   createdAt: string;
 }
+
+export interface Cotizacion {
+  id: string;
+  folio: string;
+  clienteNombre: string;
+  clienteEmpresa: string;
+  items: { descripcion: string; cantidad: number; precioUnitario: number }[];
+  conIVA: boolean;
+  notas: string;
+  subtotal: number;
+  iva: number;
+  total: number;
+  createdAt: string;
+}
+
+export interface ConfigNegocio {
+  nombreNegocio: string;
+  titular: string;
+  banco: string;
+  numeroCuenta: string;
+  clabe: string;
+  telefono: string;
+  email: string;
+  direccion: string;
+  logoUrl: string;
+}

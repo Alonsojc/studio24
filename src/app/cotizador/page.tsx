@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { formatCurrency, calcIVA } from '@/lib/helpers';
-import { getClientes } from '@/lib/store';
-import { Cliente } from '@/lib/types';
+import { v4 as uuid } from 'uuid';
+import { getClientes, getConfig, addCotizacion, getCotizaciones, getNextFolio } from '@/lib/store';
+import { Cliente, ConfigNegocio, Cotizacion } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
 
 const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
@@ -40,6 +41,8 @@ let nextId = 1;
 
 export default function CotizadorPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [config, setConfigState] = useState<ConfigNegocio | null>(null);
+  const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
   const [clienteId, setClienteId] = useState('');
   const [clienteNombre, setClienteNombre] = useState('');
   const [clienteEmpresa, setClienteEmpresa] = useState('');
@@ -49,13 +52,19 @@ export default function CotizadorPage() {
   const [conIVA, setConIVA] = useState(false);
   const [notas, setNotas] = useState('');
   const [copied, setCopied] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
+  const [showHistorial, setShowHistorial] = useState(false);
   const [mounted, setMounted] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setClientes(getClientes());
+    setConfigState(getConfig());
+    setCotizaciones(getCotizaciones().sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
     setMounted(true);
   }, []);
+
+  const cfg = config || { nombreNegocio: 'STUDIO 24', titular: '', banco: '', numeroCuenta: '', clabe: '', telefono: '', email: '', direccion: '', logoUrl: '' };
 
   const selectCliente = (id: string) => {
     setClienteId(id);
@@ -92,6 +101,28 @@ export default function CotizadorPage() {
 
   const today = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
 
+  const guardarCotizacion = () => {
+    if (items.filter((i) => i.descripcion && i.precioUnitario > 0).length === 0) return;
+    const cot: Cotizacion = {
+      id: uuid(), folio: getNextFolio('COT'), clienteNombre, clienteEmpresa,
+      items: items.filter((i) => i.descripcion && i.precioUnitario > 0).map((i) => ({ descripcion: i.descripcion, cantidad: i.cantidad, precioUnitario: i.precioUnitario })),
+      conIVA, notas, subtotal, iva, total, createdAt: new Date().toISOString(),
+    };
+    addCotizacion(cot);
+    setCotizaciones([cot, ...cotizaciones]);
+    setSavedMsg(true);
+    setTimeout(() => setSavedMsg(false), 2000);
+  };
+
+  const loadCotizacion = (c: Cotizacion) => {
+    setClienteNombre(c.clienteNombre);
+    setClienteEmpresa(c.clienteEmpresa);
+    setItems(c.items.map((i, idx) => ({ id: String(nextId++), ...i })));
+    setConIVA(c.conIVA);
+    setNotas(c.notas);
+    setShowHistorial(false);
+  };
+
   const generarTexto = () => {
     const lines = [
       `*STUDIO 24 - COTIZACION*`,
@@ -110,10 +141,10 @@ export default function CotizadorPage() {
       `*TOTAL: ${formatCurrency(total)}*`,
       '',
       '*INFORMACION DE PAGO:*',
-      'Isabel Janeiro Cangas',
-      'BBVA',
-      'Cuenta: 152 585 2856',
-      'CLABE: 012180015258528567',
+      cfg.titular,
+      cfg.banco,
+      cfg.numeroCuenta ? `Cuenta: ${cfg.numeroCuenta}` : '',
+      cfg.clabe ? `CLABE: ${cfg.clabe}` : '',
       '',
       notas ? `Notas: ${notas}` : '',
     ].filter(Boolean).join('\n');
@@ -182,10 +213,10 @@ export default function CotizadorPage() {
         <div class="footer">
           <div>
             <h3>INFORMACION DE PAGO</h3>
-            <p>Isabel Janeiro Cangas<br>BBVA<br>Numero de cuenta: 152 585 2856<br>Cuenta clabe: 012180015258528567</p>
+            <p>${cfg.titular}<br>${cfg.banco}<br>${cfg.numeroCuenta ? `Numero de cuenta: ${cfg.numeroCuenta}` : ''}${cfg.clabe ? `<br>Cuenta clabe: ${cfg.clabe}` : ''}</p>
             ${notas ? `<p style="margin-top:12px;color:#666">Notas: ${notas}</p>` : ''}
           </div>
-          <div class="logo">STCH</div>
+          <div class="logo">${cfg.nombreNegocio || 'STCH'}</div>
         </div>
       </div>
     </div></body></html>`);
@@ -333,6 +364,29 @@ export default function CotizadorPage() {
             </div>
 
             {/* Actions */}
+            <button onClick={guardarCotizacion} className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors ${savedMsg ? 'bg-green-500 text-white' : 'bg-[#c72a09] text-white hover:bg-[#a82207]'}`}>
+              {savedMsg ? 'Guardada!' : 'Guardar Cotizacion'}
+            </button>
+
+            <button onClick={() => setShowHistorial(!showHistorial)} className={`w-full py-3 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${showHistorial ? 'bg-[#0a0a0a] text-white border-[#0a0a0a]' : 'bg-white text-neutral-500 border-neutral-200 hover:border-neutral-400'}`}>
+              Historial ({cotizaciones.length})
+            </button>
+
+            {showHistorial && cotizaciones.length > 0 && (
+              <div className="bg-white rounded-xl border border-neutral-100 max-h-60 overflow-y-auto">
+                {cotizaciones.map((c) => (
+                  <button key={c.id} onClick={() => loadCotizacion(c)} className="w-full text-left px-4 py-3 border-b border-neutral-50 hover:bg-neutral-50 transition-colors">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-bold text-[#c72a09]">{c.folio}</span>
+                      <span className="text-xs font-bold">{formatCurrency(c.total)}</span>
+                    </div>
+                    <p className="text-xs text-neutral-600 mt-0.5">{c.clienteNombre || 'Sin cliente'}</p>
+                    <p className="text-[10px] text-neutral-300">{new Date(c.createdAt).toLocaleDateString('es-MX')}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+
             <button onClick={imprimirPDF} className="w-full bg-[#0a0a0a] text-white py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors flex items-center justify-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z" /></svg>
               Imprimir / PDF

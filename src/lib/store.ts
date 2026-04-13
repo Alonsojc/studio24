@@ -1,6 +1,6 @@
 'use client';
 
-import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente, Pedido } from './types';
+import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente, Pedido, Cotizacion, ConfigNegocio } from './types';
 
 const KEYS = {
   clientes: 'bordados_clientes',
@@ -8,6 +8,8 @@ const KEYS = {
   egresos: 'bordados_egresos',
   ingresos: 'bordados_ingresos',
   pedidos: 'bordados_pedidos',
+  cotizaciones: 'bordados_cotizaciones',
+  config: 'bordados_config',
   egresosRecurrentes: 'bordados_egresos_recurrentes',
   recurrentesLog: 'bordados_recurrentes_log',
 } as const;
@@ -82,6 +84,65 @@ export const getPedidos = () => getItems<Pedido>(KEYS.pedidos);
 export const addPedido = (p: Pedido) => addItem(KEYS.pedidos, p);
 export const updatePedido = (p: Pedido) => updateItem(KEYS.pedidos, p);
 export const deletePedido = (id: string) => deleteItem<Pedido>(KEYS.pedidos, id);
+
+// Cotizaciones
+export const getCotizaciones = () => getItems<Cotizacion>(KEYS.cotizaciones);
+export const addCotizacion = (c: Cotizacion) => addItem(KEYS.cotizaciones, c);
+export const deleteCotizacion = (id: string) => deleteItem<Cotizacion>(KEYS.cotizaciones, id);
+
+// Config
+const defaultConfig: ConfigNegocio = {
+  nombreNegocio: 'STUDIO 24',
+  titular: 'Isabel Janeiro Cangas',
+  banco: 'BBVA',
+  numeroCuenta: '152 585 2856',
+  clabe: '012180015258528567',
+  telefono: '',
+  email: '',
+  direccion: '',
+  logoUrl: '',
+};
+
+export function getConfig(): ConfigNegocio {
+  if (typeof window === 'undefined') return defaultConfig;
+  const data = localStorage.getItem(KEYS.config);
+  return data ? { ...defaultConfig, ...JSON.parse(data) } : defaultConfig;
+}
+
+export function saveConfig(config: ConfigNegocio): void {
+  localStorage.setItem(KEYS.config, JSON.stringify(config));
+}
+
+// Backup / Restore
+export function exportAllData(): string {
+  const data: Record<string, unknown> = {};
+  Object.entries(KEYS).forEach(([key, storageKey]) => {
+    const raw = localStorage.getItem(storageKey);
+    if (raw) data[key] = JSON.parse(raw);
+  });
+  data['config'] = getConfig();
+  return JSON.stringify(data, null, 2);
+}
+
+export function importAllData(json: string): void {
+  const data = JSON.parse(json);
+  Object.entries(KEYS).forEach(([key, storageKey]) => {
+    if (data[key]) localStorage.setItem(storageKey, JSON.stringify(data[key]));
+  });
+  if (data.config) saveConfig(data.config);
+}
+
+export function clearAllData(): void {
+  Object.values(KEYS).forEach((key) => localStorage.removeItem(key));
+  localStorage.removeItem('bordados_seeded');
+}
+
+// Next folio
+export function getNextFolio(prefix: string): string {
+  const cotizaciones = getCotizaciones();
+  const num = cotizaciones.length + 1;
+  return `${prefix}-${String(num).padStart(3, '0')}`;
+}
 
 // Log de meses ya procesados para recurrentes (evita duplicados)
 export function getRecurrentesLog(): string[] {
