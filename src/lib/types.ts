@@ -26,6 +26,7 @@ export interface Cliente {
   telefono: string;
   email: string;
   direccion: string;
+  logo: string;
   notas: string;
   createdAt: string;
 }
@@ -37,6 +38,7 @@ export interface Proveedor {
   telefono: string;
   email: string;
   tipo: string;
+  logo: string;
   notas: string;
   createdAt: string;
 }
@@ -74,6 +76,8 @@ export interface EgresoRecurrente {
 
 export type EstadoPedido = 'pendiente' | 'diseno' | 'aprobado' | 'en_maquina' | 'terminado' | 'entregado' | 'cancelado';
 
+export type EstadoPago = 'pendiente' | 'parcial' | 'pagado';
+
 export interface Pedido {
   id: string;
   clienteId: string;
@@ -83,7 +87,17 @@ export interface Pedido {
   precioUnitario: number;
   montoTotal: number;
   estado: EstadoPedido;
+  estadoPago: EstadoPago;
+  montoPagado: number;
   maquina: string;
+  archivoDiseno: string;
+  checklist: {
+    archivoListo: boolean;
+    hilosCargados: boolean;
+    aroColocado: boolean;
+    estabilizador: boolean;
+    pruebaHecha: boolean;
+  };
   fechaPedido: string;
   fechaEntrega: string;
   fechaEntregaReal: string;

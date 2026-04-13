@@ -3,20 +3,20 @@ import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente, Pedido } from '.
 
 export function getSeedClientes(): Cliente[] {
   return [
-    { id: uuid(), nombre: 'Uniformes El Sol', telefono: '555-123-4567', email: 'contacto@uniformeselsol.mx', direccion: 'Col. Centro, Monterrey', notas: 'Cliente frecuente, pide bordados en playeras y gorras', createdAt: '2026-01-15T10:00:00Z' },
-    { id: uuid(), nombre: 'Restaurant La Parilla', telefono: '555-234-5678', email: 'laparilla@email.com', direccion: 'Av. Garza Sada 1234', notas: 'Mandiles y uniformes de cocina', createdAt: '2026-02-10T10:00:00Z' },
-    { id: uuid(), nombre: 'Maria Lopez', telefono: '555-345-6789', email: 'maria.lopez@gmail.com', direccion: '', notas: 'Clienta particular, bordados personalizados', createdAt: '2026-03-01T10:00:00Z' },
-    { id: uuid(), nombre: 'Escuela Primaria Benito Juarez', telefono: '555-456-7890', email: 'escuela.bj@edu.mx', direccion: 'Calle Educacion 456', notas: 'Bordado de escudos en uniformes escolares', createdAt: '2026-01-20T10:00:00Z' },
-    { id: uuid(), nombre: 'Taller Mecanico Gonzalez', telefono: '555-567-8901', email: '', direccion: 'Col. Industrial', notas: 'Overoles y camisas con logo', createdAt: '2026-03-15T10:00:00Z' },
+    { id: uuid(), nombre: 'Uniformes El Sol', telefono: '555-123-4567', email: 'contacto@uniformeselsol.mx', direccion: 'Col. Centro, Monterrey', logo: '', notas: 'Cliente frecuente, pide bordados en playeras y gorras', createdAt: '2026-01-15T10:00:00Z' },
+    { id: uuid(), nombre: 'Restaurant La Parilla', telefono: '555-234-5678', email: 'laparilla@email.com', direccion: 'Av. Garza Sada 1234', logo: '', notas: 'Mandiles y uniformes de cocina', createdAt: '2026-02-10T10:00:00Z' },
+    { id: uuid(), nombre: 'Maria Lopez', telefono: '555-345-6789', email: 'maria.lopez@gmail.com', direccion: '', logo: '', notas: 'Clienta particular, bordados personalizados', createdAt: '2026-03-01T10:00:00Z' },
+    { id: uuid(), nombre: 'Escuela Primaria Benito Juarez', telefono: '555-456-7890', email: 'escuela.bj@edu.mx', direccion: 'Calle Educacion 456', logo: '', notas: 'Bordado de escudos en uniformes escolares', createdAt: '2026-01-20T10:00:00Z' },
+    { id: uuid(), nombre: 'Taller Mecanico Gonzalez', telefono: '555-567-8901', email: '', direccion: 'Col. Industrial', logo: '', notas: 'Overoles y camisas con logo', createdAt: '2026-03-15T10:00:00Z' },
   ];
 }
 
 export function getSeedProveedores(): Proveedor[] {
   return [
-    { id: uuid(), nombre: 'Amazon', contacto: '', telefono: '', email: '', tipo: 'Software/Digital', notas: 'Compras de insumos varios y accesorios', createdAt: '2026-01-01T10:00:00Z' },
-    { id: uuid(), nombre: 'UNITAM Textiles', contacto: 'Carlos Hernandez', telefono: '555-111-2222', email: 'ventas@unitam.mx', tipo: 'Telas y textiles', notas: 'Proveedor principal de telas', createdAt: '2026-01-01T10:00:00Z' },
-    { id: uuid(), nombre: 'DINKO Bordados', contacto: 'Ana Martinez', telefono: '555-333-4444', email: 'info@dinko.mx', tipo: 'Insumos de bordado', notas: 'Hilos, agujas y estabilizadores', createdAt: '2026-01-01T10:00:00Z' },
-    { id: uuid(), nombre: 'Impresion Publicitaria MX', contacto: 'Roberto Paz', telefono: '555-555-6666', email: 'rp@impresionpub.mx', tipo: 'Publicidad e impresion', notas: 'Tarjetas, volantes y publicidad', createdAt: '2026-01-01T10:00:00Z' },
+    { id: uuid(), nombre: 'Amazon', contacto: '', telefono: '', email: '', tipo: 'Software/Digital', logo: '', notas: 'Compras de insumos varios y accesorios', createdAt: '2026-01-01T10:00:00Z' },
+    { id: uuid(), nombre: 'UNITAM Textiles', contacto: 'Carlos Hernandez', telefono: '555-111-2222', email: 'ventas@unitam.mx', tipo: 'Telas y textiles', logo: '', notas: 'Proveedor principal de telas', createdAt: '2026-01-01T10:00:00Z' },
+    { id: uuid(), nombre: 'DINKO Bordados', contacto: 'Ana Martinez', telefono: '555-333-4444', email: 'info@dinko.mx', tipo: 'Insumos de bordado', logo: '', notas: 'Hilos, agujas y estabilizadores', createdAt: '2026-01-01T10:00:00Z' },
+    { id: uuid(), nombre: 'Impresion Publicitaria MX', contacto: 'Roberto Paz', telefono: '555-555-6666', email: 'rp@impresionpub.mx', tipo: 'Publicidad e impresion', logo: '', notas: 'Tarjetas, volantes y publicidad', createdAt: '2026-01-01T10:00:00Z' },
   ];
 }
 
@@ -60,13 +60,16 @@ export function getSeedRecurrentes(): EgresoRecurrente[] {
   ];
 }
 
+const emptyChecklist = { archivoListo: false, hilosCargados: false, aroColocado: false, estabilizador: false, pruebaHecha: false };
+const doneChecklist = { archivoListo: true, hilosCargados: true, aroColocado: true, estabilizador: true, pruebaHecha: true };
+
 export function getSeedPedidos(clienteIds: string[]): Pedido[] {
   return [
-    { id: uuid(), clienteId: clienteIds[0] || '', descripcion: 'Playeras polo con logo x30', concepto: 'bordado_y_prenda', piezas: 30, precioUnitario: 175, montoTotal: 5250, estado: 'en_maquina', maquina: 'Tajima SAI #1', fechaPedido: '2026-04-08', fechaEntrega: '2026-04-18', fechaEntregaReal: '', urgente: false, notas: 'Logo frontal pecho izquierdo', createdAt: '2026-04-08T10:00:00Z' },
-    { id: uuid(), clienteId: clienteIds[3] || '', descripcion: 'Uniformes escolares con escudo x40', concepto: 'solo_bordado', piezas: 40, precioUnitario: 100, montoTotal: 4000, estado: 'diseno', maquina: '', fechaPedido: '2026-04-10', fechaEntrega: '2026-04-22', fechaEntregaReal: '', urgente: false, notas: 'Escudo nuevo ciclo escolar', createdAt: '2026-04-10T10:00:00Z' },
-    { id: uuid(), clienteId: clienteIds[1] || '', descripcion: 'Mandiles bordados para evento', concepto: 'bordado_y_prenda', piezas: 15, precioUnitario: 180, montoTotal: 2700, estado: 'aprobado', maquina: 'Tajima SAI #2', fechaPedido: '2026-04-11', fechaEntrega: '2026-04-15', fechaEntregaReal: '', urgente: true, notas: 'Evento este fin de semana', createdAt: '2026-04-11T10:00:00Z' },
-    { id: uuid(), clienteId: clienteIds[2] || '', descripcion: 'Bordado personalizado en chamarra', concepto: 'solo_bordado', piezas: 1, precioUnitario: 450, montoTotal: 450, estado: 'pendiente', maquina: '', fechaPedido: '2026-04-13', fechaEntrega: '2026-04-20', fechaEntregaReal: '', urgente: false, notas: 'Nombre y diseno de flores', createdAt: '2026-04-13T10:00:00Z' },
-    { id: uuid(), clienteId: clienteIds[4] || '', descripcion: 'Gorras con logo bordado x20', concepto: 'bordado_y_prenda', piezas: 20, precioUnitario: 135, montoTotal: 2700, estado: 'terminado', maquina: 'Tajima SAI #1', fechaPedido: '2026-04-05', fechaEntrega: '2026-04-12', fechaEntregaReal: '', urgente: false, notas: 'Listas para recoger', createdAt: '2026-04-05T10:00:00Z' },
-    { id: uuid(), clienteId: clienteIds[0] || '', descripcion: 'Camisas corporativas x10', concepto: 'bordado_y_prenda', piezas: 10, precioUnitario: 215, montoTotal: 2150, estado: 'entregado', maquina: 'Tajima SAI #2', fechaPedido: '2026-04-01', fechaEntrega: '2026-04-08', fechaEntregaReal: '2026-04-07', urgente: false, notas: '', createdAt: '2026-04-01T10:00:00Z' },
+    { id: uuid(), clienteId: clienteIds[0] || '', descripcion: 'Playeras polo con logo x30', concepto: 'bordado_y_prenda', piezas: 30, precioUnitario: 175, montoTotal: 5250, estado: 'en_maquina', estadoPago: 'parcial', montoPagado: 2625, maquina: 'Tajima SAI #1', archivoDiseno: 'logo_uniformes_sol.dst', checklist: doneChecklist, fechaPedido: '2026-04-08', fechaEntrega: '2026-04-18', fechaEntregaReal: '', urgente: false, notas: 'Logo frontal pecho izquierdo', createdAt: '2026-04-08T10:00:00Z' },
+    { id: uuid(), clienteId: clienteIds[3] || '', descripcion: 'Uniformes escolares con escudo x40', concepto: 'solo_bordado', piezas: 40, precioUnitario: 100, montoTotal: 4000, estado: 'diseno', estadoPago: 'pendiente', montoPagado: 0, maquina: '', archivoDiseno: '', checklist: emptyChecklist, fechaPedido: '2026-04-10', fechaEntrega: '2026-04-22', fechaEntregaReal: '', urgente: false, notas: 'Escudo nuevo ciclo escolar', createdAt: '2026-04-10T10:00:00Z' },
+    { id: uuid(), clienteId: clienteIds[1] || '', descripcion: 'Mandiles bordados para evento', concepto: 'bordado_y_prenda', piezas: 15, precioUnitario: 180, montoTotal: 2700, estado: 'aprobado', estadoPago: 'pagado', montoPagado: 2700, maquina: 'Tajima SAI #2', archivoDiseno: 'la_parilla_mandil.dst', checklist: { ...emptyChecklist, archivoListo: true }, fechaPedido: '2026-04-11', fechaEntrega: '2026-04-15', fechaEntregaReal: '', urgente: true, notas: 'Evento este fin de semana', createdAt: '2026-04-11T10:00:00Z' },
+    { id: uuid(), clienteId: clienteIds[2] || '', descripcion: 'Bordado personalizado en chamarra', concepto: 'solo_bordado', piezas: 1, precioUnitario: 450, montoTotal: 450, estado: 'pendiente', estadoPago: 'pendiente', montoPagado: 0, maquina: '', archivoDiseno: '', checklist: emptyChecklist, fechaPedido: '2026-04-13', fechaEntrega: '2026-04-20', fechaEntregaReal: '', urgente: false, notas: 'Nombre y diseno de flores', createdAt: '2026-04-13T10:00:00Z' },
+    { id: uuid(), clienteId: clienteIds[4] || '', descripcion: 'Gorras con logo bordado x20', concepto: 'bordado_y_prenda', piezas: 20, precioUnitario: 135, montoTotal: 2700, estado: 'terminado', estadoPago: 'parcial', montoPagado: 1500, maquina: 'Tajima SAI #1', archivoDiseno: 'taller_gonzalez_gorra.dst', checklist: doneChecklist, fechaPedido: '2026-04-05', fechaEntrega: '2026-04-12', fechaEntregaReal: '', urgente: false, notas: 'Listas para recoger', createdAt: '2026-04-05T10:00:00Z' },
+    { id: uuid(), clienteId: clienteIds[0] || '', descripcion: 'Camisas corporativas x10', concepto: 'bordado_y_prenda', piezas: 10, precioUnitario: 215, montoTotal: 2150, estado: 'entregado', estadoPago: 'pagado', montoPagado: 2150, maquina: 'Tajima SAI #2', archivoDiseno: 'uniformes_sol_camisa.dst', checklist: doneChecklist, fechaPedido: '2026-04-01', fechaEntrega: '2026-04-08', fechaEntregaReal: '2026-04-07', urgente: false, notas: '', createdAt: '2026-04-01T10:00:00Z' },
   ];
 }

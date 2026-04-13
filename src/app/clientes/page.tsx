@@ -16,7 +16,7 @@ const btnPrimary = "bg-[#c72a09] text-white px-5 py-2.5 rounded-xl text-xs font-
 const btnSecondary = "px-4 py-2.5 text-xs font-semibold text-neutral-400 hover:text-neutral-600 transition-colors";
 
 function emptyCliente(): Omit<Cliente, 'id' | 'createdAt'> {
-  return { nombre: '', telefono: '', email: '', direccion: '', notas: '' };
+  return { nombre: '', telefono: '', email: '', direccion: '', logo: '', notas: '' };
 }
 
 export default function ClientesPage() {
@@ -82,9 +82,13 @@ export default function ClientesPage() {
                 <div className="absolute top-4 right-4">
                   <ActionMenu items={[{ label: 'Ver detalle', onClick: () => openDetail(c) }, { label: 'Editar', onClick: () => openEdit(c) }, { label: 'Eliminar', onClick: () => handleDelete(c.id), danger: true }]} />
                 </div>
-                <div className="w-10 h-10 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center text-sm font-black mb-3">
-                  {c.nombre.charAt(0).toUpperCase()}
-                </div>
+                {c.logo ? (
+                  <img src={c.logo} alt={c.nombre} className="w-10 h-10 rounded-xl object-cover mb-3" />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center text-sm font-black mb-3">
+                    {c.nombre.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <h3 className="font-bold text-[#0a0a0a] group-hover:text-[#c72a09] transition-colors">{c.nombre}</h3>
                 {c.telefono && <p className="text-xs text-neutral-400 mt-1">{c.telefono}</p>}
                 {c.email && <p className="text-xs text-neutral-400">{c.email}</p>}
@@ -103,9 +107,13 @@ export default function ClientesPage() {
         {selectedCliente && (
           <div className="space-y-5">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-[#0a0a0a] text-white flex items-center justify-center text-xl font-black shrink-0">
-                {selectedCliente.nombre.charAt(0).toUpperCase()}
-              </div>
+              {selectedCliente.logo ? (
+                <img src={selectedCliente.logo} alt={selectedCliente.nombre} className="w-14 h-14 rounded-2xl object-cover shrink-0" />
+              ) : (
+                <div className="w-14 h-14 rounded-2xl bg-[#0a0a0a] text-white flex items-center justify-center text-xl font-black shrink-0">
+                  {selectedCliente.nombre.charAt(0).toUpperCase()}
+                </div>
+              )}
               <div>
                 <h3 className="font-bold text-lg text-[#0a0a0a]">{selectedCliente.nombre}</h3>
                 <p className="text-xs text-neutral-400">{[selectedCliente.telefono, selectedCliente.email].filter(Boolean).join(' &middot; ') || 'Sin contacto'}</p>
@@ -145,6 +153,7 @@ export default function ClientesPage() {
             <div><label className={labelClass}>Email</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} /></div>
           </div>
           <div><label className={labelClass}>Direccion</label><input type="text" value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} className={inputClass} /></div>
+          <div><label className={labelClass}>Logo / Imagen (URL)</label><input type="url" value={form.logo} onChange={(e) => setForm({ ...form, logo: e.target.value })} placeholder="https://ejemplo.com/logo.png" className={inputClass} />{form.logo && <img src={form.logo} alt="Preview" className="w-10 h-10 rounded-lg object-cover mt-2" />}</div>
           <div><label className={labelClass}>Notas</label><textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} placeholder="Preferencias, datos adicionales..." className={inputClass} /></div>
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
             <button onClick={() => setModalOpen(false)} className={btnSecondary}>Cancelar</button>

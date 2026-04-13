@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getPedidos, addPedido, updatePedido, deletePedido, getClientes } from '@/lib/store';
-import { Pedido, Cliente, EstadoPedido, ConceptoIngreso } from '@/lib/types';
+import { Pedido, Cliente, EstadoPedido, EstadoPago, ConceptoIngreso } from '@/lib/types';
 import { formatCurrency, formatDate, conceptoLabel, estadoPedidoLabel, estadoPedidoColor, todayString } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
@@ -15,7 +15,6 @@ const btnPrimary = "bg-[#c72a09] text-white px-5 py-2.5 rounded-xl text-xs font-
 const btnSecondary = "px-4 py-2.5 text-xs font-semibold text-neutral-400 hover:text-neutral-600 transition-colors";
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
-
 const pipeline: { estado: EstadoPedido; label: string; emoji: string }[] = [
   { estado: 'pendiente', label: 'Pendiente', emoji: '📋' },
   { estado: 'diseno', label: 'En Diseno', emoji: '🎨' },
@@ -25,10 +24,24 @@ const pipeline: { estado: EstadoPedido; label: string; emoji: string }[] = [
   { estado: 'entregado', label: 'Entregado', emoji: '🤝' },
 ];
 
+const emptyChecklist = { archivoListo: false, hilosCargados: false, aroColocado: false, estabilizador: false, pruebaHecha: false };
+
+const pagoColor: Record<EstadoPago, string> = {
+  pendiente: 'bg-red-100 text-red-600',
+  parcial: 'bg-amber-100 text-amber-700',
+  pagado: 'bg-green-100 text-green-700',
+};
+const pagoLabel: Record<EstadoPago, string> = {
+  pendiente: 'Sin pago',
+  parcial: 'Parcial',
+  pagado: 'Pagado',
+};
+
 function emptyPedido(): Omit<Pedido, 'id' | 'createdAt'> {
   return {
     clienteId: '', descripcion: '', concepto: 'solo_bordado', piezas: 1,
-    precioUnitario: 0, montoTotal: 0, estado: 'pendiente', maquina: '',
+    precioUnitario: 0, montoTotal: 0, estado: 'pendiente', estadoPago: 'pendiente',
+    montoPagado: 0, maquina: '', archivoDiseno: '', checklist: { ...emptyChecklist },
     fechaPedido: todayString(), fechaEntrega: '', fechaEntregaReal: '',
     urgente: false, notas: '',
   };
@@ -38,9 +51,10 @@ export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [checklistOpen, setChecklistOpen] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyPedido());
-  const [view, setView] = useState<'pipeline' | 'lista'>('pipeline');
+  const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
   const [mounted, setMounted] = useState(false);
 
   const reload = useCallback(() => {
@@ -53,61 +67,74 @@ export default function PedidosPage() {
   }, []);
 
   useEffect(() => { reload(); setMounted(true); }, [reload]);
-
   if (!mounted) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" /></div>;
 
   const openNew = () => { setEditingId(null); setForm(emptyPedido()); setModalOpen(true); };
   const openEdit = (p: Pedido) => { setEditingId(p.id); setForm({ ...p }); setModalOpen(true); };
-
   const handleSave = () => {
     if (!form.descripcion) return;
     const montoTotal = form.piezas * form.precioUnitario;
-    const data: Pedido = { ...(form as Pedido), id: editingId || uuid(), montoTotal, createdAt: editingId ? (form as Pedido).createdAt : new Date().toISOString() };
+    let estadoPago = form.estadoPago;
+    if (form.montoPagado >= montoTotal && montoTotal > 0) estadoPago = 'pagado';
+    else if (form.montoPagado > 0) estadoPago = 'parcial';
+    else estadoPago = 'pendiente';
+    const data: Pedido = { ...(form as Pedido), id: editingId || uuid(), montoTotal, estadoPago, createdAt: editingId ? (form as Pedido).createdAt : new Date().toISOString() };
     editingId ? updatePedido(data) : addPedido(data);
     setModalOpen(false); reload();
   };
-
   const handleDelete = (id: string) => { if (confirm('Eliminar pedido?')) { deletePedido(id); reload(); } };
-
   const moveEstado = (p: Pedido, estado: EstadoPedido) => {
     const updated = { ...p, estado };
     if (estado === 'entregado') updated.fechaEntregaReal = todayString();
     updatePedido(updated); reload();
   };
-
+  const toggleCheck = (p: Pedido, key: keyof typeof emptyChecklist) => {
+    const updated = { ...p, checklist: { ...p.checklist, [key]: !p.checklist[key] } };
+    updatePedido(updated); reload();
+  };
   const nextEstado = (current: EstadoPedido): EstadoPedido | null => {
     const idx = pipeline.findIndex((s) => s.estado === current);
     return idx >= 0 && idx < pipeline.length - 1 ? pipeline[idx + 1].estado : null;
   };
-
   const clienteName = (id: string) => clientes.find((c) => c.id === id)?.nombre || 'Sin cliente';
 
   const activos = pedidos.filter((p) => p.estado !== 'entregado' && p.estado !== 'cancelado');
   const totalActivos = activos.reduce((s, p) => s + p.montoTotal, 0);
 
+  const checklistLabels: Record<string, string> = {
+    archivoListo: 'Archivo cargado en USB',
+    hilosCargados: 'Hilos correctos cargados',
+    aroColocado: 'Aro colocado',
+    estabilizador: 'Estabilizador puesto',
+    pruebaHecha: 'Prueba de bordado hecha',
+  };
+
   return (
     <div>
       <PageHeader
         title="Pedidos"
-        description={`${activos.length} pedidos activos &middot; ${formatCurrency(totalActivos)} en produccion`}
+        description={`${activos.length} activos &middot; ${formatCurrency(totalActivos)} en produccion`}
         action={
           <div className="flex gap-2">
             <div className="flex bg-neutral-100 rounded-xl p-0.5">
-              <button onClick={() => setView('pipeline')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors ${view === 'pipeline' ? 'bg-white text-[#0a0a0a] shadow-sm' : 'text-neutral-400'}`}>Pipeline</button>
-              <button onClick={() => setView('lista')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors ${view === 'lista' ? 'bg-white text-[#0a0a0a] shadow-sm' : 'text-neutral-400'}`}>Lista</button>
+              {(['pipeline', 'lista', 'pagos'] as const).map((v) => (
+                <button key={v} onClick={() => setView(v)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors ${view === v ? 'bg-white text-[#0a0a0a] shadow-sm' : 'text-neutral-400'}`}>
+                  {v === 'pagos' ? 'Pagos' : v === 'pipeline' ? 'Pipeline' : 'Lista'}
+                </button>
+              ))}
             </div>
-            <button onClick={openNew} className={btnPrimary}>+ Nuevo Pedido</button>
+            <button onClick={openNew} className={btnPrimary}>+ Nuevo</button>
           </div>
         }
       />
 
       {/* Pipeline View */}
       {view === 'pipeline' && (
-        <div className="grid grid-cols-6 gap-3 min-h-[60vh]">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {pipeline.map((col) => {
             const items = pedidos.filter((p) => p.estado === col.estado);
             return (
-              <div key={col.estado} className="bg-neutral-50 rounded-2xl p-3">
+              <div key={col.estado} className="bg-neutral-50 rounded-2xl p-3 min-h-[200px]">
                 <div className="flex items-center gap-2 mb-3 px-1">
                   <span className="text-sm">{col.emoji}</span>
                   <span className="text-[10px] font-bold tracking-[0.08em] text-neutral-400 uppercase">{col.label}</span>
@@ -120,19 +147,37 @@ export default function PedidosPage() {
                       <p className="text-xs font-semibold text-[#0a0a0a] mt-0.5 leading-tight">{p.descripcion}</p>
                       <p className="text-[10px] text-neutral-400 mt-1">{clienteName(p.clienteId)}</p>
                       <div className="flex items-center justify-between mt-2">
-                        <span className="text-[10px] text-neutral-300">{p.piezas} pzas</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${pagoColor[p.estadoPago || 'pendiente']}`}>{pagoLabel[p.estadoPago || 'pendiente']}</span>
                         <span className="text-xs font-bold text-[#0a0a0a]">{formatCurrency(p.montoTotal)}</span>
                       </div>
+                      {p.archivoDiseno && <p className="text-[10px] text-neutral-300 mt-1 truncate">📄 {p.archivoDiseno}</p>}
                       {p.fechaEntrega && (
                         <p className={`text-[10px] mt-1 font-semibold ${new Date(p.fechaEntrega) < new Date() && p.estado !== 'entregado' ? 'text-red-500' : 'text-neutral-300'}`}>
                           Entrega: {formatDate(p.fechaEntrega)}
                         </p>
                       )}
-                      {p.maquina && <p className="text-[10px] text-neutral-300 mt-0.5">Maquina: {p.maquina}</p>}
+                      {/* Checklist toggle for en_maquina */}
+                      {(p.estado === 'en_maquina' || p.estado === 'aprobado') && (
+                        <div className="mt-2">
+                          <button onClick={() => setChecklistOpen(checklistOpen === p.id ? null : p.id)} className="text-[9px] font-bold text-blue-600 uppercase tracking-wide">
+                            {Object.values(p.checklist || emptyChecklist).filter(Boolean).length}/5 Checklist
+                          </button>
+                          {checklistOpen === p.id && (
+                            <div className="mt-1.5 space-y-1">
+                              {Object.entries(p.checklist || emptyChecklist).map(([key, val]) => (
+                                <label key={key} className="flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" checked={val} onChange={() => toggleCheck(p, key as keyof typeof emptyChecklist)} className="w-3 h-3 accent-[#c72a09] rounded" />
+                                  <span className={`text-[10px] ${val ? 'text-green-600 line-through' : 'text-neutral-500'}`}>{checklistLabels[key]}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-neutral-50">
                         {nextEstado(p.estado) ? (
                           <button onClick={() => moveEstado(p, nextEstado(p.estado)!)} className="text-[10px] font-bold text-[#c72a09] hover:underline uppercase tracking-wide">
-                            Mover a {estadoPedidoLabel(nextEstado(p.estado)!)}
+                            → {estadoPedidoLabel(nextEstado(p.estado)!)}
                           </button>
                         ) : <span />}
                         <ActionMenu items={[
@@ -154,18 +199,18 @@ export default function PedidosPage() {
       {view === 'lista' && (
         pedidos.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-sm text-neutral-300">Sin pedidos registrados</p>
+            <p className="text-sm text-neutral-300">Sin pedidos</p>
             <button onClick={openNew} className="text-[#c72a09] font-bold text-xs uppercase tracking-wide hover:underline mt-3">+ Crear pedido</button>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden">
+          <div className="bg-white rounded-2xl border border-neutral-100 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-neutral-100">
                   <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Pedido</th>
                   <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Cliente</th>
                   <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Estado</th>
-                  <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Piezas</th>
+                  <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Pago</th>
                   <th className="px-5 py-4 text-right text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Monto</th>
                   <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Entrega</th>
                   <th className="px-5 py-4"></th>
@@ -179,34 +224,81 @@ export default function PedidosPage() {
                         {p.urgente && <span className="w-2 h-2 rounded-full bg-[#c72a09] shrink-0" />}
                         <div>
                           <span className="font-semibold text-[#0a0a0a]">{p.descripcion}</span>
-                          <span className="block text-[10px] text-neutral-300 mt-0.5">{conceptoLabel(p.concepto)}{p.maquina ? ` &middot; ${p.maquina}` : ''}</span>
+                          <span className="block text-[10px] text-neutral-300 mt-0.5">{p.piezas} pzas &middot; {conceptoLabel(p.concepto)}{p.archivoDiseno ? ` &middot; 📄 ${p.archivoDiseno}` : ''}</span>
                         </div>
                       </div>
                     </td>
                     <td className="px-5 py-4 text-xs text-neutral-400">{clienteName(p.clienteId)}</td>
-                    <td className="px-5 py-4">
-                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${estadoPedidoColor(p.estado)}`}>
-                        {estadoPedidoLabel(p.estado)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-xs text-neutral-500">{p.piezas}</td>
+                    <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${estadoPedidoColor(p.estado)}`}>{estadoPedidoLabel(p.estado)}</span></td>
+                    <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${pagoColor[p.estadoPago || 'pendiente']}`}>{pagoLabel[p.estadoPago || 'pendiente']}</span></td>
                     <td className="px-5 py-4 text-right font-bold text-[#0a0a0a]">{formatCurrency(p.montoTotal)}</td>
                     <td className="px-5 py-4 text-xs text-neutral-400">{p.fechaEntrega ? formatDate(p.fechaEntrega) : '—'}</td>
-                    <td className="px-5 py-4">
-                      <div className="flex justify-end">
-                        <ActionMenu items={[
-                          { label: 'Editar', onClick: () => openEdit(p) },
-                          ...(nextEstado(p.estado) ? [{ label: `Mover a ${estadoPedidoLabel(nextEstado(p.estado)!)}`, onClick: () => moveEstado(p, nextEstado(p.estado)!) }] : []),
-                          { label: 'Eliminar', onClick: () => handleDelete(p.id), danger: true },
-                        ]} />
-                      </div>
-                    </td>
+                    <td className="px-5 py-4"><div className="flex justify-end"><ActionMenu items={[{ label: 'Editar', onClick: () => openEdit(p) }, ...(nextEstado(p.estado) ? [{ label: `→ ${estadoPedidoLabel(nextEstado(p.estado)!)}`, onClick: () => moveEstado(p, nextEstado(p.estado)!) }] : []), { label: 'Eliminar', onClick: () => handleDelete(p.id), danger: true }]} /></div></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )
+      )}
+
+      {/* Pagos View */}
+      {view === 'pagos' && (
+        <div>
+          {/* Summary cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            {(['pendiente', 'parcial', 'pagado'] as const).map((ep) => {
+              const items = pedidos.filter((p) => (p.estadoPago || 'pendiente') === ep && p.estado !== 'cancelado');
+              const total = items.reduce((s, p) => s + p.montoTotal, 0);
+              const pagado = items.reduce((s, p) => s + (p.montoPagado || 0), 0);
+              return (
+                <div key={ep} className={`rounded-2xl p-5 border ${ep === 'pendiente' ? 'bg-red-50 border-red-100' : ep === 'parcial' ? 'bg-amber-50 border-amber-100' : 'bg-green-50 border-green-100'}`}>
+                  <p className="text-[10px] font-bold tracking-[0.1em] uppercase text-neutral-400">{pagoLabel[ep]}</p>
+                  <p className="text-2xl font-black mt-1">{items.length} pedidos</p>
+                  <p className="text-xs text-neutral-500 mt-1">Total: {formatCurrency(total)} {ep === 'parcial' && `&middot; Cobrado: ${formatCurrency(pagado)}`}</p>
+                  {ep !== 'pagado' && total > 0 && <p className="text-xs font-bold text-[#c72a09] mt-1">Por cobrar: {formatCurrency(total - pagado)}</p>}
+                </div>
+              );
+            })}
+          </div>
+          {/* Pagos table */}
+          <div className="bg-white rounded-2xl border border-neutral-100 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-100">
+                  <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Cliente</th>
+                  <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Pedido</th>
+                  <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Estado</th>
+                  <th className="px-5 py-4 text-right text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Total</th>
+                  <th className="px-5 py-4 text-right text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Pagado</th>
+                  <th className="px-5 py-4 text-right text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Debe</th>
+                  <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Pago</th>
+                  <th className="px-5 py-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pedidos.filter((p) => p.estado !== 'cancelado').sort((a, b) => {
+                  const order: Record<string, number> = { pendiente: 0, parcial: 1, pagado: 2 };
+                  return (order[a.estadoPago || 'pendiente'] || 0) - (order[b.estadoPago || 'pendiente'] || 0);
+                }).map((p) => {
+                  const debe = p.montoTotal - (p.montoPagado || 0);
+                  return (
+                    <tr key={p.id} className="border-b border-neutral-50 hover:bg-neutral-50/50">
+                      <td className="px-5 py-4 text-xs font-semibold text-[#0a0a0a]">{clienteName(p.clienteId)}</td>
+                      <td className="px-5 py-4 text-xs text-neutral-500">{p.descripcion}</td>
+                      <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${estadoPedidoColor(p.estado)}`}>{estadoPedidoLabel(p.estado)}</span></td>
+                      <td className="px-5 py-4 text-right text-xs font-bold">{formatCurrency(p.montoTotal)}</td>
+                      <td className="px-5 py-4 text-right text-xs font-bold text-green-600">{formatCurrency(p.montoPagado || 0)}</td>
+                      <td className="px-5 py-4 text-right text-xs font-bold text-red-500">{debe > 0 ? formatCurrency(debe) : '—'}</td>
+                      <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${pagoColor[p.estadoPago || 'pendiente']}`}>{pagoLabel[p.estadoPago || 'pendiente']}</span></td>
+                      <td className="px-5 py-4"><div className="flex justify-end"><ActionMenu items={[{ label: 'Editar', onClick: () => openEdit(p) }, { label: 'Eliminar', onClick: () => handleDelete(p.id), danger: true }]} /></div></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? 'Editar Pedido' : 'Nuevo Pedido'}>
@@ -219,10 +311,7 @@ export default function PedidosPage() {
           <div className="grid grid-cols-3 gap-4">
             <div><label className={labelClass}>Piezas</label><input type="number" min="1" value={form.piezas} onChange={(e) => setForm({ ...form, piezas: Math.max(1, parseInt(e.target.value) || 1) })} className={inputClass} /></div>
             <div><label className={labelClass}>Precio unitario</label><input type="number" step="0.01" min="0" value={form.precioUnitario || ''} onChange={(e) => setForm({ ...form, precioUnitario: parseFloat(e.target.value) || 0 })} className={inputClass} /></div>
-            <div>
-              <label className={labelClass}>Total</label>
-              <div className="h-[42px] flex items-center text-lg font-black text-[#c72a09]">{formatCurrency(form.piezas * form.precioUnitario)}</div>
-            </div>
+            <div><label className={labelClass}>Total</label><div className="h-[42px] flex items-center text-lg font-black text-[#c72a09]">{formatCurrency(form.piezas * form.precioUnitario)}</div></div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div><label className={labelClass}>Fecha de pedido</label><input type="date" value={form.fechaPedido} onChange={(e) => setForm({ ...form, fechaPedido: e.target.value })} className={inputClass} /></div>
@@ -232,11 +321,27 @@ export default function PedidosPage() {
             <div><label className={labelClass}>Estado</label><select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value as EstadoPedido })} className={inputClass}>{pipeline.map((s) => <option key={s.estado} value={s.estado}>{s.label}</option>)}<option value="cancelado">Cancelado</option></select></div>
             <div><label className={labelClass}>Maquina</label><select value={form.maquina} onChange={(e) => setForm({ ...form, maquina: e.target.value })} className={inputClass}><option value="">Sin asignar</option><option value="Tajima SAI #1">Tajima SAI #1</option><option value="Tajima SAI #2">Tajima SAI #2</option></select></div>
           </div>
-          <label className="flex items-center gap-2.5 cursor-pointer">
-            <input type="checkbox" checked={form.urgente} onChange={(e) => setForm({ ...form, urgente: e.target.checked })} className="w-4 h-4 accent-[#c72a09] rounded" />
-            <span className="text-sm font-semibold text-[#0a0a0a]">Urgente</span>
-          </label>
-          <div><label className={labelClass}>Notas</label><textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} placeholder="Detalles del pedido, colores, posiciones..." className={inputClass} /></div>
+
+          {/* Archivo de diseno */}
+          <div><label className={labelClass}>Archivo de diseno (.dst, .tbf)</label><input type="text" value={form.archivoDiseno} onChange={(e) => setForm({ ...form, archivoDiseno: e.target.value })} placeholder="Ej: logo_empresa.dst" className={inputClass} /></div>
+
+          {/* Pago */}
+          <div className="bg-neutral-50 rounded-xl p-4">
+            <h4 className={labelClass}>Pago</h4>
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              <div><label className="text-[10px] text-neutral-400 font-medium">Monto pagado</label><input type="number" step="0.01" min="0" value={form.montoPagado || ''} onChange={(e) => setForm({ ...form, montoPagado: parseFloat(e.target.value) || 0 })} className={inputClass} /></div>
+              <div><label className="text-[10px] text-neutral-400 font-medium">de {formatCurrency(form.piezas * form.precioUnitario)}</label>
+                <div className="h-[42px] flex items-center">
+                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${form.montoPagado >= form.piezas * form.precioUnitario && form.piezas * form.precioUnitario > 0 ? 'bg-green-100 text-green-700' : form.montoPagado > 0 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>
+                    {form.montoPagado >= form.piezas * form.precioUnitario && form.piezas * form.precioUnitario > 0 ? 'Pagado' : form.montoPagado > 0 ? 'Parcial' : 'Sin pago'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={form.urgente} onChange={(e) => setForm({ ...form, urgente: e.target.checked })} className="w-4 h-4 accent-[#c72a09] rounded" /><span className="text-sm font-semibold text-[#0a0a0a]">Urgente</span></label>
+          <div><label className={labelClass}>Notas</label><textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} placeholder="Colores, posiciones, detalles..." className={inputClass} /></div>
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
             <button onClick={() => setModalOpen(false)} className={btnSecondary}>Cancelar</button>
             <button onClick={handleSave} className={btnPrimary}>{editingId ? 'Guardar' : 'Crear Pedido'}</button>

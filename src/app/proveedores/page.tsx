@@ -18,7 +18,7 @@ const btnPrimary = "bg-[#c72a09] text-white px-5 py-2.5 rounded-xl text-xs font-
 const btnSecondary = "px-4 py-2.5 text-xs font-semibold text-neutral-400 hover:text-neutral-600 transition-colors";
 
 function emptyProveedor(): Omit<Proveedor, 'id' | 'createdAt'> {
-  return { nombre: '', contacto: '', telefono: '', email: '', tipo: '', notas: '' };
+  return { nombre: '', contacto: '', telefono: '', email: '', tipo: '', logo: '', notas: '' };
 }
 
 export default function ProveedoresPage() {
@@ -79,9 +79,13 @@ export default function ProveedoresPage() {
                 <div className="absolute top-4 right-4">
                   <ActionMenu items={[{ label: 'Editar', onClick: () => openEdit(p) }, { label: 'Eliminar', onClick: () => handleDelete(p.id), danger: true }]} />
                 </div>
-                <div className="w-10 h-10 rounded-xl bg-neutral-100 text-neutral-500 flex items-center justify-center mb-3">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349M3.75 21V9.349m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.015a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 5.378 3h13.243a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72M6.75 18h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .414.336.75.75.75Z" /></svg>
-                </div>
+                {p.logo ? (
+                  <img src={p.logo} alt={p.nombre} className="w-10 h-10 rounded-xl object-cover mb-3" />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-neutral-100 text-neutral-500 flex items-center justify-center text-sm font-black mb-3">
+                    {p.nombre.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <h3 className="font-bold text-[#0a0a0a] group-hover:text-[#c72a09] transition-colors">{p.nombre}</h3>
                 {p.tipo && <span className="inline-block mt-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-bold tracking-wide bg-neutral-100 text-neutral-500 uppercase">{p.tipo}</span>}
                 {p.contacto && <p className="text-xs text-neutral-400 mt-1.5">{p.contacto}</p>}
@@ -105,6 +109,7 @@ export default function ProveedoresPage() {
             <div><label className={labelClass}>Telefono</label><input type="tel" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} className={inputClass} /></div>
           </div>
           <div><label className={labelClass}>Email</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} /></div>
+          <div><label className={labelClass}>Logo / Imagen (URL)</label><input type="url" value={form.logo} onChange={(e) => setForm({ ...form, logo: e.target.value })} placeholder="https://ejemplo.com/logo.png" className={inputClass} />{form.logo && <img src={form.logo} alt="Preview" className="w-10 h-10 rounded-lg object-cover mt-2" />}</div>
           <div><label className={labelClass}>Notas</label><textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} className={inputClass} /></div>
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
             <button onClick={() => setModalOpen(false)} className={btnSecondary}>Cancelar</button>
