@@ -165,7 +165,15 @@ export default function CotizadorPage() {
     msg += `Gracias por tu interes en *${cfg.nombreNegocio || 'Studio 24'}*! 🎉${nl}${nl}`;
     msg += `Te comparto la cotizacion de tu pedido por un total de *${formatCurrency(total)}*${nl}${nl}`;
     msg += `📎 _Te adjunto el PDF con el detalle completo_${nl}${nl}`;
-    msg += `Cualquier duda o ajuste con toda confianza, estamos para servirte! 💪${nl}${nl}`;
+    if (cfg.titular || cfg.banco || cfg.numeroCuenta) {
+      msg += `🏦 *Datos para transferencia:*${nl}`;
+      if (cfg.titular) msg += `${cfg.titular}${nl}`;
+      if (cfg.banco) msg += `${cfg.banco}${nl}`;
+      if (cfg.numeroCuenta) msg += `Cuenta: *${cfg.numeroCuenta}*${nl}`;
+      if (cfg.clabe) msg += `CLABE: *${cfg.clabe}*${nl}`;
+      msg += nl;
+    }
+    msg += `Cualquier duda con toda confianza, estamos para servirte! 💪${nl}${nl}`;
     msg += `Saludos,${nl}*${cfg.nombreNegocio || 'Studio 24'}*`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
   };
