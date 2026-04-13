@@ -230,7 +230,7 @@ export default function PedidosPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div><label className={labelClass}>Estado</label><select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value as EstadoPedido })} className={inputClass}>{pipeline.map((s) => <option key={s.estado} value={s.estado}>{s.label}</option>)}<option value="cancelado">Cancelado</option></select></div>
-            <div><label className={labelClass}>Maquina</label><select value={form.maquina} onChange={(e) => setForm({ ...form, maquina: e.target.value })} className={inputClass}><option value="">Sin asignar</option><option value="Maquina 1">Maquina 1</option><option value="Maquina 2">Maquina 2</option></select></div>
+            <div><label className={labelClass}>Maquina</label><select value={form.maquina} onChange={(e) => setForm({ ...form, maquina: e.target.value })} className={inputClass}><option value="">Sin asignar</option><option value="Tajima SAI #1">Tajima SAI #1</option><option value="Tajima SAI #2">Tajima SAI #2</option></select></div>
           </div>
           <label className="flex items-center gap-2.5 cursor-pointer">
             <input type="checkbox" checked={form.urgente} onChange={(e) => setForm({ ...form, urgente: e.target.checked })} className="w-4 h-4 accent-[#c72a09] rounded" />
