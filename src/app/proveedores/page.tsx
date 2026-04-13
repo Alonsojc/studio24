@@ -8,6 +8,7 @@ import { formatCurrency } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
+import ActionMenu from '@/components/ActionMenu';
 
 const tiposProveedor = ['Insumos de bordado', 'Telas y textiles', 'Maquinaria', 'Software/Digital', 'Publicidad e impresion', 'Servicios generales', 'Otro'];
 
@@ -74,25 +75,20 @@ export default function ProveedoresPage() {
             const total = proveedorTotal(p.id);
             const count = proveedorEgresos(p.id).length;
             return (
-              <div key={p.id} className="bg-white rounded-2xl border border-neutral-100 p-6 hover:border-neutral-300 transition-all group">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="w-10 h-10 rounded-xl bg-neutral-100 text-neutral-500 flex items-center justify-center mb-3">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349M3.75 21V9.349m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.015a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 5.378 3h13.243a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72M6.75 18h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .414.336.75.75.75Z" /></svg>
-                    </div>
-                    <h3 className="font-bold text-[#0a0a0a] group-hover:text-[#c72a09] transition-colors">{p.nombre}</h3>
-                    {p.tipo && <span className="inline-block mt-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-bold tracking-wide bg-neutral-100 text-neutral-500 uppercase">{p.tipo}</span>}
-                    {p.contacto && <p className="text-xs text-neutral-400 mt-1.5">{p.contacto}</p>}
-                    {p.telefono && <p className="text-xs text-neutral-400">{p.telefono}</p>}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-[#0a0a0a]">{formatCurrency(total)}</p>
-                    <p className="text-[10px] text-neutral-300 uppercase tracking-wide font-bold mt-0.5">{count} compras</p>
-                  </div>
+              <div key={p.id} className="bg-white rounded-2xl border border-neutral-100 p-6 hover:border-neutral-300 transition-all group relative">
+                <div className="absolute top-4 right-4">
+                  <ActionMenu items={[{ label: 'Editar', onClick: () => openEdit(p) }, { label: 'Eliminar', onClick: () => handleDelete(p.id), danger: true }]} />
                 </div>
-                <div className="flex gap-2 mt-4 pt-4 border-t border-neutral-50">
-                  <button onClick={() => openEdit(p)} className="text-neutral-300 hover:text-[#c72a09] text-xs font-semibold transition-colors">Editar</button>
-                  <button onClick={() => handleDelete(p.id)} className="text-neutral-200 hover:text-red-500 text-xs font-semibold transition-colors">Eliminar</button>
+                <div className="w-10 h-10 rounded-xl bg-neutral-100 text-neutral-500 flex items-center justify-center mb-3">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349M3.75 21V9.349m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.015a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 5.378 3h13.243a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72M6.75 18h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .414.336.75.75.75Z" /></svg>
+                </div>
+                <h3 className="font-bold text-[#0a0a0a] group-hover:text-[#c72a09] transition-colors">{p.nombre}</h3>
+                {p.tipo && <span className="inline-block mt-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-bold tracking-wide bg-neutral-100 text-neutral-500 uppercase">{p.tipo}</span>}
+                {p.contacto && <p className="text-xs text-neutral-400 mt-1.5">{p.contacto}</p>}
+                {p.telefono && <p className="text-xs text-neutral-400">{p.telefono}</p>}
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-neutral-50">
+                  <p className="text-[10px] text-neutral-300 uppercase tracking-wide font-bold">{count} compras</p>
+                  <p className="text-sm font-black text-[#0a0a0a]">{formatCurrency(total)}</p>
                 </div>
               </div>
             );

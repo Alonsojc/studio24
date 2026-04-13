@@ -8,6 +8,7 @@ import { formatCurrency, formatDate } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
+import ActionMenu from '@/components/ActionMenu';
 
 const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
 const labelClass = "block text-[10px] font-bold tracking-[0.08em] text-neutral-400 uppercase mb-1.5";
@@ -77,24 +78,19 @@ export default function ClientesPage() {
             const total = clienteTotal(c.id);
             const count = clienteIngresos(c.id).length;
             return (
-              <div key={c.id} onClick={() => openDetail(c)} className="bg-white rounded-2xl border border-neutral-100 p-6 hover:border-neutral-300 transition-all cursor-pointer group">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="w-10 h-10 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center text-sm font-black mb-3">
-                      {c.nombre.charAt(0).toUpperCase()}
-                    </div>
-                    <h3 className="font-bold text-[#0a0a0a] group-hover:text-[#c72a09] transition-colors">{c.nombre}</h3>
-                    {c.telefono && <p className="text-xs text-neutral-400 mt-1">{c.telefono}</p>}
-                    {c.email && <p className="text-xs text-neutral-400">{c.email}</p>}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-green-600">{formatCurrency(total)}</p>
-                    <p className="text-[10px] text-neutral-300 uppercase tracking-wide font-bold mt-0.5">{count} trabajos</p>
-                  </div>
+              <div key={c.id} onClick={() => openDetail(c)} className="bg-white rounded-2xl border border-neutral-100 p-6 hover:border-neutral-300 transition-all cursor-pointer group relative">
+                <div className="absolute top-4 right-4">
+                  <ActionMenu items={[{ label: 'Ver detalle', onClick: () => openDetail(c) }, { label: 'Editar', onClick: () => openEdit(c) }, { label: 'Eliminar', onClick: () => handleDelete(c.id), danger: true }]} />
                 </div>
-                <div className="flex gap-2 mt-4 pt-4 border-t border-neutral-50">
-                  <button onClick={(e) => { e.stopPropagation(); openEdit(c); }} className="text-neutral-300 hover:text-[#c72a09] text-xs font-semibold transition-colors">Editar</button>
-                  <button onClick={(e) => { e.stopPropagation(); handleDelete(c.id); }} className="text-neutral-200 hover:text-red-500 text-xs font-semibold transition-colors">Eliminar</button>
+                <div className="w-10 h-10 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center text-sm font-black mb-3">
+                  {c.nombre.charAt(0).toUpperCase()}
+                </div>
+                <h3 className="font-bold text-[#0a0a0a] group-hover:text-[#c72a09] transition-colors">{c.nombre}</h3>
+                {c.telefono && <p className="text-xs text-neutral-400 mt-1">{c.telefono}</p>}
+                {c.email && <p className="text-xs text-neutral-400">{c.email}</p>}
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-neutral-50">
+                  <p className="text-[10px] text-neutral-300 uppercase tracking-wide font-bold">{count} trabajos</p>
+                  <p className="text-sm font-black text-green-600">{formatCurrency(total)}</p>
                 </div>
               </div>
             );
