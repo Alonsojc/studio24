@@ -253,13 +253,13 @@ export default function Sidebar() {
   const navContent = (
     <>
       {/* Logo */}
-      <div className="px-7 pt-8 pb-5">
+      <Link href="/" onClick={() => setMobileOpen(false)} className="block px-7 pt-8 pb-5 hover:opacity-80 transition-opacity">
         <div className="flex items-baseline gap-0">
           <span className="text-[28px] font-black tracking-[-0.06em] text-white uppercase">STUDIO</span>
           <span className="text-[28px] font-black tracking-[-0.06em] text-[#c72a09]">24</span>
         </div>
         <div className="w-8 h-[2px] bg-[#c72a09] mt-2" />
-      </div>
+      </Link>
 
       {/* Search */}
       <div className="px-3 mb-3">
