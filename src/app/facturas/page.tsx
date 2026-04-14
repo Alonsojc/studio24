@@ -31,6 +31,7 @@ export default function FacturasPage() {
   const [mounted] = useState(() => isClient);
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
   const [processing, setProcessing] = useState(false);
+  const [duplicadas, setDuplicadas] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(() => {
@@ -49,10 +50,21 @@ export default function FacturasPage() {
     const pdfFiles = files.filter((f) => f.name.endsWith('.pdf'));
 
     const nuevas: FacturaPendiente[] = [];
+    let skipped = 0;
 
     for (const xmlFile of xmlFiles) {
       const cfdi = await parseXMLFile(xmlFile);
       if (!cfdi) continue;
+
+      // Skip if UUID already exists in system or in current batch
+      if (cfdi.uuid) {
+        const yaExiste =
+          ingresos.some((i) => i.uuidCFDI === cfdi.uuid) ||
+          egresos.some((e) => e.uuidCFDI === cfdi.uuid) ||
+          nuevas.some((n) => n.cfdi.uuid === cfdi.uuid) ||
+          facturas.some((f) => f.cfdi.uuid === cfdi.uuid);
+        if (yaExiste) { skipped++; continue; }
+      }
 
       // Find matching PDF by similar name
       const baseName = xmlFile.name.replace('.xml', '');
@@ -83,6 +95,7 @@ export default function FacturasPage() {
     }
 
     setFacturas((prev) => [...prev, ...nuevas]);
+    if (skipped > 0) setDuplicadas(skipped);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -228,6 +241,14 @@ export default function FacturasPage() {
         }
       />
       <input ref={fileRef} type="file" accept=".xml,.pdf" multiple onChange={handleUpload} className="hidden" />
+
+      {/* Duplicates warning */}
+      {duplicadas > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex items-center justify-between">
+          <p className="text-xs text-amber-700"><span className="font-bold">{duplicadas} factura{duplicadas > 1 ? 's' : ''} ignorada{duplicadas > 1 ? 's' : ''}</span> porque ya existen en el sistema (mismo UUID)</p>
+          <button onClick={() => setDuplicadas(0)} className="text-[10px] text-amber-500 font-bold hover:underline">OK</button>
+        </div>
+      )}
 
       {/* Instructions */}
       {facturas.length === 0 && (
