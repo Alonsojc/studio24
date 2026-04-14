@@ -225,7 +225,10 @@ export default function Sidebar() {
     window.addEventListener('online', update);
     window.addEventListener('offline', update);
     update();
-    return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); };
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
   }, []);
 
   const toggleDark = () => {
@@ -248,10 +251,10 @@ export default function Sidebar() {
         href={item.href}
         onClick={() => setMobileOpen(false)}
         className={`flex items-center gap-3 ${compact ? 'pl-9 pr-4 py-2' : 'px-4 py-2.5'} rounded-lg text-[11px] font-semibold tracking-[0.06em] transition-all ${
-          isActive ? 'bg-[#c72a09] text-white' : 'text-neutral-500 hover:text-white hover:bg-white/[0.04]'
+          isActive ? 'bg-[#c72a09] text-white' : 'text-neutral-300 hover:text-white hover:bg-white/[0.04]'
         }`}
       >
-        <span className={isActive ? 'text-white' : 'text-neutral-600'}>{item.icon}</span>
+        <span className={isActive ? 'text-white' : 'text-neutral-400'}>{item.icon}</span>
         {item.label}
       </Link>
     );
@@ -260,7 +263,11 @@ export default function Sidebar() {
   const navContent = (
     <>
       {/* Logo */}
-      <Link href="/" onClick={() => setMobileOpen(false)} className="block px-7 pt-8 pb-5 hover:opacity-80 transition-opacity">
+      <Link
+        href="/"
+        onClick={() => setMobileOpen(false)}
+        className="block px-7 pt-8 pb-5 hover:opacity-80 transition-opacity"
+      >
         <div className="flex items-center gap-0">
           <span className="text-[22px] font-black tracking-[-0.03em] text-white lowercase">studio</span>
           <span className="flex-1 h-[1.5px] bg-white mx-2 min-w-[30px]" />
@@ -287,7 +294,7 @@ export default function Sidebar() {
               <button
                 onClick={() => toggleGroup(gIdx)}
                 className={`w-full flex items-center justify-between px-4 py-2 rounded-lg text-[9px] font-bold tracking-[0.12em] uppercase transition-all ${
-                  hasActive ? 'text-[#c72a09]' : 'text-neutral-600 hover:text-neutral-400'
+                  hasActive ? 'text-[#c72a09]' : 'text-neutral-400 hover:text-neutral-300'
                 }`}
               >
                 <span>{group.label}</span>
@@ -307,7 +314,9 @@ export default function Sidebar() {
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full shrink-0 ${online ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`} />
           {profile && (
-            <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${roleColor(role)}`}>{roleLabel(role)}</span>
+            <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${roleColor(role)}`}>
+              {roleLabel(role)}
+            </span>
           )}
         </div>
         <button
