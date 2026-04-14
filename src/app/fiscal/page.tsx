@@ -422,7 +422,7 @@ export default function FiscalPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* IVA */}
           <div>
-            <p className="text-[9px] font-bold tracking-[0.1em] text-white/20 uppercase mb-3">IVA</p>
+            <p className="text-sm font-black tracking-[0.1em] text-white/60 uppercase mb-3">IVA</p>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-sm text-white/50">Trasladado</span>
@@ -451,7 +451,7 @@ export default function FiscalPage() {
 
           {/* ISR */}
           <div>
-            <p className="text-[9px] font-bold tracking-[0.1em] text-white/20 uppercase mb-3">ISR (Pago Provisional)</p>
+            <p className="text-sm font-black tracking-[0.1em] text-white/60 uppercase mb-3">ISR (Pago Provisional)</p>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-sm text-white/50">Ingresos facturados</span>
@@ -486,7 +486,7 @@ export default function FiscalPage() {
 
           {/* Total */}
           <div>
-            <p className="text-[9px] font-bold tracking-[0.1em] text-white/20 uppercase mb-3">Total a Pagar</p>
+            <p className="text-sm font-black tracking-[0.1em] text-white/60 uppercase mb-3">Total a Pagar</p>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-sm text-white/50">IVA</span>
