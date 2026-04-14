@@ -51,6 +51,7 @@ const ROLE_ROUTES: Record<UserRole, string[]> = {
     '/egresos',
     '/reportes',
     '/fiscal',
+    '/facturas',
     '/clientes',
     '/proveedores',
   ],

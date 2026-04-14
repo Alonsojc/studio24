@@ -51,6 +51,9 @@ export interface Egreso {
   formaPago: FormaPago;
   factura: boolean;
   numeroFactura: string;
+  uuidCFDI?: string;
+  xmlUrl?: string;
+  pdfUrl?: string;
   notas: string;
   createdAt: string;
 }
@@ -116,6 +119,9 @@ export interface Ingreso {
   formaPago: FormaPago;
   factura: boolean;
   numeroFactura: string;
+  uuidCFDI?: string;
+  xmlUrl?: string;
+  pdfUrl?: string;
   notas: string;
   createdAt: string;
 }
