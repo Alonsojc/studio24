@@ -71,15 +71,29 @@ export default function SeedData() {
 
     // Intentar restaurar datos desde IDB si localStorage está vacío.
     // generarEgresosRecurrentes runs AFTER restore to avoid race-condition duplicates.
-    restoreFromIDB().then((restored) => {
-      if (restored) {
-        window.location.reload();
-      } else {
-        limpiarDuplicados();
+    restoreFromIDB()
+      .then((restored) => {
+        if (restored) {
+          window.location.reload();
+          return;
+        }
+        try {
+          limpiarDuplicados();
+        } catch {
+          /* best-effort cleanup */
+        }
         syncAllToIDB();
         generarEgresosRecurrentes();
-      }
-    });
+      })
+      .catch(() => {
+        // IDB not available (e.g. mobile private mode) — run startup without restore
+        try {
+          limpiarDuplicados();
+        } catch {
+          /* ignore */
+        }
+        generarEgresosRecurrentes();
+      });
 
     // Registrar Service Worker para PWA offline
     if ('serviceWorker' in navigator) {
