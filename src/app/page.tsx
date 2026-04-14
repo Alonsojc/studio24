@@ -167,8 +167,8 @@ export default function Dashboard() {
           <div className="bg-[#0a0a0a] rounded-2xl p-6 mb-10">
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h3 className="text-[10px] font-bold tracking-[0.12em] text-white/30 uppercase">Pedidos Activos</h3>
-                <p className="text-xs text-white/20 mt-0.5">
+                <h3 className="text-[10px] font-bold tracking-[0.12em] text-white/50 uppercase">Pedidos Activos</h3>
+                <p className="text-xs text-white/50 mt-0.5">
                   {activos.length} pedidos &middot; {clientes.length} clientes &middot;{' '}
                   {formatCurrency(activos.reduce((s, p) => s + p.montoTotal, 0))} en producción
                 </p>
@@ -223,7 +223,7 @@ export default function Dashboard() {
                 return (
                   <div key={estado} className="bg-white/[0.04] rounded-xl p-3 text-center">
                     <p className="text-lg font-black text-white">{count}</p>
-                    <p className="text-[9px] font-bold tracking-[0.08em] text-white/25 uppercase mt-0.5">
+                    <p className="text-[9px] font-bold tracking-[0.08em] text-white/50 uppercase mt-0.5">
                       {estadoPedidoLabel(estado)}
                     </p>
                   </div>

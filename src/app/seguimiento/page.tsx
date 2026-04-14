@@ -198,7 +198,7 @@ export default function SeguimientoPage() {
         {/* Contact */}
         {config && (config.telefono || config.email) && (
           <div className="bg-[#0a0a0a] rounded-2xl p-6 text-center">
-            <p className="text-[10px] font-bold tracking-[0.12em] text-white/30 uppercase mb-2">Contacto</p>
+            <p className="text-[10px] font-bold tracking-[0.12em] text-white/50 uppercase mb-2">Contacto</p>
             <p className="text-sm font-bold text-white">{negocio}</p>
             {config.telefono && (
               <a

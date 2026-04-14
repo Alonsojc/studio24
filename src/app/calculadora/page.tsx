@@ -284,7 +284,7 @@ export default function CalculadoraPage() {
             <div className="bg-[#0a0a0a] rounded-xl p-4 mt-5">
               <div className="flex justify-between items-end">
                 <div>
-                  <p className="text-[10px] font-bold tracking-[0.1em] text-white/30 uppercase">Precio por pieza</p>
+                  <p className="text-[10px] font-bold tracking-[0.1em] text-white/50 uppercase">Precio por pieza</p>
                   <p className="text-2xl font-black text-white mt-1">{formatCurrency(pricePerPiece)}</p>
                 </div>
               </div>

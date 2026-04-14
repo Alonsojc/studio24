@@ -276,7 +276,7 @@ export default function EgresosPage() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="text-[11px] font-bold tracking-[0.1em] text-white/40 uppercase">Egresos Recurrentes</h3>
-              <p className="text-xs text-white/25 mt-1">
+              <p className="text-xs text-white/50 mt-1">
                 Total mensual: <span className="text-[#c72a09] font-bold">{formatCurrency(totalRecMensual)}</span>
               </p>
             </div>
@@ -288,7 +288,7 @@ export default function EgresosPage() {
             </button>
           </div>
           {recurrentes.length === 0 ? (
-            <p className="text-sm text-white/20 text-center py-6">
+            <p className="text-sm text-white/50 text-center py-6">
               Agrega gastos fijos como renta, suscripciones, etc.
             </p>
           ) : (
@@ -309,7 +309,7 @@ export default function EgresosPage() {
                     </button>
                     <div>
                       <p className="text-sm font-semibold text-white">{r.descripcion}</p>
-                      <p className="text-xs text-white/30 mt-0.5">
+                      <p className="text-xs text-white/50 mt-0.5">
                         {categoriaLabel(r.categoria)} &middot; Dia {r.diaDelMes} &middot; {formaPagoLabel(r.formaPago)}
                         {r.factura && <span className="text-[#c72a09]"> &middot; IVA</span>}
                       </p>
@@ -318,9 +318,9 @@ export default function EgresosPage() {
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-bold text-white">
                       {formatCurrency(r.monto + (r.factura ? calcIVA(r.monto) : 0))}
-                      <span className="text-white/20 text-xs font-normal">/mes</span>
+                      <span className="text-white/50 text-xs font-normal">/mes</span>
                     </span>
-                    <div className="[&_button]:text-white/30 [&_button:hover]:text-white [&_button:hover]:bg-white/10 [&>div>div]:bg-[#1a1a1a] [&>div>div]:border-white/10 [&>div>div_button]:text-white/60 [&>div>div_button:hover]:bg-white/10">
+                    <div className="[&_button]:text-white/50 [&_button:hover]:text-white [&_button:hover]:bg-white/10 [&>div>div]:bg-[#1a1a1a] [&>div>div]:border-white/10 [&>div>div_button]:text-white/60 [&>div>div_button:hover]:bg-white/10">
                       <ActionMenu
                         items={[
                           { label: 'Editar', onClick: () => openEditRec(r) },
