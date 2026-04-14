@@ -6,12 +6,14 @@ import { v4 as uuid } from 'uuid';
 import {
   getClientes,
   getConfig,
-  addCotizacion,
-  updateCotizacion,
   getCotizaciones,
-  getNextFolio,
   getProductos,
 } from '@/lib/store';
+import {
+  addCotizacion,
+  updateCotizacion,
+  getNextFolio,
+} from '@/lib/store-sync';
 import { Cliente, ConfigNegocio, Cotizacion, Producto } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
 import { inputClass, labelClass } from '@/lib/styles';

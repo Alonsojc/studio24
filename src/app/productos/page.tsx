@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getProductos, addProducto, updateProducto, deleteProducto } from '@/lib/store';
+import { getProductos } from '@/lib/store';
+import { addProducto, updateProducto, deleteProducto } from '@/lib/store-sync';
 import { Producto, CategoriaProducto } from '@/lib/types';
 import { formatCurrency, validateProducto } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';

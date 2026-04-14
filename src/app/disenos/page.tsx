@@ -2,7 +2,8 @@
 
 import { useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getDisenos, addDiseno, updateDiseno, deleteDiseno, getClientes } from '@/lib/store';
+import { getDisenos, getClientes } from '@/lib/store';
+import { addDiseno, updateDiseno, deleteDiseno } from '@/lib/store-sync';
 import { Diseno, Cliente } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';

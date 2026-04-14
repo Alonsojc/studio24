@@ -2,7 +2,8 @@
 
 import { useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getInventario, addItemInventario, updateItemInventario, deleteItemInventario } from '@/lib/store';
+import { getInventario } from '@/lib/store';
+import { addItemInventario, updateItemInventario, deleteItemInventario } from '@/lib/store-sync';
 import { ItemInventario, CategoriaInventario, UnidadInventario } from '@/lib/types';
 import { formatCurrency } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';

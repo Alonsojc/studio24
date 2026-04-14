@@ -1,10 +1,12 @@
 import { v4 as uuid } from 'uuid';
 import {
   getEgresosRecurrentes,
-  addEgreso,
   getRecurrentesLog,
-  addRecurrenteLog,
 } from './store';
+import {
+  addEgreso,
+  addRecurrenteLog,
+} from './store-sync';
 import { Egreso } from './types';
 import { calcIVA } from './helpers';
 

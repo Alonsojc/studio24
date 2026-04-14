@@ -4,13 +4,15 @@ import { useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import {
   getPlantillas,
-  addPlantilla,
-  updatePlantilla,
-  deletePlantilla,
   getPedidos,
   getClientes,
   getConfig,
 } from '@/lib/store';
+import {
+  addPlantilla,
+  updatePlantilla,
+  deletePlantilla,
+} from '@/lib/store-sync';
 import { PlantillaWhatsApp, Pedido, Cliente } from '@/lib/types';
 import { formatCurrency, formatDate, estadoPedidoLabel } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';

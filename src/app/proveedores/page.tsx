@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getProveedores, addProveedor, updateProveedor, deleteProveedor, getEgresos } from '@/lib/store';
+import { getProveedores, getEgresos } from '@/lib/store';
+import { addProveedor, updateProveedor, deleteProveedor } from '@/lib/store-sync';
 import { Proveedor, Egreso } from '@/lib/types';
 import { formatCurrency, validateProveedor } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';

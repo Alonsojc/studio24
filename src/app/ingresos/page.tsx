@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getIngresos, addIngreso, updateIngreso, deleteIngreso, getClientes } from '@/lib/store';
+import { getIngresos, getClientes } from '@/lib/store';
+import { addIngreso, updateIngreso, deleteIngreso } from '@/lib/store-sync';
 import { Ingreso, Cliente, ConceptoIngreso, FormaPago } from '@/lib/types';
 import { formatCurrency, formatDate, formaPagoLabel, conceptoLabel, todayString, calcIVA, validateIngreso } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';

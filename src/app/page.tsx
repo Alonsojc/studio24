@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { getIngresos, getEgresos, getClientes, getPedidos } from '@/lib/store';
-import { Ingreso, Egreso, Pedido } from '@/lib/types';
+import { cloudGetIngresos, cloudGetEgresos, cloudGetClientes, cloudGetPedidos } from '@/lib/store-cloud';
+import { Ingreso, Egreso, Pedido, Cliente } from '@/lib/types';
 import {
   formatCurrency,
   formatDate,
@@ -12,18 +11,17 @@ import {
   categoriaLabel,
   estadoPedidoLabel,
 } from '@/lib/helpers';
+import { useCloud } from '@/lib/useCloud';
 import StatCard from '@/components/StatCard';
 import PageHeader from '@/components/PageHeader';
 
 export default function Dashboard() {
-  const isClient = typeof window !== 'undefined';
-  const [ingresos] = useState<Ingreso[]>(() => (isClient ? getIngresos() : []));
-  const [egresos] = useState<Egreso[]>(() => (isClient ? getEgresos() : []));
-  const [pedidos] = useState<Pedido[]>(() => (isClient ? getPedidos() : []));
-  const [totalClientes] = useState(() => (isClient ? getClientes().length : 0));
-  const [mounted] = useState(() => isClient);
+  const { data: ingresos, loading: l1 } = useCloud<Ingreso[]>(cloudGetIngresos);
+  const { data: egresos, loading: l2 } = useCloud<Egreso[]>(cloudGetEgresos);
+  const { data: pedidos, loading: l3 } = useCloud<Pedido[]>(cloudGetPedidos);
+  const { data: clientes, loading: l4 } = useCloud<Cliente[]>(cloudGetClientes);
 
-  if (!mounted) {
+  if (l1 || l2 || l3 || l4 || !ingresos || !egresos || !pedidos || !clientes) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
@@ -74,7 +72,7 @@ export default function Dashboard() {
           subtitle={ganancia >= 0 ? 'Positiva' : 'Negativa'}
           accent
         />
-        <StatCard label="Clientes" value={String(totalClientes)} subtitle="Registrados" />
+        <StatCard label="Clientes" value={String(clientes.length)} subtitle="Registrados" />
       </div>
 
       {/* Fiscal + Payment */}
