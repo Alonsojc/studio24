@@ -165,7 +165,7 @@ export default function Dashboard() {
                 {urgentes.map((p) => (
                   <p key={p.id} className="text-xs text-white/50 mt-1">
                     {p.descripcion} &middot; {estadoPedidoLabel(p.estado)}
-                    {p.fechaEntrega ? ` &middot; Entrega: ${formatDate(p.fechaEntrega)}` : ''}
+                    {p.fechaEntrega ? ` · Entrega: ${formatDate(p.fechaEntrega)}` : ''}
                   </p>
                 ))}
               </div>
