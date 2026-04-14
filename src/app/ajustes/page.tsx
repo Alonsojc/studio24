@@ -278,22 +278,6 @@ export default function AjustesPage() {
           </div>
         </div>
 
-        {/* Demo Data */}
-        <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-3">
-            Datos de Demostración
-          </h3>
-          <p className="text-xs text-neutral-400 mb-4">
-            Carga datos de ejemplo (clientes, pedidos, ingresos, egresos, productos) para probar el sistema.
-          </p>
-          <button
-            onClick={handleSeedData}
-            className={`px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${seeded ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}
-          >
-            {seeded ? '¡Cargados!' : 'Cargar Datos Demo'}
-          </button>
-        </div>
-
         {/* Team Management (admin only) */}
         {role === 'admin' && (
           <div className="bg-white rounded-2xl border border-neutral-100 p-6">
@@ -348,19 +332,6 @@ export default function AjustesPage() {
           </div>
         )}
 
-        {/* Danger Zone */}
-        <div className="bg-white rounded-2xl border border-red-200 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-red-400 uppercase mb-3">Zona de Peligro</h3>
-          <p className="text-xs text-neutral-400 mb-4">
-            Borrar todos los datos para empezar de cero. Se te pedira descargar un respaldo antes.
-          </p>
-          <button
-            onClick={handleClear}
-            className="px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-white text-red-500 border border-red-200 hover:bg-red-50 transition-colors"
-          >
-            Borrar Todos los Datos
-          </button>
-        </div>
       </div>
     </div>
   );
