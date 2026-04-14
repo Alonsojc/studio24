@@ -149,6 +149,9 @@ export const deletePlantilla = (id: string) => deleteItem<PlantillaWhatsApp>(KEY
 const defaultConfig: ConfigNegocio = {
   nombreNegocio: '',
   titular: '',
+  rfc: '',
+  regimenFiscal: '',
+  codigoPostal: '',
   banco: '',
   numeroCuenta: '',
   clabe: '',

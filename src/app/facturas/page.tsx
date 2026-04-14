@@ -75,23 +75,21 @@ export default function FacturasPage() {
       const pdfFile = pdfFiles.find((p) => p.name.replace('.pdf', '') === baseName);
 
       // Determine if it's an ingreso (Isabel emitted) or egreso (Isabel received)
-      // If Isabel is the EMISOR → she made the invoice → it's her ingreso
-      // If Isabel is the RECEPTOR → she received the invoice → it's her egreso
-      const nombreNegocio = (config?.nombreNegocio || '').toLowerCase();
-      const nombreTitular = (config?.titular || '').toLowerCase();
-      const emisorNombre = cfdi.nombreEmisor.toLowerCase();
-      const receptorNombre = cfdi.nombreReceptor.toLowerCase();
+      // Compare RFC first (most reliable), then name
+      const miRFC = (config?.rfc || '').toUpperCase();
+      const miNombre = (config?.titular || '').toLowerCase();
 
       let tipo: 'ingreso' | 'egreso';
-      if (nombreTitular && emisorNombre.includes(nombreTitular)) {
-        tipo = 'ingreso'; // Isabel emitted this invoice
-      } else if (nombreTitular && receptorNombre.includes(nombreTitular)) {
-        tipo = 'egreso'; // Isabel received this invoice
-      } else if (nombreNegocio && emisorNombre.includes(nombreNegocio)) {
+      if (miRFC && cfdi.rfcEmisor.toUpperCase() === miRFC) {
+        tipo = 'ingreso'; // Isabel is the emisor → she sold something
+      } else if (miRFC && cfdi.rfcReceptor.toUpperCase() === miRFC) {
+        tipo = 'egreso'; // Isabel is the receptor → she bought something
+      } else if (miNombre && cfdi.nombreEmisor.toLowerCase().includes(miNombre)) {
         tipo = 'ingreso';
-      } else {
-        // Default: if TipoComprobante is I, it's likely a purchase (egreso for Isabel)
+      } else if (miNombre && cfdi.nombreReceptor.toLowerCase().includes(miNombre)) {
         tipo = 'egreso';
+      } else {
+        tipo = 'egreso'; // Default: assume it's a purchase
       }
 
       // Try to find a match in existing records
