@@ -184,7 +184,7 @@ export default function EgresosPage() {
       {filtered.length === 0 ? (
         <EmptyState title="Sin egresos" description="Registra tu primer gasto para empezar" action={<button onClick={openNew} className="text-[#c72a09] font-bold text-xs uppercase tracking-wide hover:underline">+ Agregar egreso</button>} />
       ) : (
-        <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-neutral-100">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-100">

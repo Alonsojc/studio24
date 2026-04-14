@@ -97,7 +97,7 @@ export default function IngresosPage() {
       {filtered.length === 0 ? (
         <EmptyState title="Sin ingresos" description="Registra tu primera venta o servicio" action={<button onClick={openNew} className="text-[#c72a09] font-bold text-xs uppercase tracking-wide hover:underline">+ Agregar ingreso</button>} />
       ) : (
-        <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-neutral-100">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-100">
