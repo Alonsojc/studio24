@@ -19,10 +19,15 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    const syncWithTimeout = () =>
+      Promise.race([
+        pullFromCloud().catch(() => {}),
+        new Promise((r) => setTimeout(r, 5000)), // Max 5 seconds
+      ]);
+
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
-        // Sync from cloud on startup
-        await pullFromCloud().catch(() => {});
+        await syncWithTimeout();
       }
       setUser(user);
       setLoading(false);
@@ -31,13 +36,14 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user && _event === 'SIGNED_IN') {
+      const newUser = session?.user ?? null;
+      if (newUser && _event === 'SIGNED_IN') {
         setView('syncing');
-        await pullFromCloud().catch(() => {});
+        await syncWithTimeout();
       }
-      setUser(session?.user ?? null);
+      setUser(newUser);
       setLoading(false);
-      if (view === 'syncing') setView('login');
+      setView('login');
     });
 
     return () => subscription.unsubscribe();
