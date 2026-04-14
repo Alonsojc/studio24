@@ -120,6 +120,9 @@ export async function cloudGetConfig(): Promise<ConfigNegocio> {
   const defaultConfig: ConfigNegocio = {
     nombreNegocio: '',
     titular: '',
+    rfc: '',
+    regimenFiscal: '',
+    codigoPostal: '',
     banco: '',
     numeroCuenta: '',
     clabe: '',
@@ -134,6 +137,9 @@ export async function cloudGetConfig(): Promise<ConfigNegocio> {
   return {
     nombreNegocio: (row.nombre_negocio as string) || '',
     titular: (row.titular as string) || '',
+    rfc: (row.rfc as string) || '',
+    regimenFiscal: (row.regimen_fiscal as string) || '',
+    codigoPostal: (row.codigo_postal as string) || '',
     banco: (row.banco as string) || '',
     numeroCuenta: (row.numero_cuenta as string) || '',
     clabe: (row.clabe as string) || '',
