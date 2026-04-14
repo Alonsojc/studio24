@@ -804,10 +804,11 @@ export default function PedidosPage() {
               <label className={labelClass}>Cliente</label>
               <select
                 value={form.clienteId}
-                onChange={(e) => setForm({ ...form, clienteId: e.target.value })}
+                onChange={(e) => { if (e.target.value === '__new__') { window.open('/studio24/clientes', '_blank'); return; } setForm({ ...form, clienteId: e.target.value }); }}
                 className={inputClass}
               >
                 <option value="">Sin cliente</option>
+                <option value="__new__">+ Nuevo cliente</option>
                 {clientes.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.nombre}
