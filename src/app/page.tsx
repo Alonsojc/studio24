@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { cloudGetIngresos, cloudGetEgresos, cloudGetClientes, cloudGetPedidos } from '@/lib/store-cloud';
 import { Ingreso, Egreso, Pedido, Cliente } from '@/lib/types';
@@ -15,11 +16,15 @@ import { useCloud } from '@/lib/useCloud';
 import StatCard from '@/components/StatCard';
 import PageHeader from '@/components/PageHeader';
 
+type DashFilter = 'mes' | 'año' | 'todo';
+const filterLabels: Record<DashFilter, string> = { mes: 'Mes actual', año: 'Año actual', todo: 'Histórico' };
+
 export default function Dashboard() {
   const { data: ingresos, loading: l1 } = useCloud<Ingreso[]>(cloudGetIngresos);
   const { data: egresos, loading: l2 } = useCloud<Egreso[]>(cloudGetEgresos);
   const { data: pedidos, loading: l3 } = useCloud<Pedido[]>(cloudGetPedidos);
   const { data: clientes, loading: l4 } = useCloud<Cliente[]>(cloudGetClientes);
+  const [filter, setFilter] = useState<DashFilter>('mes');
 
   if (l1 || l2 || l3 || l4 || !ingresos || !egresos || !pedidos || !clientes) {
     return (
@@ -33,46 +38,67 @@ export default function Dashboard() {
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
 
-  const ingresosDelMes = ingresos.filter((i) => {
-    const d = new Date(i.fecha);
+  const filterFn = (fecha: string) => {
+    if (filter === 'todo') return true;
+    const d = new Date(fecha);
+    if (filter === 'año') return d.getFullYear() === currentYear;
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-  });
-  const egresosDelMes = egresos.filter((e) => {
-    const d = new Date(e.fecha);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-  });
+  };
 
-  const totalIngresosMes = ingresosDelMes.reduce((s, i) => s + i.montoTotal, 0);
-  const totalEgresosMes = egresosDelMes.reduce((s, e) => s + e.montoTotal, 0);
-  const ganancia = totalIngresosMes - totalEgresosMes;
-  const ivaCobrado = ingresosDelMes.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
-  const ivaPagado = egresosDelMes.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
-  const facturadoMes = ingresosDelMes.filter((i) => i.factura).reduce((s, i) => s + i.montoTotal, 0);
+  const ingresosFiltered = ingresos.filter((i) => filterFn(i.fecha));
+  const egresosFiltered = egresos.filter((e) => filterFn(e.fecha));
 
-  const erroresDelMes = egresosDelMes.filter((e) => e.categoria === 'error');
-  const totalErroresMes = erroresDelMes.reduce((s, e) => s + e.montoTotal, 0);
+  const totalIngresos = ingresosFiltered.reduce((s, i) => s + i.montoTotal, 0);
+  const totalEgresos = egresosFiltered.reduce((s, e) => s + e.montoTotal, 0);
+  const ganancia = totalIngresos - totalEgresos;
+  const ivaCobrado = ingresosFiltered.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
+  const ivaPagado = egresosFiltered.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
+  const facturado = ingresosFiltered.filter((i) => i.factura).reduce((s, i) => s + i.montoTotal, 0);
+
+  const errores = egresosFiltered.filter((e) => e.categoria === 'error');
+  const totalErrores = errores.reduce((s, e) => s + e.montoTotal, 0);
 
   const recentIngresos = [...ingresos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
   const recentEgresos = [...egresos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
 
   const monthName = now.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+  const description =
+    filter === 'mes' ? `Resumen de ${monthName}` : filter === 'año' ? `Resumen ${currentYear}` : 'Resumen histórico';
 
   return (
     <div>
-      <PageHeader title="Dashboard" description={`Resumen de ${monthName}`} />
+      <PageHeader
+        title="Dashboard"
+        description={description}
+        action={
+          <div className="flex gap-1 bg-neutral-100 rounded-xl p-1">
+            {(['mes', 'año', 'todo'] as DashFilter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold tracking-[0.03em] transition-all ${
+                  filter === f ? 'bg-white text-[#0a0a0a] shadow-sm' : 'text-neutral-400 hover:text-neutral-600'
+                }`}
+              >
+                {filterLabels[f]}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
         <StatCard
           label="Ingresos"
-          value={formatCurrency(totalIngresosMes)}
-          subtitle={`${ingresosDelMes.length} ventas`}
+          value={formatCurrency(totalIngresos)}
+          subtitle={`${ingresosFiltered.length} ventas`}
           color="green"
         />
         <StatCard
           label="Egresos"
-          value={formatCurrency(totalEgresosMes)}
-          subtitle={`${egresosDelMes.length} gastos`}
+          value={formatCurrency(totalEgresos)}
+          subtitle={`${egresosFiltered.length} gastos`}
           color="red"
         />
         <StatCard
@@ -84,18 +110,18 @@ export default function Dashboard() {
         <StatCard label="Clientes" value={String(clientes.length)} subtitle="Registrados" />
       </div>
 
-      {/* Errores del mes */}
-      {totalErroresMes > 0 && (
+      {/* Errores */}
+      {totalErrores > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-10">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-bold text-red-600">Errores y desperdicios del mes</p>
+              <p className="text-xs font-bold text-red-600">Errores y desperdicios</p>
               <p className="text-[10px] text-red-400 mt-0.5">
-                {erroresDelMes.length} errores ·{' '}
-                {totalEgresosMes > 0 ? ((totalErroresMes / totalEgresosMes) * 100).toFixed(1) : 0}% de los egresos
+                {errores.length} errores · {totalEgresos > 0 ? ((totalErrores / totalEgresos) * 100).toFixed(1) : 0}% de
+                los egresos
               </p>
             </div>
-            <p className="text-lg font-black text-red-600">{formatCurrency(totalErroresMes)}</p>
+            <p className="text-lg font-black text-red-600">{formatCurrency(totalErrores)}</p>
           </div>
         </div>
       )}
@@ -107,7 +133,7 @@ export default function Dashboard() {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <span className="text-sm text-neutral-500">Facturado</span>
-              <span className="text-sm font-bold text-[#0a0a0a]">{formatCurrency(facturadoMes)}</span>
+              <span className="text-sm font-bold text-[#0a0a0a]">{formatCurrency(facturado)}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-neutral-500">IVA Cobrado</span>
@@ -128,8 +154,8 @@ export default function Dashboard() {
           <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Formas de Pago</h3>
           <div className="space-y-4">
             {(['efectivo', 'tarjeta', 'transferencia', 'otro'] as const).map((fp) => {
-              const total = ingresosDelMes.filter((i) => i.formaPago === fp).reduce((s, i) => s + i.montoTotal, 0);
-              const pct = totalIngresosMes > 0 ? (total / totalIngresosMes) * 100 : 0;
+              const total = ingresosFiltered.filter((i) => i.formaPago === fp).reduce((s, i) => s + i.montoTotal, 0);
+              const pct = totalIngresos > 0 ? (total / totalIngresos) * 100 : 0;
               return (
                 <div key={fp}>
                   <div className="flex justify-between text-sm mb-2">
