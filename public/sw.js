@@ -1,4 +1,4 @@
-const CACHE_NAME = 'studio24-v1';
+const CACHE_NAME = 'studio24-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -30,7 +30,13 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Network first, fallback to cache
+  // Skip non-GET requests (Cache API doesn't support POST/PUT/DELETE)
+  if (event.request.method !== 'GET') return;
+
+  // Skip Supabase API calls — don't cache dynamic data
+  if (event.request.url.includes('supabase.co')) return;
+
+  // Network first, fallback to cache (only for GET of static assets)
   event.respondWith(
     fetch(event.request)
       .then((response) => {

@@ -128,7 +128,7 @@ export async function cloudGetConfig(): Promise<ConfigNegocio> {
     direccion: '',
     logoUrl: '',
   };
-  const { data, error } = await supabase.from('config').select('*').single();
+  const { data, error } = await supabase.from('config').select('*').maybeSingle();
   if (error || !data) return defaultConfig;
   const row = data as Record<string, unknown>;
   return {
