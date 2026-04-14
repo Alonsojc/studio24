@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { signIn, signUp, resetPassword } from '@/lib/auth';
 import { pullFromCloud } from '@/lib/store-cloud';
 
-type View = 'login' | 'register' | 'reset' | 'check-email' | 'syncing';
+type View = 'login' | 'register' | 'reset' | 'check-email';
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -19,44 +19,32 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const syncWithTimeout = () =>
-      Promise.race([
-        pullFromCloud().catch(() => {}),
-        new Promise((r) => setTimeout(r, 5000)), // Max 5 seconds
-      ]);
-
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (user) {
-        await syncWithTimeout();
-      }
+    supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
       setLoading(false);
+      // Sync in background — never blocks UI
+      if (user) pullFromCloud().catch(() => {});
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const newUser = session?.user ?? null;
-      if (newUser && _event === 'SIGNED_IN') {
-        setView('syncing');
-        await syncWithTimeout();
-      }
-      setUser(newUser);
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
       setLoading(false);
-      setView('login');
+      // Sync in background after sign in
+      if (session?.user && _event === 'SIGNED_IN') {
+        pullFromCloud().catch(() => {});
+      }
     });
 
     return () => subscription.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (loading || view === 'syncing') {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#fafafa]">
-        <div className="text-center">
-          <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin mx-auto" />
-          {view === 'syncing' && <p className="text-xs text-neutral-400 mt-3">Sincronizando datos...</p>}
-        </div>
+        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
