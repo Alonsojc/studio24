@@ -29,51 +29,65 @@ export function parseCFDI(xmlString: string): DatosCFDI | null {
     const doc = parser.parseFromString(xmlString, 'text/xml');
 
     // Handle namespace — CFDI 3.3 and 4.0
-    const comp =
-      doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/4', 'Comprobante')[0] ||
-      doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/3', 'Comprobante')[0];
+    // Helper to find elements by local name (ignores namespace prefixes)
+    const find = (name: string): Element | null => {
+      // Try with namespaces first
+      const byNS =
+        doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/4', name)[0] ||
+        doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/3', name)[0];
+      if (byNS) return byNS;
+      // Fallback: try with cfdi: prefix
+      const byPrefix = doc.getElementsByTagName(`cfdi:${name}`)[0];
+      if (byPrefix) return byPrefix;
+      // Fallback: try without prefix
+      return doc.getElementsByTagName(name)[0] || null;
+    };
 
-    if (!comp) return null;
+    const findAll = (name: string): Element[] => {
+      let nodes =
+        doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/4', name);
+      if (nodes.length === 0) nodes = doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/3', name);
+      if (nodes.length === 0) nodes = doc.getElementsByTagName(`cfdi:${name}`);
+      if (nodes.length === 0) nodes = doc.getElementsByTagName(name);
+      return Array.from(nodes);
+    };
+
+    const comp = find('Comprobante');
+    if (!comp) {
+      console.warn('[CFDI] No se encontró el nodo Comprobante');
+      return null;
+    }
 
     const attr = (el: Element, name: string) => el.getAttribute(name) || el.getAttribute(`cfdi:${name}`) || '';
     const numAttr = (el: Element, name: string) => parseFloat(attr(el, name)) || 0;
 
-    // Emisor
-    const emisor =
-      doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/4', 'Emisor')[0] ||
-      doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/3', 'Emisor')[0];
-
-    // Receptor
-    const receptor =
-      doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/4', 'Receptor')[0] ||
-      doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/3', 'Receptor')[0];
+    const emisor = find('Emisor');
+    const receptor = find('Receptor');
 
     // UUID from TimbreFiscalDigital
     const timbre =
-      doc.getElementsByTagNameNS('http://www.sat.gob.mx/TimbreFiscalDigital', 'TimbreFiscalDigital')[0];
+      doc.getElementsByTagNameNS('http://www.sat.gob.mx/TimbreFiscalDigital', 'TimbreFiscalDigital')[0] ||
+      doc.getElementsByTagName('tfd:TimbreFiscalDigital')[0] ||
+      doc.getElementsByTagName('TimbreFiscalDigital')[0];
 
     // IVA from Traslados
     let iva = 0;
-    const traslados = doc.getElementsByTagName('cfdi:Traslado');
-    if (traslados.length === 0) {
-      const traslados2 = doc.querySelectorAll('[Impuesto="002"]');
-      for (let i = 0; i < traslados2.length; i++) {
-        iva += parseFloat(traslados2[i].getAttribute('Importe') || '0');
+    const allTraslados = findAll('Traslado');
+    for (const t of allTraslados) {
+      const imp = t.getAttribute('Impuesto');
+      if (imp === '002') {
+        iva += parseFloat(t.getAttribute('Importe') || '0');
       }
-    } else {
-      for (let i = 0; i < traslados.length; i++) {
-        const imp = traslados[i].getAttribute('Impuesto');
-        if (imp === '002') { // 002 = IVA
-          iva += parseFloat(traslados[i].getAttribute('Importe') || '0');
-        }
+    }
+    // If no Impuesto attr found, try to get IVA from TotalImpuestosTrasladados
+    if (iva === 0) {
+      const impuestos = find('Impuestos');
+      if (impuestos) {
+        iva = parseFloat(impuestos.getAttribute('TotalImpuestosTrasladados') || '0');
       }
     }
 
-    // Conceptos
-    const conceptoNodes =
-      doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/4', 'Concepto').length > 0
-        ? doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/4', 'Concepto')
-        : doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/3', 'Concepto');
+    const conceptoNodes = findAll('Concepto');
 
     const conceptos: DatosCFDI['conceptos'] = [];
     for (let i = 0; i < conceptoNodes.length; i++) {
@@ -118,7 +132,13 @@ export function parseXMLFile(file: File): Promise<DatosCFDI | null> {
     const reader = new FileReader();
     reader.onload = (e) => {
       const xml = e.target?.result as string;
-      resolve(parseCFDI(xml));
+      const result = parseCFDI(xml);
+      if (!result) {
+        console.warn(`[CFDI] No se pudo parsear ${file.name}. Primeros 200 chars:`, xml.substring(0, 200));
+      } else {
+        console.log(`[CFDI] Parseado ${file.name}:`, result.uuid, result.total, result.nombreEmisor);
+      }
+      resolve(result);
     };
     reader.onerror = () => resolve(null);
     reader.readAsText(file);
