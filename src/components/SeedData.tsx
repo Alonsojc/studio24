@@ -69,16 +69,16 @@ export default function SeedData() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Intentar restaurar datos desde IDB si localStorage está vacío
+    // Intentar restaurar datos desde IDB si localStorage está vacío.
+    // generarEgresosRecurrentes runs AFTER restore to avoid race-condition duplicates.
     restoreFromIDB().then((restored) => {
-      if (restored) window.location.reload();
-      else {
-        // Sync current localStorage to IDB as backup
+      if (restored) {
+        window.location.reload();
+      } else {
         syncAllToIDB();
+        generarEgresosRecurrentes();
       }
     });
-
-    generarEgresosRecurrentes();
 
     // Registrar Service Worker para PWA offline
     if ('serviceWorker' in navigator) {

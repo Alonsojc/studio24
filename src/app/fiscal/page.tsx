@@ -10,8 +10,18 @@ import StatCard from '@/components/StatCard';
 
 // Meses para pagos provisionales (Persona Física con Act. Empresarial)
 const MESES = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
 ];
 
 // Tabla ISR mensual 2024 — Persona Física (Art. 96 LISR)
@@ -22,9 +32,9 @@ const TABLA_ISR_MENSUAL = [
   { limInf: 11128.02, limSup: 12935.82, cuota: 893.63, tasa: 0.16 },
   { limInf: 12935.83, limSup: 15487.71, cuota: 1182.88, tasa: 0.1792 },
   { limInf: 15487.72, limSup: 31236.49, cuota: 1640.18, tasa: 0.2136 },
-  { limInf: 31236.50, limSup: 49233.00, cuota: 5004.12, tasa: 0.2352 },
-  { limInf: 49233.01, limSup: 93993.90, cuota: 9236.89, tasa: 0.30 },
-  { limInf: 93993.91, limSup: 125325.20, cuota: 22665.17, tasa: 0.32 },
+  { limInf: 31236.5, limSup: 49233.0, cuota: 5004.12, tasa: 0.2352 },
+  { limInf: 49233.01, limSup: 93993.9, cuota: 9236.89, tasa: 0.3 },
+  { limInf: 93993.91, limSup: 125325.2, cuota: 22665.17, tasa: 0.32 },
   { limInf: 125325.21, limSup: 375975.61, cuota: 32691.18, tasa: 0.34 },
   { limInf: 375975.62, limSup: Infinity, cuota: 117912.32, tasa: 0.35 },
 ];
@@ -58,22 +68,24 @@ export default function FiscalPage() {
 
   const years = Array.from(
     new Set([
-      ...ingresos.map((i) => new Date(i.fecha).getFullYear()),
-      ...egresos.map((e) => new Date(e.fecha).getFullYear()),
+      ...ingresos.map((i) => parseInt(i.fecha.substring(0, 4), 10)),
+      ...egresos.map((e) => parseInt(e.fecha.substring(0, 4), 10)),
       new Date().getFullYear(),
     ]),
   )
     .sort()
     .reverse();
 
-  // Filtros por año
-  const ingresosYear = ingresos.filter((i) => new Date(i.fecha).getFullYear() === year);
-  const egresosYear = egresos.filter((e) => new Date(e.fecha).getFullYear() === year);
+  // Filtros por año (string-based to avoid timezone issues)
+  const yearStr = String(year);
+  const ingresosYear = ingresos.filter((i) => i.fecha.startsWith(yearStr + '-'));
+  const egresosYear = egresos.filter((e) => e.fecha.startsWith(yearStr + '-'));
 
   // Datos por mes (pagos provisionales mensuales)
   const monthData = MESES.map((label, idx) => {
-    const ingMes = ingresosYear.filter((i) => new Date(i.fecha).getMonth() === idx);
-    const egMes = egresosYear.filter((e) => new Date(e.fecha).getMonth() === idx);
+    const monthStr = String(idx + 1).padStart(2, '0');
+    const ingMes = ingresosYear.filter((i) => i.fecha.substring(5, 7) === monthStr);
+    const egMes = egresosYear.filter((e) => e.fecha.substring(5, 7) === monthStr);
 
     const ingresosBrutos = ingMes.reduce((s, i) => s + i.monto, 0);
     const ingresosFacturados = ingMes.filter((i) => i.factura).reduce((s, i) => s + i.monto, 0);
