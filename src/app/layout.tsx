@@ -1,16 +1,27 @@
-import type { Metadata } from "next";
-import Sidebar from "@/components/Sidebar";
-import SeedData from "@/components/SeedData";
-import "./globals.css";
+import type { Metadata, Viewport } from 'next';
+import Sidebar from '@/components/Sidebar';
+import SeedData from '@/components/SeedData';
+import PinLock from '@/components/PinLock';
+import './globals.css';
+
+export const viewport: Viewport = {
+  themeColor: '#c72a09',
+};
 
 export const metadata: Metadata = {
   title: {
-    default: "Studio 24 — Control de Bordados",
-    template: "%s — Studio 24",
+    default: 'Studio 24 — Control de Bordados',
+    template: '%s — Studio 24',
   },
-  description: "Sistema de control de ingresos, egresos y clientes para negocio de bordados",
+  description: 'Sistema de control de ingresos, egresos y clientes para negocio de bordados',
   icons: {
-    icon: "/favicon.svg",
+    icon: '/favicon.svg',
+  },
+  manifest: '/studio24/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Studio 24',
   },
 };
 
@@ -22,9 +33,11 @@ export default function RootLayout({
   return (
     <html lang="es" className="h-full antialiased">
       <body className="min-h-full font-sans">
-        <SeedData />
-        <Sidebar />
-        <main className="lg:ml-[260px] min-h-screen px-4 py-16 lg:px-10 lg:py-8">{children}</main>
+        <PinLock>
+          <SeedData />
+          <Sidebar />
+          <main className="lg:ml-[260px] min-h-screen px-4 py-16 lg:px-10 lg:py-8">{children}</main>
+        </PinLock>
       </body>
     </html>
   );

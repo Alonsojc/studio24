@@ -1,23 +1,50 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
-import { getConfig, saveConfig, exportAllData, importAllData, clearAllData, getClientes, getProveedores, getEgresos, getIngresos } from '@/lib/store';
+import { useState, useRef } from 'react';
+import {
+  getConfig,
+  saveConfig,
+  exportAllData,
+  importAllData,
+  clearAllData,
+  getClientes,
+  getProveedores,
+  getEgresos,
+  getIngresos,
+} from '@/lib/store';
 import { ConfigNegocio } from '@/lib/types';
-import { getSeedClientes, getSeedProveedores, getSeedEgresos, getSeedIngresos, getSeedRecurrentes, getSeedPedidos, getSeedProductos } from '@/lib/seed';
+import {
+  getSeedClientes,
+  getSeedProveedores,
+  getSeedEgresos,
+  getSeedIngresos,
+  getSeedRecurrentes,
+  getSeedPedidos,
+  getSeedProductos,
+} from '@/lib/seed';
 import PageHeader from '@/components/PageHeader';
 import { inputClass, labelClass } from '@/lib/styles';
 
 export default function AjustesPage() {
-  const [config, setConfig] = useState<ConfigNegocio | null>(null);
+  const [config, setConfig] = useState<ConfigNegocio | null>(() =>
+    typeof window !== 'undefined' ? getConfig() : null,
+  );
   const [saved, setSaved] = useState(false);
   const [exported, setExported] = useState(false);
   const [imported, setImported] = useState(false);
   const [seeded, setSeeded] = useState(false);
+  const [hasPin, setHasPin] = useState(
+    () => typeof window !== 'undefined' && !!localStorage.getItem('bordados_pin_hash'),
+  );
+  const [pinRemoved, setPinRemoved] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setConfig(getConfig()); }, []);
-
-  if (!config) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" /></div>;
+  if (!config)
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
 
   const handleSave = () => {
     saveConfig(config);
@@ -46,7 +73,10 @@ export default function AjustesPage() {
       try {
         importAllData(ev.target?.result as string);
         setImported(true);
-        setTimeout(() => { setImported(false); window.location.reload(); }, 1500);
+        setTimeout(() => {
+          setImported(false);
+          window.location.reload();
+        }, 1500);
       } catch {
         alert('Error: El archivo no es un respaldo válido.');
       }
@@ -55,9 +85,11 @@ export default function AjustesPage() {
   };
 
   const handleSeedData = () => {
-    const hasData = getClientes().length > 0 || getProveedores().length > 0 || getEgresos().length > 0 || getIngresos().length > 0;
+    const hasData =
+      getClientes().length > 0 || getProveedores().length > 0 || getEgresos().length > 0 || getIngresos().length > 0;
     if (hasData) {
-      if (!confirm('Ya existen datos en el sistema. Cargar datos demo agregará registros adicionales. ¿Continuar?')) return;
+      if (!confirm('Ya existen datos en el sistema. Cargar datos demo agregará registros adicionales. ¿Continuar?'))
+        return;
     }
     const clientes = getSeedClientes();
     const proveedores = getSeedProveedores();
@@ -78,7 +110,10 @@ export default function AjustesPage() {
     localStorage.setItem('bordados_productos', JSON.stringify(productos));
 
     setSeeded(true);
-    setTimeout(() => { setSeeded(false); window.location.reload(); }, 1500);
+    setTimeout(() => {
+      setSeeded(false);
+      window.location.reload();
+    }, 1500);
   };
 
   const handleClear = () => {
@@ -101,54 +136,186 @@ export default function AjustesPage() {
           <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Datos del Negocio</h3>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div><label className={labelClass}>Nombre del negocio</label><input type="text" value={config.nombreNegocio} onChange={(e) => setConfig({ ...config, nombreNegocio: e.target.value })} className={inputClass} /></div>
-              <div><label className={labelClass}>Logo (URL)</label><input type="url" value={config.logoUrl} onChange={(e) => setConfig({ ...config, logoUrl: e.target.value })} placeholder="https://..." className={inputClass} /></div>
+              <div>
+                <label className={labelClass}>Nombre del negocio</label>
+                <input
+                  type="text"
+                  value={config.nombreNegocio}
+                  onChange={(e) => setConfig({ ...config, nombreNegocio: e.target.value })}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Logo (URL)</label>
+                <input
+                  type="url"
+                  value={config.logoUrl}
+                  onChange={(e) => setConfig({ ...config, logoUrl: e.target.value })}
+                  placeholder="https://..."
+                  className={inputClass}
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><label className={labelClass}>Teléfono</label><input type="tel" value={config.telefono} onChange={(e) => setConfig({ ...config, telefono: e.target.value })} className={inputClass} /></div>
-              <div><label className={labelClass}>Email</label><input type="email" value={config.email} onChange={(e) => setConfig({ ...config, email: e.target.value })} className={inputClass} /></div>
+              <div>
+                <label className={labelClass}>Teléfono</label>
+                <input
+                  type="tel"
+                  value={config.telefono}
+                  onChange={(e) => setConfig({ ...config, telefono: e.target.value })}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Email</label>
+                <input
+                  type="email"
+                  value={config.email}
+                  onChange={(e) => setConfig({ ...config, email: e.target.value })}
+                  className={inputClass}
+                />
+              </div>
             </div>
-            <div><label className={labelClass}>Dirección</label><input type="text" value={config.direccion} onChange={(e) => setConfig({ ...config, direccion: e.target.value })} className={inputClass} /></div>
+            <div>
+              <label className={labelClass}>Dirección</label>
+              <input
+                type="text"
+                value={config.direccion}
+                onChange={(e) => setConfig({ ...config, direccion: e.target.value })}
+                className={inputClass}
+              />
+            </div>
           </div>
         </div>
 
         {/* Payment Info */}
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Datos de Pago (para cotizaciones)</h3>
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">
+            Datos de Pago (para cotizaciones)
+          </h3>
           <div className="space-y-4">
-            <div><label className={labelClass}>Titular de la cuenta</label><input type="text" value={config.titular} onChange={(e) => setConfig({ ...config, titular: e.target.value })} className={inputClass} /></div>
+            <div>
+              <label className={labelClass}>Titular de la cuenta</label>
+              <input
+                type="text"
+                value={config.titular}
+                onChange={(e) => setConfig({ ...config, titular: e.target.value })}
+                className={inputClass}
+              />
+            </div>
             <div className="grid grid-cols-3 gap-4">
-              <div><label className={labelClass}>Banco</label><input type="text" value={config.banco} onChange={(e) => setConfig({ ...config, banco: e.target.value })} className={inputClass} /></div>
-              <div><label className={labelClass}>No. Cuenta</label><input type="text" value={config.numeroCuenta} onChange={(e) => setConfig({ ...config, numeroCuenta: e.target.value })} className={inputClass} /></div>
-              <div><label className={labelClass}>CLABE</label><input type="text" value={config.clabe} onChange={(e) => setConfig({ ...config, clabe: e.target.value })} className={inputClass} /></div>
+              <div>
+                <label className={labelClass}>Banco</label>
+                <input
+                  type="text"
+                  value={config.banco}
+                  onChange={(e) => setConfig({ ...config, banco: e.target.value })}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>No. Cuenta</label>
+                <input
+                  type="text"
+                  value={config.numeroCuenta}
+                  onChange={(e) => setConfig({ ...config, numeroCuenta: e.target.value })}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>CLABE</label>
+                <input
+                  type="text"
+                  value={config.clabe}
+                  onChange={(e) => setConfig({ ...config, clabe: e.target.value })}
+                  className={inputClass}
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        <button onClick={handleSave} className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors ${saved ? 'bg-green-500 text-white' : 'bg-[#c72a09] text-white hover:bg-[#a82207]'}`}>
+        <button
+          onClick={handleSave}
+          className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors ${saved ? 'bg-green-500 text-white' : 'bg-[#c72a09] text-white hover:bg-[#a82207]'}`}
+        >
           {saved ? '¡Guardado!' : 'Guardar Configuración'}
         </button>
 
         {/* Backup */}
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
           <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Respaldo de Datos</h3>
-          <p className="text-xs text-neutral-400 mb-4">Los datos se guardan en este navegador. Si cambias de computadora o borras datos del navegador, los pierdes. Haz respaldos frecuentes.</p>
+          <p className="text-xs text-neutral-400 mb-4">
+            Los datos se guardan en este navegador. Si cambias de computadora o borras datos del navegador, los pierdes.
+            Haz respaldos frecuentes.
+          </p>
           <div className="grid grid-cols-2 gap-3">
-            <button onClick={handleExport} className={`py-3 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${exported ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}>
+            <button
+              onClick={handleExport}
+              className={`py-3 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${exported ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}
+            >
               {exported ? '¡Descargado!' : 'Descargar Respaldo'}
             </button>
-            <button onClick={() => fileRef.current?.click()} className={`py-3 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${imported ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}>
+            <button
+              onClick={() => fileRef.current?.click()}
+              className={`py-3 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${imported ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}
+            >
               {imported ? '¡Importado!' : 'Importar Respaldo'}
             </button>
             <input ref={fileRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
           </div>
         </div>
 
+        {/* PIN Security */}
+        <div className="bg-white rounded-2xl border border-neutral-100 p-6">
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-3">Seguridad</h3>
+          <p className="text-xs text-neutral-400 mb-4">
+            {hasPin
+              ? 'Tienes un PIN configurado. Se pedirá al abrir el sistema en una nueva pestaña.'
+              : 'Protege tu sistema con un PIN de acceso. Se pedirá cada vez que abras Studio 24.'}
+          </p>
+          {hasPin ? (
+            <button
+              onClick={() => {
+                if (confirm('¿Eliminar el PIN de acceso? El sistema quedará sin protección.')) {
+                  localStorage.removeItem('bordados_pin_hash');
+                  sessionStorage.removeItem('bordados_pin_session');
+                  setHasPin(false);
+                  setPinRemoved(true);
+                  setTimeout(() => setPinRemoved(false), 2000);
+                }
+              }}
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${pinRemoved ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-red-500 border-red-200 hover:bg-red-50'}`}
+            >
+              {pinRemoved ? '¡PIN eliminado!' : 'Eliminar PIN'}
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                // Trigger PIN setup by clearing session and reloading
+                sessionStorage.removeItem('bordados_pin_session');
+                localStorage.setItem('bordados_pin_setup', '1');
+                window.location.reload();
+              }}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-[#0a0a0a] text-white hover:bg-[#222] transition-colors"
+            >
+              Configurar PIN
+            </button>
+          )}
+        </div>
+
         {/* Demo Data */}
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-3">Datos de Demostración</h3>
-          <p className="text-xs text-neutral-400 mb-4">Carga datos de ejemplo (clientes, pedidos, ingresos, egresos, productos) para probar el sistema.</p>
-          <button onClick={handleSeedData} className={`px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${seeded ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}>
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-3">
+            Datos de Demostración
+          </h3>
+          <p className="text-xs text-neutral-400 mb-4">
+            Carga datos de ejemplo (clientes, pedidos, ingresos, egresos, productos) para probar el sistema.
+          </p>
+          <button
+            onClick={handleSeedData}
+            className={`px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${seeded ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}
+          >
             {seeded ? '¡Cargados!' : 'Cargar Datos Demo'}
           </button>
         </div>
@@ -156,8 +323,13 @@ export default function AjustesPage() {
         {/* Danger Zone */}
         <div className="bg-white rounded-2xl border border-red-200 p-6">
           <h3 className="text-[10px] font-bold tracking-[0.12em] text-red-400 uppercase mb-3">Zona de Peligro</h3>
-          <p className="text-xs text-neutral-400 mb-4">Borrar todos los datos para empezar de cero. Se te pedira descargar un respaldo antes.</p>
-          <button onClick={handleClear} className="px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-white text-red-500 border border-red-200 hover:bg-red-50 transition-colors">
+          <p className="text-xs text-neutral-400 mb-4">
+            Borrar todos los datos para empezar de cero. Se te pedira descargar un respaldo antes.
+          </p>
+          <button
+            onClick={handleClear}
+            className="px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-white text-red-500 border border-red-200 hover:bg-red-50 transition-colors"
+          >
             Borrar Todos los Datos
           </button>
         </div>

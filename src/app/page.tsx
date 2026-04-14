@@ -1,27 +1,27 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { getIngresos, getEgresos, getClientes, getPedidos } from '@/lib/store';
 import { Ingreso, Egreso, Pedido } from '@/lib/types';
-import { formatCurrency, formatDate, formaPagoLabel, conceptoLabel, categoriaLabel, estadoPedidoLabel, estadoPedidoColor } from '@/lib/helpers';
+import {
+  formatCurrency,
+  formatDate,
+  formaPagoLabel,
+  conceptoLabel,
+  categoriaLabel,
+  estadoPedidoLabel,
+} from '@/lib/helpers';
 import StatCard from '@/components/StatCard';
 import PageHeader from '@/components/PageHeader';
 
 export default function Dashboard() {
-  const [ingresos, setIngresos] = useState<Ingreso[]>([]);
-  const [egresos, setEgresos] = useState<Egreso[]>([]);
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [totalClientes, setTotalClientes] = useState(0);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setIngresos(getIngresos());
-    setEgresos(getEgresos());
-    setPedidos(getPedidos());
-    setTotalClientes(getClientes().length);
-    setMounted(true);
-  }, []);
+  const isClient = typeof window !== 'undefined';
+  const [ingresos] = useState<Ingreso[]>(() => (isClient ? getIngresos() : []));
+  const [egresos] = useState<Egreso[]>(() => (isClient ? getEgresos() : []));
+  const [pedidos] = useState<Pedido[]>(() => (isClient ? getPedidos() : []));
+  const [totalClientes] = useState(() => (isClient ? getClientes().length : 0));
+  const [mounted] = useState(() => isClient);
 
   if (!mounted) {
     return (
@@ -58,10 +58,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <PageHeader
-        title="Dashboard"
-        description={`Resumen de ${monthName}`}
-      />
+      <PageHeader title="Dashboard" description={`Resumen de ${monthName}`} />
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
@@ -70,30 +67,20 @@ export default function Dashboard() {
           value={formatCurrency(totalIngresosMes)}
           subtitle={`${ingresosDelMes.length} ventas`}
         />
-        <StatCard
-          label="Egresos"
-          value={formatCurrency(totalEgresosMes)}
-          subtitle={`${egresosDelMes.length} gastos`}
-        />
+        <StatCard label="Egresos" value={formatCurrency(totalEgresosMes)} subtitle={`${egresosDelMes.length} gastos`} />
         <StatCard
           label="Ganancia Neta"
           value={formatCurrency(ganancia)}
           subtitle={ganancia >= 0 ? 'Positiva' : 'Negativa'}
           accent
         />
-        <StatCard
-          label="Clientes"
-          value={String(totalClientes)}
-          subtitle="Registrados"
-        />
+        <StatCard label="Clientes" value={String(totalClientes)} subtitle="Registrados" />
       </div>
 
       {/* Fiscal + Payment */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-10">
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">
-            Resumen Fiscal
-          </h3>
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Resumen Fiscal</h3>
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <span className="text-sm text-neutral-500">Facturado</span>
@@ -115,14 +102,10 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">
-            Formas de Pago
-          </h3>
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Formas de Pago</h3>
           <div className="space-y-4">
             {(['efectivo', 'tarjeta', 'transferencia', 'otro'] as const).map((fp) => {
-              const total = ingresosDelMes
-                .filter((i) => i.formaPago === fp)
-                .reduce((s, i) => s + i.montoTotal, 0);
+              const total = ingresosDelMes.filter((i) => i.formaPago === fp).reduce((s, i) => s + i.montoTotal, 0);
               const pct = totalIngresosMes > 0 ? (total / totalIngresosMes) * 100 : 0;
               return (
                 <div key={fp}>
@@ -147,7 +130,14 @@ export default function Dashboard() {
       {(() => {
         const activos = pedidos.filter((p) => p.estado !== 'entregado' && p.estado !== 'cancelado');
         const urgentes = activos.filter((p) => p.urgente);
-        const vencidos = activos.filter((p) => p.fechaEntrega && new Date(p.fechaEntrega) < new Date());
+        const hoy = new Date();
+        const en2dias = new Date(hoy.getTime() + 2 * 24 * 60 * 60 * 1000);
+        const vencidos = activos.filter((p) => p.fechaEntrega && new Date(p.fechaEntrega) < hoy);
+        const porVencer = activos.filter((p) => {
+          if (!p.fechaEntrega) return false;
+          const entrega = new Date(p.fechaEntrega);
+          return entrega >= hoy && entrega <= en2dias;
+        });
         const clientes = [...new Set(activos.map((p) => p.clienteId))];
         if (activos.length === 0) return null;
         return (
@@ -155,21 +145,53 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-[10px] font-bold tracking-[0.12em] text-white/30 uppercase">Pedidos Activos</h3>
-                <p className="text-xs text-white/20 mt-0.5">{activos.length} pedidos &middot; {clientes.length} clientes &middot; {formatCurrency(activos.reduce((s, p) => s + p.montoTotal, 0))} en producción</p>
+                <p className="text-xs text-white/20 mt-0.5">
+                  {activos.length} pedidos &middot; {clientes.length} clientes &middot;{' '}
+                  {formatCurrency(activos.reduce((s, p) => s + p.montoTotal, 0))} en producción
+                </p>
               </div>
-              <Link href="/pedidos" className="text-[10px] font-bold tracking-[0.08em] text-[#c72a09] uppercase hover:underline">Ver todos</Link>
+              <Link
+                href="/pedidos"
+                className="text-[10px] font-bold tracking-[0.08em] text-[#c72a09] uppercase hover:underline"
+              >
+                Ver todos
+              </Link>
             </div>
             {urgentes.length > 0 && (
               <div className="bg-[#c72a09]/10 border border-[#c72a09]/20 rounded-xl p-3 mb-4">
-                <p className="text-xs font-bold text-[#c72a09]">{urgentes.length} pedido{urgentes.length > 1 ? 's' : ''} urgente{urgentes.length > 1 ? 's' : ''}</p>
+                <p className="text-xs font-bold text-[#c72a09]">
+                  {urgentes.length} pedido{urgentes.length > 1 ? 's' : ''} urgente{urgentes.length > 1 ? 's' : ''}
+                </p>
                 {urgentes.map((p) => (
-                  <p key={p.id} className="text-xs text-white/50 mt-1">{p.descripcion} &middot; {estadoPedidoLabel(p.estado)}{p.fechaEntrega ? ` &middot; Entrega: ${formatDate(p.fechaEntrega)}` : ''}</p>
+                  <p key={p.id} className="text-xs text-white/50 mt-1">
+                    {p.descripcion} &middot; {estadoPedidoLabel(p.estado)}
+                    {p.fechaEntrega ? ` &middot; Entrega: ${formatDate(p.fechaEntrega)}` : ''}
+                  </p>
                 ))}
               </div>
             )}
-            {vencidos.length > 0 && !urgentes.some((u) => vencidos.includes(u)) && (
+            {vencidos.length > 0 && (
               <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 mb-4">
-                <p className="text-xs font-bold text-amber-400">{vencidos.length} pedido{vencidos.length > 1 ? 's' : ''} vencido{vencidos.length > 1 ? 's' : ''}</p>
+                <p className="text-xs font-bold text-amber-400">
+                  {vencidos.length} pedido{vencidos.length > 1 ? 's' : ''} vencido{vencidos.length > 1 ? 's' : ''}
+                </p>
+                {vencidos.map((p) => (
+                  <p key={p.id} className="text-xs text-white/50 mt-1">
+                    {p.descripcion} &middot; Venció: {formatDate(p.fechaEntrega)}
+                  </p>
+                ))}
+              </div>
+            )}
+            {porVencer.length > 0 && (
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 mb-4">
+                <p className="text-xs font-bold text-blue-400">
+                  {porVencer.length} pedido{porVencer.length > 1 ? 's' : ''} por vencer en 48h
+                </p>
+                {porVencer.map((p) => (
+                  <p key={p.id} className="text-xs text-white/50 mt-1">
+                    {p.descripcion} &middot; Entrega: {formatDate(p.fechaEntrega)}
+                  </p>
+                ))}
               </div>
             )}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -178,7 +200,9 @@ export default function Dashboard() {
                 return (
                   <div key={estado} className="bg-white/[0.04] rounded-xl p-3 text-center">
                     <p className="text-lg font-black text-white">{count}</p>
-                    <p className="text-[9px] font-bold tracking-[0.08em] text-white/25 uppercase mt-0.5">{estadoPedidoLabel(estado)}</p>
+                    <p className="text-[9px] font-bold tracking-[0.08em] text-white/25 uppercase mt-0.5">
+                      {estadoPedidoLabel(estado)}
+                    </p>
                   </div>
                 );
               })}
@@ -190,15 +214,16 @@ export default function Dashboard() {
       {/* Recent Transactions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">
-            Últimos Ingresos
-          </h3>
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Últimos Ingresos</h3>
           {recentIngresos.length === 0 ? (
             <p className="text-sm text-neutral-300 py-8 text-center">Sin ingresos</p>
           ) : (
             <div className="space-y-1">
               {recentIngresos.map((i) => (
-                <div key={i.id} className="flex items-center justify-between py-3 border-b border-neutral-50 last:border-0">
+                <div
+                  key={i.id}
+                  className="flex items-center justify-between py-3 border-b border-neutral-50 last:border-0"
+                >
                   <div>
                     <p className="text-sm font-semibold text-[#0a0a0a]">{i.descripcion}</p>
                     <p className="text-xs text-neutral-400 mt-0.5">
@@ -206,9 +231,7 @@ export default function Dashboard() {
                       {i.factura && <span className="text-[#c72a09] font-semibold"> &middot; F</span>}
                     </p>
                   </div>
-                  <span className="text-sm font-bold text-green-600">
-                    +{formatCurrency(i.montoTotal)}
-                  </span>
+                  <span className="text-sm font-bold text-green-600">+{formatCurrency(i.montoTotal)}</span>
                 </div>
               ))}
             </div>
@@ -216,15 +239,16 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">
-            Últimos Egresos
-          </h3>
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Últimos Egresos</h3>
           {recentEgresos.length === 0 ? (
             <p className="text-sm text-neutral-300 py-8 text-center">Sin egresos</p>
           ) : (
             <div className="space-y-1">
               {recentEgresos.map((e) => (
-                <div key={e.id} className="flex items-center justify-between py-3 border-b border-neutral-50 last:border-0">
+                <div
+                  key={e.id}
+                  className="flex items-center justify-between py-3 border-b border-neutral-50 last:border-0"
+                >
                   <div>
                     <p className="text-sm font-semibold text-[#0a0a0a]">{e.descripcion}</p>
                     <p className="text-xs text-neutral-400 mt-0.5">
@@ -232,9 +256,7 @@ export default function Dashboard() {
                       {e.factura && <span className="text-[#c72a09] font-semibold"> &middot; F</span>}
                     </p>
                   </div>
-                  <span className="text-sm font-bold text-red-500">
-                    -{formatCurrency(e.montoTotal)}
-                  </span>
+                  <span className="text-sm font-bold text-red-500">-{formatCurrency(e.montoTotal)}</span>
                 </div>
               ))}
             </div>

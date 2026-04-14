@@ -17,6 +17,75 @@
   --muted: #737373;
 }
 
+.dark {
+  --background: #0a0a0a;
+  --foreground: #e5e5e5;
+  --card-bg: #171717;
+  --border: #2a2a2a;
+  --muted: #a3a3a3;
+}
+
+.dark body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.dark .bg-white {
+  background-color: var(--card-bg) !important;
+}
+
+.dark .border-neutral-100,
+.dark .border-neutral-50 {
+  border-color: var(--border) !important;
+}
+
+.dark .text-\[\#0a0a0a\] {
+  color: var(--foreground) !important;
+}
+
+.dark .text-neutral-400 {
+  color: var(--muted) !important;
+}
+
+.dark .text-neutral-500 {
+  color: #a3a3a3 !important;
+}
+
+.dark .text-neutral-600 {
+  color: #d4d4d4 !important;
+}
+
+.dark .bg-neutral-50\/50,
+.dark .hover\:bg-neutral-50:hover {
+  background-color: #1f1f1f !important;
+}
+
+.dark .bg-\[\#fafafa\] {
+  background-color: #0a0a0a !important;
+}
+
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #1a1a1a !important;
+  border-color: #333 !important;
+  color: #e5e5e5 !important;
+}
+
+.dark input:focus,
+.dark textarea:focus,
+.dark select:focus {
+  border-color: #c72a09 !important;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #404040;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

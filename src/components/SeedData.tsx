@@ -11,6 +11,11 @@ export default function SeedData() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     generarEgresosRecurrentes();
+
+    // Registrar Service Worker para PWA offline
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/studio24/sw.js').catch(() => {});
+    }
   }, []);
 
   return null;
