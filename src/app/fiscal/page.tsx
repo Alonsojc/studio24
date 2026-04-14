@@ -479,7 +479,9 @@ export default function FiscalPage() {
               </div>
               <div className="border-t border-white/10 pt-2 flex justify-between">
                 <span className="text-sm font-bold text-white">ISR estimado</span>
-                <span className="text-lg font-black text-amber-400">{formatCurrency(sel.isrEstimado)}</span>
+                <span className={`text-lg font-black ${sel.isrEstimado > 0 ? 'text-[#c72a09]' : 'text-blue-400'}`}>
+                  {formatCurrency(sel.isrEstimado)}
+                </span>
               </div>
             </div>
           </div>
@@ -490,15 +492,21 @@ export default function FiscalPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-sm text-white/50">IVA</span>
-                <span className="text-sm font-bold text-white">{formatCurrency(sel.ivaPorPagar)}</span>
+                <span className={`text-sm font-bold ${sel.ivaPorPagar > 0 ? 'text-[#c72a09]' : 'text-blue-400'}`}>
+                  {formatCurrency(sel.ivaPorPagar)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-white/50">ISR</span>
-                <span className="text-sm font-bold text-white">{formatCurrency(sel.isrEstimado)}</span>
+                <span className={`text-sm font-bold ${sel.isrEstimado > 0 ? 'text-[#c72a09]' : 'text-blue-400'}`}>
+                  {formatCurrency(sel.isrEstimado)}
+                </span>
               </div>
               <div className="border-t border-white/10 pt-2 flex justify-between">
                 <span className="text-sm font-bold text-white">Total impuestos</span>
-                <span className="text-2xl font-black text-[#c72a09]">{formatCurrency(sel.totalImpuestos)}</span>
+                <span className={`text-2xl font-black ${sel.totalImpuestos > 0 ? 'text-[#c72a09]' : 'text-blue-400'}`}>
+                  {formatCurrency(sel.totalImpuestos)}
+                </span>
               </div>
             </div>
           </div>
