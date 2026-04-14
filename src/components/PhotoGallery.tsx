@@ -1,0 +1,145 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { savePhoto, getPhoto, deletePhoto, getPhotoKeys } from '@/lib/db';
+import { compressImage, blobToDataURL } from '@/lib/image';
+import { v4 as uuid } from 'uuid';
+
+interface PhotoGalleryProps {
+  pedidoId: string;
+  readOnly?: boolean;
+}
+
+interface PhotoItem {
+  id: string;
+  dataUrl: string;
+}
+
+export default function PhotoGallery({ pedidoId, readOnly = false }: PhotoGalleryProps) {
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [viewPhoto, setViewPhoto] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadPhotos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidoId]);
+
+  const loadPhotos = async () => {
+    setLoading(true);
+    try {
+      const keys = await getPhotoKeys(pedidoId);
+      const items: PhotoItem[] = [];
+      for (const key of keys) {
+        const photoId = key.replace(`${pedidoId}/`, '');
+        const blob = await getPhoto(pedidoId, photoId);
+        if (blob) {
+          const dataUrl = await blobToDataURL(blob);
+          items.push({ id: photoId, dataUrl });
+        }
+      }
+      setPhotos(items);
+    } catch {
+      // IDB not available
+    }
+    setLoading(false);
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = Array.from(e.target.files || []);
+    if (fileList.length === 0) return;
+    setUploading(true);
+    try {
+      for (const file of fileList) {
+        if (!file.type.startsWith('image/')) continue;
+        const compressed = await compressImage(file);
+        const photoId = uuid();
+        await savePhoto(pedidoId, photoId, compressed);
+        const dataUrl = await blobToDataURL(compressed);
+        setPhotos((prev) => [...prev, { id: photoId, dataUrl }]);
+      }
+    } catch {
+      alert('Error al subir imagen');
+    }
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const handleDelete = async (photoId: string) => {
+    await deletePhoto(pedidoId, photoId);
+    setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 py-3">
+        <div className="w-4 h-4 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs text-neutral-400">Cargando fotos...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Upload button */}
+      {!readOnly && (
+        <div className="mb-3">
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="px-3 py-2 rounded-xl text-[10px] font-bold tracking-[0.05em] uppercase border border-neutral-200 text-neutral-500 hover:border-[#c72a09] hover:text-[#c72a09] transition-colors disabled:opacity-50"
+          >
+            {uploading ? 'Subiendo...' : '+ Agregar foto'}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleUpload} className="hidden" />
+        </div>
+      )}
+
+      {/* Gallery */}
+      {photos.length === 0 ? (
+        <p className="text-xs text-neutral-300 py-2">Sin fotos</p>
+      ) : (
+        <div className="grid grid-cols-3 gap-2">
+          {photos.map((photo) => (
+            <div key={photo.id} className="relative group">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photo.dataUrl}
+                alt="Foto del pedido"
+                className="w-full aspect-square object-cover rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => setViewPhoto(photo.dataUrl)}
+              />
+              {!readOnly && (
+                <button
+                  onClick={() => handleDelete(photo.id)}
+                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  x
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {viewPhoto && (
+        <div
+          className="fixed inset-0 z-[300] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setViewPhoto(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={viewPhoto} alt="Foto ampliada" className="max-w-full max-h-full object-contain rounded-xl" />
+          <button
+            onClick={() => setViewPhoto(null)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 text-white text-lg font-bold flex items-center justify-center hover:bg-white/40 transition-colors"
+          >
+            x
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

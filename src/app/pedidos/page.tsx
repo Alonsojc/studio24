@@ -16,6 +16,7 @@ import {
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import ActionMenu from '@/components/ActionMenu';
+import PhotoGallery from '@/components/PhotoGallery';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
@@ -519,6 +520,10 @@ export default function PedidosPage() {
                           )}
                         </div>
                       )}
+                      {/* Photos */}
+                      <div className="mt-2">
+                        <PhotoGallery pedidoId={p.id} />
+                      </div>
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-neutral-50">
                         {nextEstado(p.estado) ? (
                           <button

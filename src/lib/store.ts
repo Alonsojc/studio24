@@ -1,6 +1,17 @@
 'use client';
 
-import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente, Pedido, Cotizacion, ConfigNegocio, Producto } from './types';
+import {
+  Cliente,
+  Proveedor,
+  Egreso,
+  Ingreso,
+  EgresoRecurrente,
+  Pedido,
+  Cotizacion,
+  ConfigNegocio,
+  Producto,
+} from './types';
+import { mirrorToIDB, removeFromIDB } from './db';
 
 const KEYS = {
   clientes: 'bordados_clientes',
@@ -24,6 +35,7 @@ function getItems<T>(key: string): T[] {
 function safeSetItem(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
+    mirrorToIDB(key, value);
   } catch (e) {
     if (e instanceof DOMException && e.name === 'QuotaExceededError') {
       throw new Error('Sin espacio en el navegador. Exporta un respaldo desde Ajustes y borra datos antiguos.');
@@ -57,7 +69,7 @@ function deleteItem<T extends { id: string }>(key: string, id: string): void {
   const items = getItems<T>(key);
   setItems(
     key,
-    items.filter((i) => i.id !== id)
+    items.filter((i) => i.id !== id),
   );
 }
 
@@ -166,7 +178,10 @@ export function importAllData(json: string): void {
 }
 
 export function clearAllData(): void {
-  Object.values(KEYS).forEach((key) => localStorage.removeItem(key));
+  Object.values(KEYS).forEach((key) => {
+    localStorage.removeItem(key);
+    removeFromIDB(key);
+  });
   // Keep seeded flag so demo data doesn't reload
   localStorage.setItem('bordados_seeded', '1');
 }
