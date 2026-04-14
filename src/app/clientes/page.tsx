@@ -2,7 +2,8 @@
 
 import { useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getClientes, addCliente, updateCliente, deleteCliente, getIngresos, getPedidos } from '@/lib/store';
+import { getClientes, getIngresos, getPedidos } from '@/lib/store';
+import { addCliente, updateCliente, deleteCliente } from '@/lib/store-sync';
 import { Cliente, Ingreso, Pedido } from '@/lib/types';
 import { formatCurrency, formatDate, validateCliente, estadoPedidoLabel, estadoPedidoColor } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';

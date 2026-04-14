@@ -3,7 +3,6 @@
 import { useState, useRef } from 'react';
 import {
   getConfig,
-  saveConfig,
   exportAllData,
   importAllData,
   clearAllData,
@@ -12,6 +11,7 @@ import {
   getEgresos,
   getIngresos,
 } from '@/lib/store';
+import { saveConfig } from '@/lib/store-sync';
 import { ConfigNegocio } from '@/lib/types';
 import {
   getSeedClientes,

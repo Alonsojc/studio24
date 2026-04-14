@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getPedidos, addPedido, updatePedido, deletePedido, getClientes, addIngreso } from '@/lib/store';
+import { getPedidos, getClientes } from '@/lib/store';
+import { addPedido, updatePedido, deletePedido, addIngreso } from '@/lib/store-sync';
 import { Pedido, Cliente, EstadoPedido, EstadoPago, ConceptoIngreso, Ingreso } from '@/lib/types';
 import {
   formatCurrency,

@@ -3,10 +3,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import {
-  getEgresos, addEgreso, updateEgreso, deleteEgreso,
+  getEgresos,
   getProveedores,
-  getEgresosRecurrentes, addEgresoRecurrente, updateEgresoRecurrente, deleteEgresoRecurrente,
+  getEgresosRecurrentes,
 } from '@/lib/store';
+import {
+  addEgreso, updateEgreso, deleteEgreso,
+  addEgresoRecurrente, updateEgresoRecurrente, deleteEgresoRecurrente,
+} from '@/lib/store-sync';
 import { Egreso, Proveedor, EgresoRecurrente, CategoriaEgreso, FormaPago } from '@/lib/types';
 import { formatCurrency, formatDate, formaPagoLabel, categoriaLabel, todayString, calcIVA, validateEgreso, validateEgresoRecurrente } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';

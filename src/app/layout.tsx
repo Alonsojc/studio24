@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import Sidebar from '@/components/Sidebar';
 import SeedData from '@/components/SeedData';
 import AuthGate from '@/components/AuthGate';
+import MigrationBanner from '@/components/MigrationBanner';
 import './globals.css';
 
 export const viewport: Viewport = {
@@ -37,6 +38,7 @@ export default function RootLayout({
           <SeedData />
           <Sidebar />
           <main className="lg:ml-[260px] min-h-screen px-4 py-16 lg:px-10 lg:py-8">{children}</main>
+          <MigrationBanner />
         </AuthGate>
       </body>
     </html>
