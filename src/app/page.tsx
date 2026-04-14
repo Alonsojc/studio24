@@ -67,13 +67,19 @@ export default function Dashboard() {
           label="Ingresos"
           value={formatCurrency(totalIngresosMes)}
           subtitle={`${ingresosDelMes.length} ventas`}
+          color="green"
         />
-        <StatCard label="Egresos" value={formatCurrency(totalEgresosMes)} subtitle={`${egresosDelMes.length} gastos`} />
+        <StatCard
+          label="Egresos"
+          value={formatCurrency(totalEgresosMes)}
+          subtitle={`${egresosDelMes.length} gastos`}
+          color="red"
+        />
         <StatCard
           label="Ganancia Neta"
           value={formatCurrency(ganancia)}
           subtitle={ganancia >= 0 ? 'Positiva' : 'Negativa'}
-          accent
+          color={ganancia >= 0 ? 'green' : 'red'}
         />
         <StatCard label="Clientes" value={String(clientes.length)} subtitle="Registrados" />
       </div>
@@ -84,7 +90,10 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-red-600">Errores y desperdicios del mes</p>
-              <p className="text-[10px] text-red-400 mt-0.5">{erroresDelMes.length} errores · {totalEgresosMes > 0 ? ((totalErroresMes / totalEgresosMes) * 100).toFixed(1) : 0}% de los egresos</p>
+              <p className="text-[10px] text-red-400 mt-0.5">
+                {erroresDelMes.length} errores ·{' '}
+                {totalEgresosMes > 0 ? ((totalErroresMes / totalEgresosMes) * 100).toFixed(1) : 0}% de los egresos
+              </p>
             </div>
             <p className="text-lg font-black text-red-600">{formatCurrency(totalErroresMes)}</p>
           </div>
