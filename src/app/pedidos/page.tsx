@@ -404,7 +404,7 @@ export default function PedidosPage() {
     <div>
       <PageHeader
         title="Pedidos"
-        description={`${activos.length} activos &middot; ${formatCurrency(totalActivos)} en producción`}
+        description={`${activos.length} activos · ${formatCurrency(totalActivos)} en producción`}
         action={
           <div className="flex gap-2">
             <div className="flex bg-neutral-100 rounded-xl p-0.5">
@@ -613,7 +613,7 @@ export default function PedidosPage() {
                           <span className="font-semibold text-[#0a0a0a]">{p.descripcion}</span>
                           <span className="block text-[10px] text-neutral-300 mt-0.5">
                             {p.piezas} pzas &middot; {conceptoLabel(p.concepto)}
-                            {p.archivoDiseno ? ` &middot; 📄 ${p.archivoDiseno}` : ''}
+                            {p.archivoDiseno ? ` · 📄 ${p.archivoDiseno}` : ''}
                           </span>
                         </div>
                       </div>
@@ -681,7 +681,7 @@ export default function PedidosPage() {
                   <p className="text-[10px] font-bold tracking-[0.1em] uppercase text-neutral-400">{pagoLabel[ep]}</p>
                   <p className="text-2xl font-black mt-1">{items.length} pedidos</p>
                   <p className="text-xs text-neutral-500 mt-1">
-                    Total: {formatCurrency(total)} {ep === 'parcial' && `&middot; Cobrado: ${formatCurrency(pagado)}`}
+                    Total: {formatCurrency(total)} {ep === 'parcial' && `· Cobrado: ${formatCurrency(pagado)}`}
                   </p>
                   {ep !== 'pagado' && total > 0 && (
                     <p className="text-xs font-bold text-[#c72a09] mt-1">
