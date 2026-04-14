@@ -1,4 +1,4 @@
-import { FormaPago, ConceptoIngreso, CategoriaEgreso, EstadoPedido } from './types';
+import { FormaPago, ConceptoIngreso, CategoriaEgreso, EstadoPedido, Ingreso, Egreso, Pedido, Cliente, Proveedor, Producto, EgresoRecurrente } from './types';
 
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('es-MX', {
@@ -84,4 +84,64 @@ export function estadoPedidoColor(e: EstadoPedido): string {
     cancelado: 'bg-red-100 text-red-600',
   };
   return map[e] || 'bg-neutral-100 text-neutral-500';
+}
+
+// --- Validaciones de formularios ---
+
+function isValidDate(s: string): boolean {
+  if (!s) return false;
+  const d = new Date(s + 'T00:00:00');
+  return !isNaN(d.getTime());
+}
+
+export function validateIngreso(form: Omit<Ingreso, 'id' | 'createdAt'>): string | null {
+  if (!form.descripcion.trim()) return 'La descripción es requerida';
+  if (!form.fecha || !isValidDate(form.fecha)) return 'La fecha no es válida';
+  if (form.monto <= 0) return 'El monto debe ser mayor a 0';
+  if (form.factura && !form.numeroFactura.trim()) return 'Si tiene factura, ingresa el número de factura';
+  return null;
+}
+
+export function validateEgreso(form: Omit<Egreso, 'id' | 'createdAt'>): string | null {
+  if (!form.descripcion.trim()) return 'La descripción es requerida';
+  if (!form.fecha || !isValidDate(form.fecha)) return 'La fecha no es válida';
+  if (form.monto <= 0) return 'El monto debe ser mayor a 0';
+  if (form.factura && !form.numeroFactura.trim()) return 'Si tiene factura, ingresa el número de factura';
+  return null;
+}
+
+export function validatePedido(form: Omit<Pedido, 'id' | 'createdAt'>): string | null {
+  if (!form.descripcion.trim()) return 'La descripción es requerida';
+  if (!form.clienteId) return 'Selecciona un cliente';
+  if (form.piezas < 1) return 'Debe tener al menos 1 pieza';
+  if (form.precioUnitario <= 0) return 'El precio unitario debe ser mayor a 0';
+  if (!form.fechaPedido || !isValidDate(form.fechaPedido)) return 'La fecha de pedido no es válida';
+  if (form.fechaEntrega && !isValidDate(form.fechaEntrega)) return 'La fecha de entrega no es válida';
+  if (form.montoPagado < 0) return 'El monto pagado no puede ser negativo';
+  return null;
+}
+
+export function validateCliente(form: Omit<Cliente, 'id' | 'createdAt'>): string | null {
+  if (!form.nombre.trim()) return 'El nombre es requerido';
+  if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return 'El email no es válido';
+  return null;
+}
+
+export function validateProveedor(form: Omit<Proveedor, 'id' | 'createdAt'>): string | null {
+  if (!form.nombre.trim()) return 'El nombre es requerido';
+  if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return 'El email no es válido';
+  return null;
+}
+
+export function validateProducto(form: Omit<Producto, 'id' | 'createdAt'>): string | null {
+  if (!form.nombre.trim()) return 'El nombre es requerido';
+  if (form.precio < 0) return 'El precio no puede ser negativo';
+  return null;
+}
+
+export function validateEgresoRecurrente(form: Omit<EgresoRecurrente, 'id' | 'createdAt'>): string | null {
+  if (!form.descripcion.trim()) return 'La descripción es requerida';
+  if (form.monto <= 0) return 'El monto debe ser mayor a 0';
+  if (form.diaDelMes < 1 || form.diaDelMes > 28) return 'El día debe estar entre 1 y 28';
+  return null;
 }

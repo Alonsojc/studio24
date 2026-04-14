@@ -8,7 +8,7 @@ import {
   getEgresosRecurrentes, addEgresoRecurrente, updateEgresoRecurrente, deleteEgresoRecurrente,
 } from '@/lib/store';
 import { Egreso, Proveedor, EgresoRecurrente, CategoriaEgreso, FormaPago } from '@/lib/types';
-import { formatCurrency, formatDate, formaPagoLabel, categoriaLabel, todayString, calcIVA } from '@/lib/helpers';
+import { formatCurrency, formatDate, formaPagoLabel, categoriaLabel, todayString, calcIVA, validateEgreso, validateEgresoRecurrente } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
@@ -44,6 +44,8 @@ export default function EgresosPage() {
   const [editingRecId, setEditingRecId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyEgreso());
   const [recForm, setRecForm] = useState(emptyRecurrente());
+  const [formError, setFormError] = useState<string | null>(null);
+  const [recFormError, setRecFormError] = useState<string | null>(null);
   const [filterCat, setFilterCat] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [mounted, setMounted] = useState(false);
@@ -58,10 +60,12 @@ export default function EgresosPage() {
 
   if (!mounted) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" /></div>;
 
-  const openNew = () => { setEditingId(null); setForm(emptyEgreso()); setModalOpen(true); };
-  const openEdit = (e: Egreso) => { setEditingId(e.id); setForm({ ...e }); setModalOpen(true); };
+  const openNew = () => { setEditingId(null); setForm(emptyEgreso()); setFormError(null); setModalOpen(true); };
+  const openEdit = (e: Egreso) => { setEditingId(e.id); setForm({ ...e }); setFormError(null); setModalOpen(true); };
   const handleSave = () => {
-    if (!form.descripcion || form.monto <= 0) return;
+    const error = validateEgreso(form);
+    if (error) { setFormError(error); return; }
+    setFormError(null);
     const iva = form.factura ? calcIVA(form.monto) : 0;
     const data: Egreso = { ...(form as Egreso), id: editingId || uuid(), iva, montoTotal: form.monto + iva, createdAt: editingId ? (form as Egreso).createdAt : new Date().toISOString() };
     editingId ? updateEgreso(data) : addEgreso(data);
@@ -69,10 +73,12 @@ export default function EgresosPage() {
   };
   const handleDelete = (id: string) => { if (confirm('Eliminar este egreso?')) { deleteEgreso(id); reload(); } };
 
-  const openNewRec = () => { setEditingRecId(null); setRecForm(emptyRecurrente()); setRecModalOpen(true); };
-  const openEditRec = (r: EgresoRecurrente) => { setEditingRecId(r.id); setRecForm({ ...r }); setRecModalOpen(true); };
+  const openNewRec = () => { setEditingRecId(null); setRecForm(emptyRecurrente()); setRecFormError(null); setRecModalOpen(true); };
+  const openEditRec = (r: EgresoRecurrente) => { setEditingRecId(r.id); setRecForm({ ...r }); setRecFormError(null); setRecModalOpen(true); };
   const handleSaveRec = () => {
-    if (!recForm.descripcion || recForm.monto <= 0) return;
+    const error = validateEgresoRecurrente(recForm);
+    if (error) { setRecFormError(error); return; }
+    setRecFormError(null);
     const data: EgresoRecurrente = { ...(recForm as EgresoRecurrente), id: editingRecId || uuid(), createdAt: editingRecId ? (recForm as EgresoRecurrente).createdAt : new Date().toISOString() };
     editingRecId ? updateEgresoRecurrente(data) : addEgresoRecurrente(data);
     setRecModalOpen(false); reload();
@@ -234,6 +240,7 @@ export default function EgresosPage() {
           </div>
           {form.factura && <div><label className={labelClass}>No. Factura</label><input type="text" value={form.numeroFactura} onChange={(e) => setForm({ ...form, numeroFactura: e.target.value })} className={inputClass} /></div>}
           <div><label className={labelClass}>Notas</label><textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} className={inputClass} /></div>
+          {formError && <p className="text-xs text-red-500 font-semibold bg-red-50 rounded-xl px-3.5 py-2.5">{formError}</p>}
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
             <button onClick={() => setModalOpen(false)} className={btnSecondary}>Cancelar</button>
             <button onClick={handleSave} className={btnPrimary}>{editingId ? 'Guardar' : 'Registrar'}</button>
@@ -257,6 +264,7 @@ export default function EgresosPage() {
             <div><label className={labelClass}>Forma de Pago</label><select value={recForm.formaPago} onChange={(e) => setRecForm({ ...recForm, formaPago: e.target.value as FormaPago })} className={inputClass}>{formasPago.map((fp) => <option key={fp} value={fp}>{formaPagoLabel(fp)}</option>)}</select></div>
           </div>
           <label className="flex items-center gap-2.5 cursor-pointer"><input type="checkbox" checked={recForm.factura} onChange={(e) => setRecForm({ ...recForm, factura: e.target.checked })} className="w-4 h-4 accent-[#c72a09] rounded" /><span className="text-sm text-neutral-600">Factura (IVA 16%)</span>{recForm.factura && recForm.monto > 0 && <span className="text-xs text-neutral-400 ml-2">Total: {formatCurrency(recForm.monto + calcIVA(recForm.monto))}</span>}</label>
+          {recFormError && <p className="text-xs text-red-500 font-semibold bg-red-50 rounded-xl px-3.5 py-2.5">{recFormError}</p>}
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
             <button onClick={() => setRecModalOpen(false)} className={btnSecondary}>Cancelar</button>
             <button onClick={handleSaveRec} className={btnPrimary}>{editingRecId ? 'Guardar' : 'Crear'}</button>

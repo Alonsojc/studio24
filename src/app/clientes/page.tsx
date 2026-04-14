@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getClientes, addCliente, updateCliente, deleteCliente, getIngresos } from '@/lib/store';
 import { Cliente, Ingreso } from '@/lib/types';
-import { formatCurrency, formatDate } from '@/lib/helpers';
+import { formatCurrency, formatDate, validateCliente } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
@@ -27,6 +27,7 @@ export default function ClientesPage() {
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyCliente());
+  const [formError, setFormError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [mounted, setMounted] = useState(false);
 
@@ -39,11 +40,13 @@ export default function ClientesPage() {
 
   if (!mounted) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" /></div>;
 
-  const openNew = () => { setEditingId(null); setForm(emptyCliente()); setModalOpen(true); };
-  const openEdit = (c: Cliente) => { setEditingId(c.id); setForm({ ...c }); setModalOpen(true); };
+  const openNew = () => { setEditingId(null); setForm(emptyCliente()); setFormError(null); setModalOpen(true); };
+  const openEdit = (c: Cliente) => { setEditingId(c.id); setForm({ ...c }); setFormError(null); setModalOpen(true); };
   const openDetail = (c: Cliente) => { setSelectedCliente(c); setDetailOpen(true); };
   const handleSave = () => {
-    if (!form.nombre) return;
+    const error = validateCliente(form);
+    if (error) { setFormError(error); return; }
+    setFormError(null);
     const data: Cliente = { ...(form as Cliente), id: editingId || uuid(), createdAt: editingId ? (form as Cliente).createdAt : new Date().toISOString() };
     editingId ? updateCliente(data) : addCliente(data);
     setModalOpen(false); reload();
@@ -155,6 +158,7 @@ export default function ClientesPage() {
           <div><label className={labelClass}>Direccion</label><input type="text" value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} className={inputClass} /></div>
           <div><label className={labelClass}>Logo / Imagen (URL)</label><input type="url" value={form.logo} onChange={(e) => setForm({ ...form, logo: e.target.value })} placeholder="https://ejemplo.com/logo.png" className={inputClass} />{form.logo && <img src={form.logo} alt="Preview" className="w-10 h-10 rounded-lg object-cover mt-2" />}</div>
           <div><label className={labelClass}>Notas</label><textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} placeholder="Preferencias, datos adicionales..." className={inputClass} /></div>
+          {formError && <p className="text-xs text-red-500 font-semibold bg-red-50 rounded-xl px-3.5 py-2.5">{formError}</p>}
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
             <button onClick={() => setModalOpen(false)} className={btnSecondary}>Cancelar</button>
             <button onClick={handleSave} className={btnPrimary}>{editingId ? 'Guardar' : 'Agregar'}</button>

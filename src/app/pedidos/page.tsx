@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getPedidos, addPedido, updatePedido, deletePedido, getClientes, addIngreso } from '@/lib/store';
 import { Pedido, Cliente, EstadoPedido, EstadoPago, ConceptoIngreso, Ingreso } from '@/lib/types';
-import { formatCurrency, formatDate, conceptoLabel, estadoPedidoLabel, estadoPedidoColor, todayString } from '@/lib/helpers';
+import { formatCurrency, formatDate, conceptoLabel, estadoPedidoLabel, estadoPedidoColor, todayString, validatePedido } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import ActionMenu from '@/components/ActionMenu';
@@ -64,6 +64,7 @@ export default function PedidosPage() {
   const [checklistOpen, setChecklistOpen] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyPedido());
+  const [formError, setFormError] = useState<string | null>(null);
   const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
   const [mounted, setMounted] = useState(false);
 
@@ -79,10 +80,12 @@ export default function PedidosPage() {
   useEffect(() => { reload(); setMounted(true); }, [reload]);
   if (!mounted) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" /></div>;
 
-  const openNew = () => { setEditingId(null); setForm(emptyPedido()); setModalOpen(true); };
-  const openEdit = (p: Pedido) => { setEditingId(p.id); setForm({ ...p }); setModalOpen(true); };
+  const openNew = () => { setEditingId(null); setForm(emptyPedido()); setFormError(null); setModalOpen(true); };
+  const openEdit = (p: Pedido) => { setEditingId(p.id); setForm({ ...p }); setFormError(null); setModalOpen(true); };
   const handleSave = () => {
-    if (!form.descripcion) return;
+    const error = validatePedido(form);
+    if (error) { setFormError(error); return; }
+    setFormError(null);
     const montoTotal = form.piezas * form.precioUnitario;
     let estadoPago = form.estadoPago;
     if (form.montoPagado >= montoTotal && montoTotal > 0) estadoPago = 'pagado';
@@ -442,6 +445,7 @@ export default function PedidosPage() {
               </div>
             </div>
           )}
+          {formError && <p className="text-xs text-red-500 font-semibold bg-red-50 rounded-xl px-3.5 py-2.5">{formError}</p>}
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
             <button onClick={() => setModalOpen(false)} className={btnSecondary}>Cancelar</button>
             <button onClick={handleSave} className={btnPrimary}>{editingId ? 'Guardar' : 'Crear Pedido'}</button>

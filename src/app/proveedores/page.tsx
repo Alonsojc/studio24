@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getProveedores, addProveedor, updateProveedor, deleteProveedor, getEgresos } from '@/lib/store';
 import { Proveedor, Egreso } from '@/lib/types';
-import { formatCurrency } from '@/lib/helpers';
+import { formatCurrency, validateProveedor } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
@@ -27,6 +27,7 @@ export default function ProveedoresPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyProveedor());
+  const [formError, setFormError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [mounted, setMounted] = useState(false);
 
@@ -39,10 +40,12 @@ export default function ProveedoresPage() {
 
   if (!mounted) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" /></div>;
 
-  const openNew = () => { setEditingId(null); setForm(emptyProveedor()); setModalOpen(true); };
-  const openEdit = (p: Proveedor) => { setEditingId(p.id); setForm({ ...p }); setModalOpen(true); };
+  const openNew = () => { setEditingId(null); setForm(emptyProveedor()); setFormError(null); setModalOpen(true); };
+  const openEdit = (p: Proveedor) => { setEditingId(p.id); setForm({ ...p }); setFormError(null); setModalOpen(true); };
   const handleSave = () => {
-    if (!form.nombre) return;
+    const error = validateProveedor(form);
+    if (error) { setFormError(error); return; }
+    setFormError(null);
     const data: Proveedor = { ...(form as Proveedor), id: editingId || uuid(), createdAt: editingId ? (form as Proveedor).createdAt : new Date().toISOString() };
     editingId ? updateProveedor(data) : addProveedor(data);
     setModalOpen(false); reload();
@@ -111,6 +114,7 @@ export default function ProveedoresPage() {
           <div><label className={labelClass}>Email</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} /></div>
           <div><label className={labelClass}>Logo / Imagen (URL)</label><input type="url" value={form.logo} onChange={(e) => setForm({ ...form, logo: e.target.value })} placeholder="https://ejemplo.com/logo.png" className={inputClass} />{form.logo && <img src={form.logo} alt="Preview" className="w-10 h-10 rounded-lg object-cover mt-2" />}</div>
           <div><label className={labelClass}>Notas</label><textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} className={inputClass} /></div>
+          {formError && <p className="text-xs text-red-500 font-semibold bg-red-50 rounded-xl px-3.5 py-2.5">{formError}</p>}
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
             <button onClick={() => setModalOpen(false)} className={btnSecondary}>Cancelar</button>
             <button onClick={handleSave} className={btnPrimary}>{editingId ? 'Guardar' : 'Agregar'}</button>
