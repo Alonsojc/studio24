@@ -1,6 +1,9 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useRole } from '@/components/RoleProvider';
+import { roleLabel, roleColor, type UserRole } from '@/lib/roles';
+import { supabase } from '@/lib/supabase';
 import {
   getConfig,
   exportAllData,
@@ -37,7 +40,20 @@ export default function AjustesPage() {
     () => typeof window !== 'undefined' && !!localStorage.getItem('bordados_pin_hash'),
   );
   const [pinRemoved, setPinRemoved] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<UserRole>('operador');
+  const [inviteMsg, setInviteMsg] = useState('');
+  const [teamMembers, setTeamMembers] = useState<{id: string; email: string; role: string; nombre: string}[]>([]);
+  const { role } = useRole();
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (role === 'admin') {
+      supabase.from('profiles').select('*').then(({ data }) => {
+        if (data) setTeamMembers(data as {id: string; email: string; role: string; nombre: string}[]);
+      });
+    }
+  }, [role]);
 
   if (!config)
     return (
@@ -319,6 +335,60 @@ export default function AjustesPage() {
             {seeded ? '¡Cargados!' : 'Cargar Datos Demo'}
           </button>
         </div>
+
+        {/* Team Management (admin only) */}
+        {role === 'admin' && (
+          <div className="bg-white rounded-2xl border border-neutral-100 p-6">
+            <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Equipo</h3>
+
+            {/* Current team members */}
+            {teamMembers.length > 0 && (
+              <div className="space-y-2 mb-5">
+                {teamMembers.map((m) => (
+                  <div key={m.id} className="flex items-center justify-between py-2 border-b border-neutral-50 last:border-0">
+                    <div>
+                      <p className="text-sm font-semibold text-[#0a0a0a]">{m.nombre || m.email}</p>
+                      {m.nombre && <p className="text-xs text-neutral-400">{m.email}</p>}
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase ${roleColor(m.role as UserRole)}`}>
+                      {roleLabel(m.role as UserRole)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Invite form */}
+            <p className="text-xs text-neutral-400 mb-3">Invita a alguien a tu equipo. Debe registrarse con el email que indiques.</p>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="email@ejemplo.com"
+                className={inputClass + ' flex-1'}
+              />
+              <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as UserRole)} className="border border-neutral-200 rounded-xl px-3 py-2.5 text-xs font-bold bg-white focus:outline-none focus:border-[#c72a09]">
+                <option value="operador">Operador</option>
+                <option value="contador">Contador</option>
+              </select>
+              <button
+                onClick={async () => {
+                  if (!inviteEmail) return;
+                  setInviteMsg('');
+                  const { error } = await supabase.from('invitations').insert({ email: inviteEmail, role: inviteRole });
+                  if (error) { setInviteMsg('Error: ' + error.message); return; }
+                  setInviteMsg(`Invitación guardada. ${inviteEmail} debe registrarse con ese email.`);
+                  setInviteEmail('');
+                }}
+                className="bg-[#0a0a0a] text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-[0.05em] hover:bg-[#222] transition-colors shrink-0"
+              >
+                Invitar
+              </button>
+            </div>
+            {inviteMsg && <p className="text-xs text-green-600 mt-2">{inviteMsg}</p>}
+          </div>
+        )}
 
         {/* Danger Zone */}
         <div className="bg-white rounded-2xl border border-red-200 p-6">
