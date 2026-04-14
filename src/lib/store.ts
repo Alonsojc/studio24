@@ -10,6 +10,9 @@ import {
   Cotizacion,
   ConfigNegocio,
   Producto,
+  ItemInventario,
+  Diseno,
+  PlantillaWhatsApp,
 } from './types';
 import { mirrorToIDB, removeFromIDB } from './db';
 
@@ -24,6 +27,9 @@ const KEYS = {
   productos: 'bordados_productos',
   egresosRecurrentes: 'bordados_egresos_recurrentes',
   recurrentesLog: 'bordados_recurrentes_log',
+  inventario: 'bordados_inventario',
+  disenos: 'bordados_disenos',
+  plantillas: 'bordados_plantillas',
 } as const;
 
 function getItems<T>(key: string): T[] {
@@ -120,6 +126,24 @@ export const getCotizaciones = () => getItems<Cotizacion>(KEYS.cotizaciones);
 export const addCotizacion = (c: Cotizacion) => addItem(KEYS.cotizaciones, c);
 export const updateCotizacion = (c: Cotizacion) => updateItem(KEYS.cotizaciones, c);
 export const deleteCotizacion = (id: string) => deleteItem<Cotizacion>(KEYS.cotizaciones, id);
+
+// Inventario
+export const getInventario = () => getItems<ItemInventario>(KEYS.inventario);
+export const addItemInventario = (i: ItemInventario) => addItem(KEYS.inventario, i);
+export const updateItemInventario = (i: ItemInventario) => updateItem(KEYS.inventario, i);
+export const deleteItemInventario = (id: string) => deleteItem<ItemInventario>(KEYS.inventario, id);
+
+// Diseños
+export const getDisenos = () => getItems<Diseno>(KEYS.disenos);
+export const addDiseno = (d: Diseno) => addItem(KEYS.disenos, d);
+export const updateDiseno = (d: Diseno) => updateItem(KEYS.disenos, d);
+export const deleteDiseno = (id: string) => deleteItem<Diseno>(KEYS.disenos, id);
+
+// Plantillas WhatsApp
+export const getPlantillas = () => getItems<PlantillaWhatsApp>(KEYS.plantillas);
+export const addPlantilla = (p: PlantillaWhatsApp) => addItem(KEYS.plantillas, p);
+export const updatePlantilla = (p: PlantillaWhatsApp) => updateItem(KEYS.plantillas, p);
+export const deletePlantilla = (id: string) => deleteItem<PlantillaWhatsApp>(KEYS.plantillas, id);
 
 // Config
 const defaultConfig: ConfigNegocio = {
