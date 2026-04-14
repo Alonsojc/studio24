@@ -7,6 +7,7 @@ import { addIngreso, updateIngreso, addEgreso, updateEgreso } from '@/lib/store-
 import { Ingreso, Egreso } from '@/lib/types';
 import { formatCurrency, formatDate, todayString, calcIVA } from '@/lib/helpers';
 import { parseXMLFile, mapFormaPago, type DatosCFDI } from '@/lib/cfdi';
+import { clasificarDeducibilidad, tipoDeduccionLabel, tipoDeduccionColor, type ResultadoDeducibilidad } from '@/lib/deducibilidad';
 import PageHeader from '@/components/PageHeader';
 import { btnPrimary } from '@/lib/styles';
 
@@ -18,6 +19,7 @@ interface FacturaPendiente {
   tipo: 'ingreso' | 'egreso';
   matchId?: string;
   matchDesc?: string;
+  deducibilidad?: ResultadoDeducibilidad;
   status: 'pending' | 'matched' | 'new' | 'done' | 'error';
 }
 
@@ -63,6 +65,10 @@ export default function FacturasPage() {
       // Try to find a match in existing records
       const match = findMatch(cfdi, tipo);
 
+      // Auto-classify deducibility for egresos
+      const descConceptos = cfdi.conceptos.map((c) => c.descripcion).join(' ');
+      const deducibilidad = tipo === 'egreso' ? clasificarDeducibilidad(cfdi.usoCFDI, descConceptos) : undefined;
+
       nuevas.push({
         id: uuid(),
         cfdi,
@@ -71,6 +77,7 @@ export default function FacturasPage() {
         tipo,
         matchId: match?.id,
         matchDesc: match?.desc,
+        deducibilidad,
         status: match ? 'matched' : 'new',
       });
     }
@@ -292,6 +299,22 @@ export default function FacturasPage() {
                   <p className="text-xs text-blue-700">
                     <span className="font-bold">Sin match:</span> Se creará un nuevo {f.tipo} automáticamente
                   </p>
+                </div>
+              )}
+
+              {/* Deducibilidad */}
+              {f.deducibilidad && (
+                <div className="mt-3 flex items-start gap-3 bg-neutral-50 rounded-xl p-3">
+                  <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase shrink-0 ${tipoDeduccionColor(f.deducibilidad.tipo)}`}>
+                    {tipoDeduccionLabel(f.deducibilidad.tipo)}
+                  </span>
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-[#0a0a0a]">
+                      {f.deducibilidad.porcentaje}% deducible
+                    </p>
+                    <p className="text-[10px] text-neutral-500">{f.deducibilidad.razon}</p>
+                    <p className="text-[9px] text-neutral-400 mt-0.5">{f.deducibilidad.regla}</p>
+                  </div>
                 </div>
               )}
 
