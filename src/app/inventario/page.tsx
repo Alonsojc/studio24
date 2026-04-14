@@ -219,7 +219,7 @@ export default function InventarioPage() {
           }
         />
       ) : (
-        <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-neutral-100">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-100">

@@ -107,7 +107,7 @@ export default function ProductosPage() {
                   </div>
                   <button onClick={() => openNew(cat.value)} className="text-[10px] font-bold text-[#c72a09] uppercase tracking-wide hover:underline">+ Agregar</button>
                 </div>
-                <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden">
+                <div className="bg-white rounded-2xl border border-neutral-100">
                   {items.map((p, idx) => (
                     <div key={p.id} className={`flex items-center justify-between px-5 py-4 ${idx > 0 ? 'border-t border-neutral-50' : ''} ${!p.activo ? 'opacity-40' : ''} hover:bg-neutral-50/50 transition-colors`}>
                       <div className="flex items-center gap-3">
