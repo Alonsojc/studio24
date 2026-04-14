@@ -20,10 +20,11 @@ import ActionMenu from '@/components/ActionMenu';
 import { downloadCSV } from '@/lib/csv';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 
-const categorias: CategoriaEgreso[] = ['programas', 'mercancia', 'insumos', 'servicios', 'maquinaria', 'publicidad', 'renta', 'otro'];
+const categorias: CategoriaEgreso[] = ['programas', 'mercancia', 'insumos', 'servicios', 'error', 'maquinaria', 'publicidad', 'renta', 'otro'];
 const formasPago: FormaPago[] = ['efectivo', 'tarjeta', 'transferencia', 'otro'];
 const subcategoriasInsumo = ['Telas', 'Hilos', 'Agujas', 'Repuestos de máquina', 'Estabilizadores', 'Otro'];
 const subcategoriasProgramas = ['Photoshop', 'Canva', 'Software de automatización', 'Wilcom', 'Otro'];
+const subcategoriasError = ['Bordado mal hecho', 'Prenda dañada', 'Hilo desperdiciado', 'Diseño incorrecto', 'Aguja rota', 'Otro'];
 
 function emptyEgreso(): Omit<Egreso, 'id' | 'createdAt'> {
   return { fecha: todayString(), descripcion: '', categoria: 'insumos', subcategoria: '', proveedorId: '', monto: 0, iva: 0, montoTotal: 0, formaPago: 'efectivo', factura: false, numeroFactura: '', notas: '' };
@@ -102,8 +103,11 @@ export default function EgresosPage() {
     return true;
   });
   const totalFiltered = filtered.reduce((s, e) => s + e.montoTotal, 0);
-  const subcategorias = form.categoria === 'insumos' ? subcategoriasInsumo : form.categoria === 'programas' ? subcategoriasProgramas : [];
-  const recSubcategorias = recForm.categoria === 'insumos' ? subcategoriasInsumo : recForm.categoria === 'programas' ? subcategoriasProgramas : [];
+  const totalErrores = egresos.filter((e) => e.categoria === 'error').reduce((s, e) => s + e.montoTotal, 0);
+  const pctErrores = egresos.length > 0 ? ((egresos.filter((e) => e.categoria === 'error').length / egresos.length) * 100) : 0;
+  const getSubcats = (cat: string) => cat === 'insumos' ? subcategoriasInsumo : cat === 'programas' ? subcategoriasProgramas : cat === 'error' ? subcategoriasError : [];
+  const subcategorias = getSubcats(form.categoria);
+  const recSubcategorias = getSubcats(recForm.categoria);
   const totalRecMensual = recurrentes.filter((r) => r.activo).reduce((s, r) => s + r.monto + (r.factura ? calcIVA(r.monto) : 0), 0);
 
   return (
@@ -156,6 +160,19 @@ export default function EgresosPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Error stats */}
+      {totalErrores > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-red-600">Errores y desperdicios</p>
+              <p className="text-[10px] text-red-400 mt-0.5">{egresos.filter((e) => e.categoria === 'error').length} registros · {pctErrores.toFixed(1)}% del total de egresos</p>
+            </div>
+            <p className="text-lg font-black text-red-600">{formatCurrency(totalErrores)}</p>
+          </div>
         </div>
       )}
 

@@ -7,6 +7,7 @@ export type CategoriaEgreso =
   | 'mercancia'
   | 'insumos'
   | 'servicios'
+  | 'error'
   | 'maquinaria'
   | 'publicidad'
   | 'renta'
