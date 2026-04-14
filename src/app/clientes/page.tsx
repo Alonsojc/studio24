@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getClientes, addCliente, updateCliente, deleteCliente, getIngresos } from '@/lib/store';
-import { Cliente, Ingreso } from '@/lib/types';
-import { formatCurrency, formatDate, validateCliente } from '@/lib/helpers';
+import { getClientes, addCliente, updateCliente, deleteCliente, getIngresos, getPedidos } from '@/lib/store';
+import { Cliente, Ingreso, Pedido } from '@/lib/types';
+import { formatCurrency, formatDate, validateCliente, estadoPedidoLabel, estadoPedidoColor } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
@@ -18,6 +18,7 @@ function emptyCliente(): Omit<Cliente, 'id' | 'createdAt'> {
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [ingresos, setIngresos] = useState<Ingreso[]>([]);
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
@@ -30,6 +31,7 @@ export default function ClientesPage() {
   const reload = useCallback(() => {
     setClientes(getClientes().sort((a, b) => a.nombre.localeCompare(b.nombre)));
     setIngresos(getIngresos());
+    setPedidos(getPedidos());
   }, []);
 
   useEffect(() => { reload(); setMounted(true); }, [reload]);
@@ -50,6 +52,7 @@ export default function ClientesPage() {
   const handleDelete = (id: string) => { if (confirm('Eliminar cliente?')) { deleteCliente(id); reload(); } };
 
   const clienteIngresos = (id: string) => ingresos.filter((i) => i.clienteId === id);
+  const clientePedidos = (id: string) => pedidos.filter((p) => p.clienteId === id);
   const clienteTotal = (id: string) => clienteIngresos(id).reduce((s, i) => s + i.montoTotal, 0);
 
   const filtered = clientes.filter((c) =>
@@ -92,7 +95,7 @@ export default function ClientesPage() {
                 {c.telefono && <p className="text-xs text-neutral-400 mt-1">{c.telefono}</p>}
                 {c.email && <p className="text-xs text-neutral-400">{c.email}</p>}
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-neutral-50">
-                  <p className="text-[10px] text-neutral-300 uppercase tracking-wide font-bold">{count} trabajos</p>
+                  <p className="text-[10px] text-neutral-300 uppercase tracking-wide font-bold">{count} ventas &middot; {clientePedidos(c.id).filter(p => p.estado !== 'entregado' && p.estado !== 'cancelado').length} pedidos activos</p>
                   <p className="text-sm font-black text-green-600">{formatCurrency(total)}</p>
                 </div>
               </div>
@@ -120,22 +123,54 @@ export default function ClientesPage() {
             </div>
             {selectedCliente.direccion && <div><span className={labelClass}>Dirección</span><p className="text-sm text-neutral-600">{selectedCliente.direccion}</p></div>}
             {selectedCliente.notas && <div><span className={labelClass}>Notas</span><p className="text-sm text-neutral-500">{selectedCliente.notas}</p></div>}
+
+            {/* Pedidos del cliente */}
+            {(() => {
+              const peds = clientePedidos(selectedCliente.id).sort((a, b) => b.fechaPedido.localeCompare(a.fechaPedido));
+              const activos = peds.filter(p => p.estado !== 'entregado' && p.estado !== 'cancelado');
+              return (
+                <div>
+                  <span className={labelClass}>Pedidos ({peds.length} total &middot; {activos.length} activos)</span>
+                  <div className="space-y-1 max-h-48 overflow-y-auto mt-2">
+                    {peds.length === 0 ? (
+                      <p className="text-sm text-neutral-300 py-3 text-center">Sin pedidos</p>
+                    ) : (
+                      peds.map((p) => (
+                        <div key={p.id} className="flex justify-between items-center py-2.5 border-b border-neutral-50">
+                          <div>
+                            <p className="text-sm font-semibold text-[#0a0a0a]">{p.descripcion}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase ${estadoPedidoColor(p.estado)}`}>{estadoPedidoLabel(p.estado)}</span>
+                              <span className="text-xs text-neutral-400">{formatDate(p.fechaPedido)}</span>
+                              {p.urgente && <span className="text-[9px] font-bold text-red-500 uppercase">Urgente</span>}
+                            </div>
+                          </div>
+                          <span className="text-sm font-bold text-[#0a0a0a]">{formatCurrency(p.montoTotal)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Ingresos del cliente */}
             <div>
-              <span className={labelClass}>Historial ({clienteIngresos(selectedCliente.id).length} trabajos)</span>
-              <div className="space-y-1 max-h-60 overflow-y-auto mt-2">
+              <span className={labelClass}>Ingresos ({clienteIngresos(selectedCliente.id).length} ventas)</span>
+              <div className="space-y-1 max-h-48 overflow-y-auto mt-2">
                 {clienteIngresos(selectedCliente.id).length === 0 ? (
-                  <p className="text-sm text-neutral-300 py-4 text-center">Sin trabajos</p>
+                  <p className="text-sm text-neutral-300 py-3 text-center">Sin ingresos</p>
                 ) : (
                   clienteIngresos(selectedCliente.id).sort((a, b) => b.fecha.localeCompare(a.fecha)).map((i) => (
-                    <div key={i.id} className="flex justify-between items-center py-3 border-b border-neutral-50">
-                      <div><p className="text-sm font-semibold text-[#0a0a0a]">{i.descripcion}</p><p className="text-xs text-neutral-400">{formatDate(i.fecha)}</p></div>
+                    <div key={i.id} className="flex justify-between items-center py-2.5 border-b border-neutral-50">
+                      <div><p className="text-sm font-semibold text-[#0a0a0a]">{i.descripcion}</p><p className="text-xs text-neutral-400">{formatDate(i.fecha)}{i.factura && <span className="text-[#c72a09] font-semibold"> &middot; F</span>}</p></div>
                       <span className="text-sm font-bold text-green-600">{formatCurrency(i.montoTotal)}</span>
                     </div>
                   ))
                 )}
               </div>
               <div className="border-t border-neutral-100 mt-3 pt-3 flex justify-between">
-                <span className="text-sm font-bold text-[#0a0a0a]">Total</span>
+                <span className="text-sm font-bold text-[#0a0a0a]">Total facturado</span>
                 <span className="text-lg font-black text-[#c72a09]">{formatCurrency(clienteTotal(selectedCliente.id))}</span>
               </div>
             </div>

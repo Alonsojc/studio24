@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { getClientes, getIngresos, getEgresos, getPedidos, getProveedores } from '@/lib/store';
+import { getClientes, getIngresos, getEgresos, getPedidos, getProveedores, getCotizaciones, getProductos } from '@/lib/store';
 import { formatCurrency } from '@/lib/helpers';
 
 interface SearchResult {
@@ -72,6 +72,14 @@ export default function GlobalSearch() {
       r.push({ type: 'Proveedor', label: p.nombre, sub: p.tipo, href: '/proveedores' })
     );
 
+    getCotizaciones().filter((c) => c.folio.toLowerCase().includes(q) || c.clienteNombre.toLowerCase().includes(q)).slice(0, 3).forEach((c) =>
+      r.push({ type: 'Cotización', label: `${c.folio} — ${c.clienteNombre || 'Sin cliente'}`, sub: formatCurrency(c.total), href: '/cotizador' })
+    );
+
+    getProductos().filter((p) => p.nombre.toLowerCase().includes(q)).slice(0, 3).forEach((p) =>
+      r.push({ type: 'Producto', label: p.nombre, sub: formatCurrency(p.precio), href: '/productos' })
+    );
+
     setResults(r);
   }, [debouncedQuery]);
 
@@ -86,6 +94,8 @@ export default function GlobalSearch() {
     Ingreso: 'bg-green-100 text-green-700',
     Egreso: 'bg-red-100 text-red-600',
     Proveedor: 'bg-purple-100 text-purple-700',
+    'Cotización': 'bg-amber-100 text-amber-700',
+    Producto: 'bg-cyan-100 text-cyan-700',
   };
 
   if (!open) return (

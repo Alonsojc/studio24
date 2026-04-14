@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { formatCurrency, calcIVA } from '@/lib/helpers';
 import { v4 as uuid } from 'uuid';
-import { getClientes, getConfig, addCotizacion, getCotizaciones, getNextFolio, getProductos } from '@/lib/store';
+import { getClientes, getConfig, addCotizacion, updateCotizacion, getCotizaciones, getNextFolio, getProductos } from '@/lib/store';
 import { Cliente, ConfigNegocio, Cotizacion, Producto } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
 import { inputClass, labelClass } from '@/lib/styles';
@@ -33,6 +33,7 @@ export default function CotizadorPage() {
   const [notas, setNotas] = useState('');
   const [copied, setCopied] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
+  const [editingCotId, setEditingCotId] = useState<string | null>(null);
   const [showHistorial, setShowHistorial] = useState(false);
   const [mounted, setMounted] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
@@ -96,21 +97,32 @@ export default function CotizadorPage() {
 
   const guardarCotizacion = () => {
     if (items.filter((i) => i.descripcion && i.precioUnitario > 0).length === 0) return;
-    const cot: Cotizacion = {
-      id: uuid(), folio: getNextFolio('COT'), clienteNombre, clienteEmpresa,
-      items: items.filter((i) => i.descripcion && i.precioUnitario > 0).map((i) => ({ descripcion: i.descripcion, cantidad: i.cantidad, precioUnitario: i.precioUnitario })),
-      conIVA, notas, subtotal, iva, total, createdAt: new Date().toISOString(),
-    };
-    addCotizacion(cot);
-    setCotizaciones([cot, ...cotizaciones]);
+    const validItems = items.filter((i) => i.descripcion && i.precioUnitario > 0).map((i) => ({ descripcion: i.descripcion, cantidad: i.cantidad, precioUnitario: i.precioUnitario }));
+    if (editingCotId) {
+      const existing = cotizaciones.find((c) => c.id === editingCotId);
+      if (existing) {
+        const updated: Cotizacion = { ...existing, clienteNombre, clienteEmpresa, items: validItems, conIVA, notas, subtotal, iva, total };
+        updateCotizacion(updated);
+        setCotizaciones(cotizaciones.map((c) => c.id === editingCotId ? updated : c));
+      }
+    } else {
+      const cot: Cotizacion = {
+        id: uuid(), folio: getNextFolio('COT'), clienteNombre, clienteEmpresa,
+        items: validItems, conIVA, notas, subtotal, iva, total, createdAt: new Date().toISOString(),
+      };
+      addCotizacion(cot);
+      setCotizaciones([cot, ...cotizaciones]);
+    }
+    setEditingCotId(null);
     setSavedMsg(true);
     setTimeout(() => setSavedMsg(false), 2000);
   };
 
   const loadCotizacion = (c: Cotizacion) => {
+    setEditingCotId(c.id);
     setClienteNombre(c.clienteNombre);
     setClienteEmpresa(c.clienteEmpresa);
-    setItems(c.items.map((i, idx) => ({ id: String(nextIdRef.current++), ...i })));
+    setItems(c.items.map((i) => ({ id: String(nextIdRef.current++), ...i })));
     setConIVA(c.conIVA);
     setNotas(c.notas);
     setShowHistorial(false);
@@ -466,7 +478,7 @@ export default function CotizadorPage() {
 
             {/* Actions */}
             <button onClick={guardarCotizacion} className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors ${savedMsg ? 'bg-green-500 text-white' : 'bg-[#c72a09] text-white hover:bg-[#a82207]'}`}>
-              {savedMsg ? 'Guardada!' : 'Guardar Cotizacion'}
+              {savedMsg ? '¡Guardada!' : editingCotId ? 'Actualizar Cotización' : 'Guardar Cotización'}
             </button>
 
             <button onClick={() => setShowHistorial(!showHistorial)} className={`w-full py-3 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${showHistorial ? 'bg-[#0a0a0a] text-white border-[#0a0a0a]' : 'bg-white text-neutral-500 border-neutral-200 hover:border-neutral-400'}`}>

@@ -106,6 +106,7 @@ export const deleteProducto = (id: string) => deleteItem<Producto>(KEYS.producto
 // Cotizaciones
 export const getCotizaciones = () => getItems<Cotizacion>(KEYS.cotizaciones);
 export const addCotizacion = (c: Cotizacion) => addItem(KEYS.cotizaciones, c);
+export const updateCotizacion = (c: Cotizacion) => updateItem(KEYS.cotizaciones, c);
 export const deleteCotizacion = (id: string) => deleteItem<Cotizacion>(KEYS.cotizaciones, id);
 
 // Config

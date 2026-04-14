@@ -98,7 +98,7 @@ export default function PedidosPage() {
       updated.fechaEntregaReal = todayString();
       // If fully paid, offer to create Ingreso
       if ((p.estadoPago === 'pagado' || p.montoPagado >= p.montoTotal) && p.montoTotal > 0) {
-        if (confirm('Pedido entregado y pagado. Crear ingreso automaticamente?')) {
+        if (confirm('Pedido entregado y pagado. ¿Crear ingreso automáticamente?')) {
           crearIngresoDePedido(p);
         }
       }
@@ -109,6 +109,7 @@ export default function PedidosPage() {
   const crearIngresoDePedido = (p: Pedido) => {
     const ingreso: Ingreso = {
       id: uuid(), fecha: todayString(), clienteId: p.clienteId,
+      pedidoId: p.id,
       descripcion: p.descripcion, concepto: p.concepto,
       monto: p.montoTotal, iva: 0, montoTotal: p.montoTotal,
       formaPago: 'transferencia', factura: false, numeroFactura: '',

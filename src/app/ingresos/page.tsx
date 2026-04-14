@@ -50,7 +50,15 @@ export default function IngresosPage() {
     editingId ? updateIngreso(data) : addIngreso(data);
     setModalOpen(false); reload();
   };
-  const handleDelete = (id: string) => { if (confirm('Eliminar este ingreso?')) { deleteIngreso(id); reload(); } };
+  const handleDelete = (id: string) => {
+    const ingreso = ingresos.find((i) => i.id === id);
+    if (ingreso?.factura) {
+      if (!confirm(`Este ingreso tiene factura (${ingreso.numeroFactura || 'sin número'}). Eliminarlo puede afectar tu contabilidad fiscal. ¿Continuar?`)) return;
+    } else {
+      if (!confirm('¿Eliminar este ingreso?')) return;
+    }
+    deleteIngreso(id); reload();
+  };
 
   const clienteName = (id: string) => clientes.find((c) => c.id === id)?.nombre || '';
   const months = Array.from(new Set(ingresos.map((i) => i.fecha.substring(0, 7)))).sort().reverse();
@@ -106,7 +114,7 @@ export default function IngresosPage() {
               {filtered.map((i) => (
                 <tr key={i.id} className="border-b border-neutral-50 hover:bg-neutral-50/50 transition-colors">
                   <td className="px-5 py-4 text-neutral-400 text-xs">{formatDate(i.fecha)}</td>
-                  <td className="px-5 py-4 font-semibold text-[#0a0a0a]">{i.descripcion}</td>
+                  <td className="px-5 py-4 font-semibold text-[#0a0a0a]">{i.descripcion}{i.pedidoId && <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-orange-50 text-orange-500 uppercase">Pedido</span>}</td>
                   <td className="px-5 py-4 text-neutral-400 text-xs">{clienteName(i.clienteId) || '—'}</td>
                   <td className="px-5 py-4"><span className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wide bg-green-50 text-green-700 uppercase">{conceptoLabel(i.concepto)}</span></td>
                   <td className="px-5 py-4 text-neutral-400 text-xs">{formaPagoLabel(i.formaPago)}</td>

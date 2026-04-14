@@ -67,7 +67,15 @@ export default function EgresosPage() {
     editingId ? updateEgreso(data) : addEgreso(data);
     setModalOpen(false); reload();
   };
-  const handleDelete = (id: string) => { if (confirm('Eliminar este egreso?')) { deleteEgreso(id); reload(); } };
+  const handleDelete = (id: string) => {
+    const egreso = egresos.find((e) => e.id === id);
+    if (egreso?.factura) {
+      if (!confirm(`Este egreso tiene factura (${egreso.numeroFactura || 'sin número'}). Eliminarlo puede afectar tu contabilidad fiscal. ¿Continuar?`)) return;
+    } else {
+      if (!confirm('¿Eliminar este egreso?')) return;
+    }
+    deleteEgreso(id); reload();
+  };
 
   const openNewRec = () => { setEditingRecId(null); setRecForm(emptyRecurrente()); setRecFormError(null); setRecModalOpen(true); };
   const openEditRec = (r: EgresoRecurrente) => { setEditingRecId(r.id); setRecForm({ ...r }); setRecFormError(null); setRecModalOpen(true); };

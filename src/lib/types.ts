@@ -112,6 +112,7 @@ export interface Ingreso {
   id: string;
   fecha: string;
   clienteId: string;
+  pedidoId?: string;
   descripcion: string;
   concepto: ConceptoIngreso;
   monto: number;
