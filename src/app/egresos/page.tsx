@@ -14,16 +14,12 @@ import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
 import ActionMenu from '@/components/ActionMenu';
 import { downloadCSV } from '@/lib/csv';
+import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 
 const categorias: CategoriaEgreso[] = ['programas', 'mercancia', 'insumos', 'servicios', 'maquinaria', 'publicidad', 'renta', 'otro'];
 const formasPago: FormaPago[] = ['efectivo', 'tarjeta', 'transferencia', 'otro'];
-const subcategoriasInsumo = ['Telas', 'Hilos', 'Agujas', 'Repuestos de maquina', 'Estabilizadores', 'Otro'];
-const subcategoriasProgramas = ['Photoshop', 'Canva', 'Software de automatizacion', 'Wilcom', 'Otro'];
-
-const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
-const labelClass = "block text-[10px] font-bold tracking-[0.08em] text-neutral-400 uppercase mb-1.5";
-const btnPrimary = "bg-[#c72a09] text-white px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#a82207] transition-colors";
-const btnSecondary = "px-4 py-2.5 text-xs font-semibold text-neutral-400 hover:text-neutral-600 transition-colors";
+const subcategoriasInsumo = ['Telas', 'Hilos', 'Agujas', 'Repuestos de máquina', 'Estabilizadores', 'Otro'];
+const subcategoriasProgramas = ['Photoshop', 'Canva', 'Software de automatización', 'Wilcom', 'Otro'];
 
 function emptyEgreso(): Omit<Egreso, 'id' | 'createdAt'> {
   return { fecha: todayString(), descripcion: '', categoria: 'insumos', subcategoria: '', proveedorId: '', monto: 0, iva: 0, montoTotal: 0, formaPago: 'efectivo', factura: false, numeroFactura: '', notas: '' };
@@ -71,7 +67,15 @@ export default function EgresosPage() {
     editingId ? updateEgreso(data) : addEgreso(data);
     setModalOpen(false); reload();
   };
-  const handleDelete = (id: string) => { if (confirm('Eliminar este egreso?')) { deleteEgreso(id); reload(); } };
+  const handleDelete = (id: string) => {
+    const egreso = egresos.find((e) => e.id === id);
+    if (egreso?.factura) {
+      if (!confirm(`Este egreso tiene factura (${egreso.numeroFactura || 'sin número'}). Eliminarlo puede afectar tu contabilidad fiscal. ¿Continuar?`)) return;
+    } else {
+      if (!confirm('¿Eliminar este egreso?')) return;
+    }
+    deleteEgreso(id); reload();
+  };
 
   const openNewRec = () => { setEditingRecId(null); setRecForm(emptyRecurrente()); setRecFormError(null); setRecModalOpen(true); };
   const openEditRec = (r: EgresoRecurrente) => { setEditingRecId(r.id); setRecForm({ ...r }); setRecFormError(null); setRecModalOpen(true); };
@@ -164,7 +168,7 @@ export default function EgresosPage() {
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-neutral-400 font-medium">Total: <span className="font-black text-[#c72a09] text-sm">{formatCurrency(totalFiltered)}</span> &middot; {filtered.length}</span>
           {filtered.length > 0 && (
-            <button onClick={() => downloadCSV(`egresos_${new Date().toISOString().slice(0,10)}`, ['Fecha','Descripcion','Categoria','Subcategoria','Proveedor','Monto','IVA','Total','Forma de Pago','Factura','No. Factura'], filtered.map((e) => [e.fecha, e.descripcion, categoriaLabel(e.categoria), e.subcategoria, proveedorName(e.proveedorId), String(e.monto), String(e.iva), String(e.montoTotal), formaPagoLabel(e.formaPago), e.factura ? 'Si' : 'No', e.numeroFactura]))} className="text-[10px] font-bold tracking-[0.05em] text-neutral-400 hover:text-[#c72a09] uppercase transition-colors flex items-center gap-1">
+            <button onClick={() => downloadCSV(`egresos_${new Date().toISOString().slice(0,10)}`, ['Fecha','Descripción','Categoria','Subcategoria','Proveedor','Monto','IVA','Total','Forma de Pago','Factura','No. Factura'], filtered.map((e) => [e.fecha, e.descripcion, categoriaLabel(e.categoria), e.subcategoria, proveedorName(e.proveedorId), String(e.monto), String(e.iva), String(e.montoTotal), formaPagoLabel(e.formaPago), e.factura ? 'Si' : 'No', e.numeroFactura]))} className="text-[10px] font-bold tracking-[0.05em] text-neutral-400 hover:text-[#c72a09] uppercase transition-colors flex items-center gap-1">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
               CSV
             </button>
@@ -181,7 +185,7 @@ export default function EgresosPage() {
             <thead>
               <tr className="border-b border-neutral-100">
                 <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Fecha</th>
-                <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Descripcion</th>
+                <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Descripción</th>
                 <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Categoria</th>
                 <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Proveedor</th>
                 <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Pago</th>
@@ -228,7 +232,7 @@ export default function EgresosPage() {
             <div><label className={labelClass}>Categoria</label><select value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value as CategoriaEgreso, subcategoria: '' })} className={inputClass}>{categorias.map((c) => <option key={c} value={c}>{categoriaLabel(c)}</option>)}</select></div>
           </div>
           {subcategorias.length > 0 && <div><label className={labelClass}>Subcategoria</label><select value={form.subcategoria} onChange={(e) => setForm({ ...form, subcategoria: e.target.value })} className={inputClass}><option value="">Seleccionar...</option>{subcategorias.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>}
-          <div><label className={labelClass}>Descripcion</label><input type="text" value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Ej: Compra de hilos DMC" className={inputClass} /></div>
+          <div><label className={labelClass}>Descripción</label><input type="text" value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Ej: Compra de hilos DMC" className={inputClass} /></div>
           <div><label className={labelClass}>Proveedor</label><select value={form.proveedorId} onChange={(e) => setForm({ ...form, proveedorId: e.target.value })} className={inputClass}><option value="">Sin proveedor</option>{proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select></div>
           <div className="grid grid-cols-2 gap-4">
             <div><label className={labelClass}>Monto (sin IVA)</label><input type="number" step="0.01" min="0" value={form.monto || ''} onChange={(e) => setForm({ ...form, monto: parseFloat(e.target.value) || 0 })} className={inputClass} /></div>
@@ -252,7 +256,7 @@ export default function EgresosPage() {
       <Modal open={recModalOpen} onClose={() => setRecModalOpen(false)} title={editingRecId ? 'Editar Recurrente' : 'Nuevo Recurrente'}>
         <div className="space-y-4">
           <div className="bg-neutral-50 rounded-xl p-3.5 text-xs text-neutral-500">Se genera automaticamente cada mes en la fecha indicada.</div>
-          <div><label className={labelClass}>Descripcion</label><input type="text" value={recForm.descripcion} onChange={(e) => setRecForm({ ...recForm, descripcion: e.target.value })} placeholder="Ej: Suscripcion Canva Pro" className={inputClass} /></div>
+          <div><label className={labelClass}>Descripción</label><input type="text" value={recForm.descripcion} onChange={(e) => setRecForm({ ...recForm, descripcion: e.target.value })} placeholder="Ej: Suscripción Canva Pro" className={inputClass} /></div>
           <div className="grid grid-cols-2 gap-4">
             <div><label className={labelClass}>Categoria</label><select value={recForm.categoria} onChange={(e) => setRecForm({ ...recForm, categoria: e.target.value as CategoriaEgreso, subcategoria: '' })} className={inputClass}>{categorias.map((c) => <option key={c} value={c}>{categoriaLabel(c)}</option>)}</select></div>
             <div><label className={labelClass}>Dia del mes</label><select value={recForm.diaDelMes} onChange={(e) => setRecForm({ ...recForm, diaDelMes: Number(e.target.value) })} className={inputClass}>{Array.from({ length: 28 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>Dia {d}</option>)}</select></div>

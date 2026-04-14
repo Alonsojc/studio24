@@ -1,0 +1,23 @@
+{
+  "name": "Studio 24 — Control de Bordados",
+  "short_name": "Studio 24",
+  "description": "Sistema de control de ingresos, egresos y pedidos para negocio de bordados",
+  "start_url": "/studio24/",
+  "scope": "/studio24/",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#c72a09",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/studio24/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/studio24/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}

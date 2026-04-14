@@ -26,6 +26,8 @@ export default function ReportesPage() {
   const [egresos, setEgresos] = useState<Egreso[]>([]);
   const [totalClientes, setTotalClientes] = useState(0);
   const [year, setYear] = useState(new Date().getFullYear());
+  const [mesInicio, setMesInicio] = useState(0);
+  const [mesFin, setMesFin] = useState(11);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -43,8 +45,12 @@ export default function ReportesPage() {
     new Date().getFullYear(),
   ])).sort().reverse();
 
-  const ingresosYear = ingresos.filter((i) => new Date(i.fecha).getFullYear() === year);
-  const egresosYear = egresos.filter((e) => new Date(e.fecha).getFullYear() === year);
+  const inRange = (fecha: string) => {
+    const d = new Date(fecha);
+    return d.getFullYear() === year && d.getMonth() >= mesInicio && d.getMonth() <= mesFin;
+  };
+  const ingresosYear = ingresos.filter((i) => inRange(i.fecha));
+  const egresosYear = egresos.filter((e) => inRange(e.fecha));
 
   const totalIngresosYear = ingresosYear.reduce((s, i) => s + i.montoTotal, 0);
   const totalEgresosYear = egresosYear.reduce((s, e) => s + e.montoTotal, 0);
@@ -75,18 +81,27 @@ export default function ReportesPage() {
     <div>
       <PageHeader
         title="Reportes"
-        description="Analisis financiero de tu negocio"
+        description="Análisis financiero de tu negocio"
         action={
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-bold bg-white focus:outline-none focus:border-[#c72a09]">
-            {years.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <div className="flex gap-2 items-center flex-wrap">
+            <select value={year} onChange={(e) => { setYear(Number(e.target.value)); setMesInicio(0); setMesFin(11); }} className="border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-bold bg-white focus:outline-none focus:border-[#c72a09]">
+              {years.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <select value={mesInicio} onChange={(e) => { const v = Number(e.target.value); setMesInicio(v); if (v > mesFin) setMesFin(v); }} className="border border-neutral-200 rounded-xl px-3 py-2.5 text-xs font-bold bg-white focus:outline-none focus:border-[#c72a09]">
+              {monthNames.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
+            <span className="text-xs text-neutral-400">a</span>
+            <select value={mesFin} onChange={(e) => { const v = Number(e.target.value); setMesFin(v); if (v < mesInicio) setMesInicio(v); }} className="border border-neutral-200 rounded-xl px-3 py-2.5 text-xs font-bold bg-white focus:outline-none focus:border-[#c72a09]">
+              {monthNames.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
+          </div>
         }
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-        <StatCard label="Ingresos Anuales" value={formatCurrency(totalIngresosYear)} subtitle={`${ingresosYear.length} ventas`} />
-        <StatCard label="Egresos Anuales" value={formatCurrency(totalEgresosYear)} subtitle={`${egresosYear.length} gastos`} />
-        <StatCard label="Ganancia Anual" value={formatCurrency(gananciaYear)} accent />
+        <StatCard label={`Ingresos ${mesInicio === 0 && mesFin === 11 ? 'Anuales' : `${monthNames[mesInicio]}–${monthNames[mesFin]}`}`} value={formatCurrency(totalIngresosYear)} subtitle={`${ingresosYear.length} ventas`} />
+        <StatCard label={`Egresos ${mesInicio === 0 && mesFin === 11 ? 'Anuales' : `${monthNames[mesInicio]}–${monthNames[mesFin]}`}`} value={formatCurrency(totalEgresosYear)} subtitle={`${egresosYear.length} gastos`} />
+        <StatCard label={`Ganancia ${mesInicio === 0 && mesFin === 11 ? 'Anual' : `${monthNames[mesInicio]}–${monthNames[mesFin]}`}`} value={formatCurrency(gananciaYear)} accent />
         <StatCard label="IVA por Pagar" value={formatCurrency(ivaCobradoYear - ivaPagadoYear)} subtitle="Anual acumulado" />
       </div>
 
@@ -161,11 +176,11 @@ export default function ReportesPage() {
         </div>
 
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Estadisticas</h3>
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Estadísticas</h3>
           <div className="space-y-4">
             <div className="flex justify-between"><span className="text-sm text-neutral-500">Promedio por Venta</span><span className="text-sm font-bold">{ingresosYear.length > 0 ? formatCurrency(totalIngresosYear / ingresosYear.length) : '—'}</span></div>
-            <div className="flex justify-between"><span className="text-sm text-neutral-500">Ventas del Ano</span><span className="text-sm font-bold">{ingresosYear.length}</span></div>
-            <div className="flex justify-between"><span className="text-sm text-neutral-500">Gastos del Ano</span><span className="text-sm font-bold">{egresosYear.length}</span></div>
+            <div className="flex justify-between"><span className="text-sm text-neutral-500">Ventas del Año</span><span className="text-sm font-bold">{ingresosYear.length}</span></div>
+            <div className="flex justify-between"><span className="text-sm text-neutral-500">Gastos del Año</span><span className="text-sm font-bold">{egresosYear.length}</span></div>
             <div className="flex justify-between"><span className="text-sm text-neutral-500">Total Clientes</span><span className="text-sm font-bold">{totalClientes}</span></div>
             <div className="flex justify-between"><span className="text-sm text-neutral-500">% Facturado</span><span className="text-sm font-bold">{ingresosYear.length > 0 ? `${((ingresosYear.filter((i) => i.factura).length / ingresosYear.length) * 100).toFixed(0)}%` : '—'}</span></div>
             <div className="flex justify-between"><span className="text-sm text-neutral-500">Mejor Mes</span><span className="text-sm font-bold text-[#c72a09]">{monthNames[bestMonth]}</span></div>

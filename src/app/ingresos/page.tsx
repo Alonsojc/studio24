@@ -10,14 +10,10 @@ import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
 import ActionMenu from '@/components/ActionMenu';
 import { downloadCSV } from '@/lib/csv';
+import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
 const formasPago: FormaPago[] = ['efectivo', 'tarjeta', 'transferencia', 'otro'];
-
-const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
-const labelClass = "block text-[10px] font-bold tracking-[0.08em] text-neutral-400 uppercase mb-1.5";
-const btnPrimary = "bg-[#c72a09] text-white px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#a82207] transition-colors";
-const btnSecondary = "px-4 py-2.5 text-xs font-semibold text-neutral-400 hover:text-neutral-600 transition-colors";
 
 function emptyIngreso(): Omit<Ingreso, 'id' | 'createdAt'> {
   return { fecha: todayString(), clienteId: '', descripcion: '', concepto: 'solo_bordado', monto: 0, iva: 0, montoTotal: 0, formaPago: 'efectivo', factura: false, numeroFactura: '', notas: '' };
@@ -54,7 +50,15 @@ export default function IngresosPage() {
     editingId ? updateIngreso(data) : addIngreso(data);
     setModalOpen(false); reload();
   };
-  const handleDelete = (id: string) => { if (confirm('Eliminar este ingreso?')) { deleteIngreso(id); reload(); } };
+  const handleDelete = (id: string) => {
+    const ingreso = ingresos.find((i) => i.id === id);
+    if (ingreso?.factura) {
+      if (!confirm(`Este ingreso tiene factura (${ingreso.numeroFactura || 'sin número'}). Eliminarlo puede afectar tu contabilidad fiscal. ¿Continuar?`)) return;
+    } else {
+      if (!confirm('¿Eliminar este ingreso?')) return;
+    }
+    deleteIngreso(id); reload();
+  };
 
   const clienteName = (id: string) => clientes.find((c) => c.id === id)?.nombre || '';
   const months = Array.from(new Set(ingresos.map((i) => i.fecha.substring(0, 7)))).sort().reverse();
@@ -81,7 +85,7 @@ export default function IngresosPage() {
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-neutral-400 font-medium">Total: <span className="font-black text-green-600 text-sm">{formatCurrency(totalFiltered)}</span> &middot; {filtered.length}</span>
           {filtered.length > 0 && (
-            <button onClick={() => downloadCSV(`ingresos_${new Date().toISOString().slice(0,10)}`, ['Fecha','Descripcion','Cliente','Concepto','Monto','IVA','Total','Forma de Pago','Factura','No. Factura'], filtered.map((i) => [i.fecha, i.descripcion, clienteName(i.clienteId), conceptoLabel(i.concepto), String(i.monto), String(i.iva), String(i.montoTotal), formaPagoLabel(i.formaPago), i.factura ? 'Si' : 'No', i.numeroFactura]))} className="text-[10px] font-bold tracking-[0.05em] text-neutral-400 hover:text-[#c72a09] uppercase transition-colors flex items-center gap-1">
+            <button onClick={() => downloadCSV(`ingresos_${new Date().toISOString().slice(0,10)}`, ['Fecha','Descripción','Cliente','Concepto','Monto','IVA','Total','Forma de Pago','Factura','No. Factura'], filtered.map((i) => [i.fecha, i.descripcion, clienteName(i.clienteId), conceptoLabel(i.concepto), String(i.monto), String(i.iva), String(i.montoTotal), formaPagoLabel(i.formaPago), i.factura ? 'Si' : 'No', i.numeroFactura]))} className="text-[10px] font-bold tracking-[0.05em] text-neutral-400 hover:text-[#c72a09] uppercase transition-colors flex items-center gap-1">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
               CSV
             </button>
@@ -97,7 +101,7 @@ export default function IngresosPage() {
             <thead>
               <tr className="border-b border-neutral-100">
                 <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Fecha</th>
-                <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Descripcion</th>
+                <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Descripción</th>
                 <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Cliente</th>
                 <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Concepto</th>
                 <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Pago</th>
@@ -110,7 +114,7 @@ export default function IngresosPage() {
               {filtered.map((i) => (
                 <tr key={i.id} className="border-b border-neutral-50 hover:bg-neutral-50/50 transition-colors">
                   <td className="px-5 py-4 text-neutral-400 text-xs">{formatDate(i.fecha)}</td>
-                  <td className="px-5 py-4 font-semibold text-[#0a0a0a]">{i.descripcion}</td>
+                  <td className="px-5 py-4 font-semibold text-[#0a0a0a]">{i.descripcion}{i.pedidoId && <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-orange-50 text-orange-500 uppercase">Pedido</span>}</td>
                   <td className="px-5 py-4 text-neutral-400 text-xs">{clienteName(i.clienteId) || '—'}</td>
                   <td className="px-5 py-4"><span className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wide bg-green-50 text-green-700 uppercase">{conceptoLabel(i.concepto)}</span></td>
                   <td className="px-5 py-4 text-neutral-400 text-xs">{formaPagoLabel(i.formaPago)}</td>
@@ -139,7 +143,7 @@ export default function IngresosPage() {
             <div><label className={labelClass}>Fecha</label><input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} className={inputClass} /></div>
             <div><label className={labelClass}>Concepto</label><select value={form.concepto} onChange={(e) => setForm({ ...form, concepto: e.target.value as ConceptoIngreso })} className={inputClass}>{conceptos.map((c) => <option key={c} value={c}>{conceptoLabel(c)}</option>)}</select></div>
           </div>
-          <div><label className={labelClass}>Descripcion</label><input type="text" value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Ej: Bordado de logo en 10 playeras" className={inputClass} /></div>
+          <div><label className={labelClass}>Descripción</label><input type="text" value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Ej: Bordado de logo en 10 playeras" className={inputClass} /></div>
           <div><label className={labelClass}>Cliente</label><select value={form.clienteId} onChange={(e) => setForm({ ...form, clienteId: e.target.value })} className={inputClass}><option value="">Sin cliente</option>{clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
           <div className="grid grid-cols-2 gap-4">
             <div><label className={labelClass}>Monto (sin IVA)</label><input type="number" step="0.01" min="0" value={form.monto || ''} onChange={(e) => setForm({ ...form, monto: parseFloat(e.target.value) || 0 })} className={inputClass} /></div>

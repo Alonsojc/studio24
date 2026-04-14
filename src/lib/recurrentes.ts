@@ -35,7 +35,7 @@ export function generarEgresosRecurrentes(): number {
     const egreso: Egreso = {
       id: uuid(),
       fecha,
-      descripcion: `${rec.descripcion} (automatico)`,
+      descripcion: `${rec.descripcion} (automático)`,
       categoria: rec.categoria,
       subcategoria: rec.subcategoria,
       proveedorId: rec.proveedorId,
@@ -45,7 +45,7 @@ export function generarEgresosRecurrentes(): number {
       formaPago: rec.formaPago,
       factura: rec.factura,
       numeroFactura: '',
-      notas: `Generado automaticamente desde egreso recurrente`,
+      notas: `Generado automáticamente desde egreso recurrente`,
       createdAt: new Date().toISOString(),
     };
 
