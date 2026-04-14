@@ -111,6 +111,42 @@ export default function AgendaPage() {
     ? (pedidoStartByDay.get(selectedDay) || []).filter((p) => !selectedPedidos.includes(p))
     : [];
 
+  const exportarICS = () => {
+    const events = activePedidos
+      .filter((p) => p.fechaEntrega)
+      .map((p) => {
+        const d = p.fechaEntrega.replace(/-/g, '');
+        const name = clienteName(p.clienteId);
+        return [
+          'BEGIN:VEVENT',
+          `DTSTART;VALUE=DATE:${d}`,
+          `DTEND;VALUE=DATE:${d}`,
+          `SUMMARY:${p.urgente ? '🔴 ' : ''}${p.descripcion}`,
+          `DESCRIPTION:${name ? `Cliente: ${name}\\n` : ''}Piezas: ${p.piezas}\\nTotal: ${formatCurrency(p.montoTotal)}\\nEstado: ${estadoPedidoLabel(p.estado)}`,
+          `STATUS:${p.estado === 'entregado' ? 'COMPLETED' : 'CONFIRMED'}`,
+          'END:VEVENT',
+        ].join('\r\n');
+      });
+
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Studio24//Entregas//ES',
+      'CALSCALE:GREGORIAN',
+      'X-WR-CALNAME:Studio 24 - Entregas',
+      ...events,
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `studio24_entregas_${year}-${String(month + 1).padStart(2, '0')}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Stats
   const entregas = activePedidos.filter(
     (p) =>
@@ -125,6 +161,21 @@ export default function AgendaPage() {
       <PageHeader
         title="Agenda de Entregas"
         description={`${entregas.length} entregas programadas${vencidos.length > 0 ? ` · ${vencidos.length} vencidas` : ''}`}
+        action={
+          <button
+            onClick={exportarICS}
+            className="px-4 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase border border-neutral-200 text-neutral-500 hover:border-[#c72a09] hover:text-[#c72a09] transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+              />
+            </svg>
+            Exportar .ics
+          </button>
+        }
       />
 
       {/* Month navigation */}

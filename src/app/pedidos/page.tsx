@@ -218,6 +218,18 @@ export default function PedidosPage() {
     window.open(url, '_blank');
   };
 
+  const compartirSeguimiento = (p: Pedido) => {
+    const base = typeof window !== 'undefined' ? window.location.origin : '';
+    const link = `${base}/studio24/seguimiento?id=${p.id}`;
+    const cliente = clientes.find((c) => c.id === p.clienteId);
+    const tel = cliente?.telefono?.replace(/\D/g, '') || '';
+    const msg = `*STUDIO 24*\n\nHola ${cliente?.nombre || ''}! Aquí puedes ver el estado de tu pedido:\n\n${link}\n\nPedido: ${p.descripcion}`;
+    const waUrl = tel
+      ? `https://wa.me/52${tel}?text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, '_blank');
+  };
+
   const imprimirOrdenTrabajo = async (p: Pedido) => {
     const { default: jsPDF } = await import('jspdf');
     const doc = new jsPDF('p', 'mm', 'letter');
@@ -522,6 +534,7 @@ export default function PedidosPage() {
                           items={[
                             { label: 'Editar', onClick: () => openEdit(p) },
                             { label: 'Imprimir orden', onClick: () => imprimirOrdenTrabajo(p) },
+                            { label: 'Enviar seguimiento', onClick: () => compartirSeguimiento(p) },
                             { label: 'WhatsApp al cliente', onClick: () => enviarWhatsAppEstado(p) },
                             { label: 'Repetir pedido', onClick: () => repetirPedido(p) },
                             {
