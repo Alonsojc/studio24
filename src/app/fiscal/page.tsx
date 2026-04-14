@@ -50,6 +50,72 @@ function calcISR(baseGravable: number): number {
   return last.cuota + (baseGravable - last.limInf) * last.tasa;
 }
 
+function calcMonthData(meses: string[], ingresosYear: Ingreso[], egresosYear: Egreso[]) {
+  let perdida = 0;
+  let ivaFavor = 0;
+
+  const months = meses.map((label, idx) => {
+    const monthStr = String(idx + 1).padStart(2, '0');
+    const ingMes = ingresosYear.filter((i) => i.fecha.substring(5, 7) === monthStr);
+    const egMes = egresosYear.filter((e) => e.fecha.substring(5, 7) === monthStr);
+
+    const ingresosBrutos = ingMes.reduce((s, i) => s + i.monto, 0);
+    const ingresosFacturados = ingMes.filter((i) => i.factura).reduce((s, i) => s + i.monto, 0);
+    const egresosBrutos = egMes.reduce((s, e) => s + e.monto, 0);
+    const egresosDeducibles = egMes.filter((e) => e.factura).reduce((s, e) => s + e.monto, 0);
+
+    // --- IVA (mensual con saldo a favor acumulado) ---
+    const ivaTrasladado = ingMes.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
+    const ivaAcreditable = egMes.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
+    const ivaDelMes = ivaTrasladado - ivaAcreditable;
+    const ivaFavorAnterior = ivaFavor;
+    const ivaNeto = ivaDelMes - ivaFavor;
+    const ivaPorPagar = Math.max(0, ivaNeto);
+    const ivaAFavor = Math.max(0, -ivaNeto);
+    ivaFavor = ivaAFavor;
+
+    // --- ISR (con pérdida acumulada de meses anteriores) ---
+    const utilidadMes = ingresosFacturados - egresosDeducibles;
+    const perdidaAnterior = perdida;
+    const baseConPerdida = utilidadMes - perdida;
+    const baseISR = Math.max(0, baseConPerdida);
+    const isrEstimado = calcISR(baseISR);
+    perdida = baseConPerdida < 0 ? Math.abs(baseConPerdida) : 0;
+
+    const totalImpuestos = ivaPorPagar + isrEstimado;
+
+    return {
+      idx,
+      label,
+      ingresosBrutos,
+      ingresosFacturados,
+      ingresosNoFacturados: ingresosBrutos - ingresosFacturados,
+      ivaTrasladado,
+      ivaAcreditable,
+      ivaDelMes,
+      ivaFavorAnterior,
+      ivaPorPagar,
+      ivaAFavor,
+      egresosBrutos,
+      egresosDeducibles,
+      egresosNoDeducibles: egresosBrutos - egresosDeducibles,
+      utilidadMes,
+      perdidaAnterior,
+      baseISR,
+      isrEstimado,
+      totalImpuestos,
+      numIngresos: ingMes.length,
+      numFacturas: ingMes.filter((i) => i.factura).length,
+      numEgresos: egMes.length,
+      numFacturasEgreso: egMes.filter((e) => e.factura).length,
+      ingresos: ingMes,
+      egresos: egMes,
+    };
+  });
+
+  return { months, perdidaFinal: perdida, ivaFavorFinal: ivaFavor };
+}
+
 export default function FiscalPage() {
   const isClient = typeof window !== 'undefined';
   const [ingresos] = useState<Ingreso[]>(() => (isClient ? getIngresos() : []));
@@ -81,52 +147,16 @@ export default function FiscalPage() {
   const ingresosYear = ingresos.filter((i) => i.fecha.startsWith(yearStr + '-'));
   const egresosYear = egresos.filter((e) => e.fecha.startsWith(yearStr + '-'));
 
-  // Datos por mes (pagos provisionales mensuales)
-  const monthData = MESES.map((label, idx) => {
-    const monthStr = String(idx + 1).padStart(2, '0');
-    const ingMes = ingresosYear.filter((i) => i.fecha.substring(5, 7) === monthStr);
-    const egMes = egresosYear.filter((e) => e.fecha.substring(5, 7) === monthStr);
-
-    const ingresosBrutos = ingMes.reduce((s, i) => s + i.monto, 0);
-    const ingresosFacturados = ingMes.filter((i) => i.factura).reduce((s, i) => s + i.monto, 0);
-    const ivaTrasladado = ingMes.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
-    const ivaAcreditable = egMes.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
-    const ivaPorPagar = Math.max(0, ivaTrasladado - ivaAcreditable);
-    const ivaAFavor = Math.max(0, ivaAcreditable - ivaTrasladado);
-    const egresosBrutos = egMes.reduce((s, e) => s + e.monto, 0);
-    const egresosDeducibles = egMes.filter((e) => e.factura).reduce((s, e) => s + e.monto, 0);
-    const baseISR = Math.max(0, ingresosFacturados - egresosDeducibles);
-    const isrEstimado = calcISR(baseISR);
-    const totalImpuestos = ivaPorPagar + isrEstimado;
-
-    return {
-      idx,
-      label,
-      ingresosBrutos,
-      ingresosFacturados,
-      ingresosNoFacturados: ingresosBrutos - ingresosFacturados,
-      ivaTrasladado,
-      ivaAcreditable,
-      ivaPorPagar,
-      ivaAFavor,
-      egresosBrutos,
-      egresosDeducibles,
-      egresosNoDeducibles: egresosBrutos - egresosDeducibles,
-      baseISR,
-      isrEstimado,
-      totalImpuestos,
-      numIngresos: ingMes.length,
-      numFacturas: ingMes.filter((i) => i.factura).length,
-      numEgresos: egMes.length,
-      numFacturasEgreso: egMes.filter((e) => e.factura).length,
-      ingresos: ingMes,
-      egresos: egMes,
-    };
-  });
+  // Datos por mes (secuencial para acumular pérdidas ISR y saldo a favor IVA)
+  const {
+    months: monthData,
+    perdidaFinal: perdidaAcum,
+    ivaFavorFinal: ivaFavorAcum,
+  } = calcMonthData(MESES, ingresosYear, egresosYear);
 
   const sel = monthData[selectedMonth];
 
-  // Acumulado anual
+  // Acumulado anual (perdidaAcum e ivaFavorAcum ya tienen el saldo final tras recorrer los 12 meses)
   const acumIngresosFacturados = monthData.reduce((s, b) => s + b.ingresosFacturados, 0);
   const acumIVAPorPagar = monthData.reduce((s, b) => s + b.ivaPorPagar, 0);
   const acumISR = monthData.reduce((s, b) => s + b.isrEstimado, 0);
@@ -139,13 +169,16 @@ export default function FiscalPage() {
       'Ingresos Facturados',
       'Ingresos No Facturados',
       'IVA Trasladado',
+      'IVA Acreditable',
+      'IVA Saldo Favor Anterior',
+      'IVA por Pagar',
+      'IVA Saldo a Favor',
       'Egresos Deducibles',
       'Egresos No Deducibles',
-      'IVA Acreditable',
-      'IVA por Pagar',
-      'IVA a Favor',
+      'Utilidad/Pérdida Mes',
+      'Pérdida Anterior Acum.',
       'Base ISR',
-      'ISR Estimado (Tabla Art. 96)',
+      'ISR Estimado',
       'Total Impuestos',
     ];
     const rows = monthData.map((b) => [
@@ -153,27 +186,32 @@ export default function FiscalPage() {
       String(b.ingresosFacturados),
       String(b.ingresosNoFacturados),
       String(b.ivaTrasladado),
-      String(b.egresosDeducibles),
-      String(b.egresosNoDeducibles),
       String(b.ivaAcreditable),
+      String(b.ivaFavorAnterior),
       String(b.ivaPorPagar),
       String(b.ivaAFavor),
+      String(b.egresosDeducibles),
+      String(b.egresosNoDeducibles),
+      String(b.utilidadMes),
+      String(b.perdidaAnterior),
       String(b.baseISR),
       String(b.isrEstimado),
       String(b.totalImpuestos),
     ]);
-    // Fila de totales
     rows.push([
       'TOTAL ANUAL',
-      String(monthData.reduce((s, b) => s + b.ingresosFacturados, 0)),
+      String(acumIngresosFacturados),
       String(monthData.reduce((s, b) => s + b.ingresosNoFacturados, 0)),
       String(monthData.reduce((s, b) => s + b.ivaTrasladado, 0)),
+      String(monthData.reduce((s, b) => s + b.ivaAcreditable, 0)),
+      '',
+      String(acumIVAPorPagar),
+      String(ivaFavorAcum),
       String(monthData.reduce((s, b) => s + b.egresosDeducibles, 0)),
       String(monthData.reduce((s, b) => s + b.egresosNoDeducibles, 0)),
-      String(monthData.reduce((s, b) => s + b.ivaAcreditable, 0)),
-      String(acumIVAPorPagar),
-      String(monthData.reduce((s, b) => s + b.ivaAFavor, 0)),
-      String(monthData.reduce((s, b) => s + b.baseISR, 0)),
+      '',
+      String(perdidaAcum),
+      '',
       String(acumISR),
       String(acumTotalImpuestos),
     ]);
@@ -259,11 +297,17 @@ export default function FiscalPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard label="Facturado Anual" value={formatCurrency(acumIngresosFacturados)} subtitle={`${year}`} />
         <StatCard
-          label="IVA por Pagar (acum.)"
+          label="IVA pagado (acum.)"
           value={formatCurrency(acumIVAPorPagar)}
-          subtitle="IVA trasladado – acreditable"
+          subtitle={
+            ivaFavorAcum > 0 ? `Saldo a favor: ${formatCurrency(ivaFavorAcum)}` : 'IVA trasladado – acreditable'
+          }
         />
-        <StatCard label="ISR Estimado (acum.)" value={formatCurrency(acumISR)} subtitle="Tabla Art. 96 LISR" />
+        <StatCard
+          label="ISR pagado (acum.)"
+          value={formatCurrency(acumISR)}
+          subtitle={perdidaAcum > 0 ? `Pérdida pendiente: ${formatCurrency(perdidaAcum)}` : 'Tabla Art. 96 LISR'}
+        />
         <StatCard
           label="Total Impuestos"
           value={formatCurrency(acumTotalImpuestos)}
@@ -290,7 +334,7 @@ export default function FiscalPage() {
             <p className={`text-sm font-black mt-1 ${selectedMonth === idx ? 'text-[#c72a09]' : 'text-[#0a0a0a]'}`}>
               {formatCurrency(b.totalImpuestos)}
             </p>
-            <p className="text-[9px] text-neutral-400 mt-0.5">{b.numFacturas} facturas</p>
+            <p className="text-[9px] text-neutral-400 mt-0.5">{b.numFacturas + b.numFacturasEgreso} facturas</p>
           </button>
         ))}
       </div>
@@ -385,12 +429,20 @@ export default function FiscalPage() {
                 <span className="text-sm font-bold text-green-400">{formatCurrency(sel.ivaTrasladado)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-sm text-white/50">Acreditable</span>
+                <span className="text-sm text-white/50">(-) Acreditable</span>
                 <span className="text-sm font-bold text-red-400">{formatCurrency(sel.ivaAcreditable)}</span>
               </div>
+              {sel.ivaFavorAnterior > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-blue-400">(-) Saldo a favor anterior</span>
+                  <span className="text-sm font-bold text-blue-400">{formatCurrency(sel.ivaFavorAnterior)}</span>
+                </div>
+              )}
               <div className="border-t border-white/10 pt-2 flex justify-between">
-                <span className="text-sm font-bold text-white">{sel.ivaPorPagar > 0 ? 'Por pagar' : 'A favor'}</span>
-                <span className="text-lg font-black text-[#c72a09]">
+                <span className="text-sm font-bold text-white">
+                  {sel.ivaPorPagar > 0 ? 'Por pagar' : 'Saldo a favor'}
+                </span>
+                <span className={`text-lg font-black ${sel.ivaPorPagar > 0 ? 'text-[#c72a09]' : 'text-blue-400'}`}>
                   {formatCurrency(sel.ivaPorPagar > 0 ? sel.ivaPorPagar : sel.ivaAFavor)}
                 </span>
               </div>
@@ -409,6 +461,18 @@ export default function FiscalPage() {
                 <span className="text-sm text-white/50">(-) Deducciones</span>
                 <span className="text-sm font-bold text-white">{formatCurrency(sel.egresosDeducibles)}</span>
               </div>
+              {sel.utilidadMes < 0 && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-amber-400">Pérdida del mes</span>
+                  <span className="text-sm font-bold text-amber-400">{formatCurrency(Math.abs(sel.utilidadMes))}</span>
+                </div>
+              )}
+              {sel.perdidaAnterior > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-amber-400">(-) Pérdida meses anteriores</span>
+                  <span className="text-sm font-bold text-amber-400">{formatCurrency(sel.perdidaAnterior)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-sm text-white/50">Base gravable</span>
                 <span className="text-sm font-bold text-white">{formatCurrency(sel.baseISR)}</span>
@@ -445,9 +509,9 @@ export default function FiscalPage() {
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
         <p className="text-xs text-amber-700">
           <span className="font-bold">Nota:</span> Los cálculos de ISR usan la tabla del Art. 96 LISR para Persona
-          Física con Actividad Empresarial (pagos provisionales mensuales). Las cifras son estimaciones para referencia.
-          Consulta con tu contador para la declaración definitiva. El IVA se calcula como trasladado (cobrado en
-          facturas de venta) menos acreditable (pagado en facturas de compra).
+          Física con Actividad Empresarial. Las pérdidas fiscales se acumulan y se aplican contra utilidades de meses
+          posteriores del mismo ejercicio. El IVA a favor se acumula por separado y se aplica contra IVA por pagar de
+          meses siguientes. Ambos saldos son independientes. Las cifras son estimaciones — consulta con tu contador.
         </p>
       </div>
     </div>
