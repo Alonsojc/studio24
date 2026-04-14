@@ -168,6 +168,30 @@ export default function AjustesPage() {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className={labelClass}>RFC</label>
+                <input type="text" value={config.rfc || ''} onChange={(e) => setConfig({ ...config, rfc: e.target.value.toUpperCase() })} placeholder="XAXX010101000" maxLength={13} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Régimen Fiscal</label>
+                <select value={config.regimenFiscal || ''} onChange={(e) => setConfig({ ...config, regimenFiscal: e.target.value })} className={inputClass}>
+                  <option value="">Seleccionar...</option>
+                  <option value="612">612 - Persona Física Act. Empresarial</option>
+                  <option value="601">601 - General de Ley</option>
+                  <option value="603">603 - Autotransporte</option>
+                  <option value="605">605 - Sueldos y Salarios</option>
+                  <option value="606">606 - Arrendamiento</option>
+                  <option value="621">621 - Incorporación Fiscal</option>
+                  <option value="625">625 - RESICO</option>
+                  <option value="626">626 - RESICO Confianza</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Código Postal</label>
+                <input type="text" value={config.codigoPostal || ''} onChange={(e) => setConfig({ ...config, codigoPostal: e.target.value })} placeholder="76168" maxLength={5} className={inputClass} />
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>Teléfono</label>

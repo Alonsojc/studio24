@@ -199,6 +199,9 @@ export interface PlantillaWhatsApp {
 export interface ConfigNegocio {
   nombreNegocio: string;
   titular: string;
+  rfc: string;
+  regimenFiscal: string;
+  codigoPostal: string;
   banco: string;
   numeroCuenta: string;
   clabe: string;
