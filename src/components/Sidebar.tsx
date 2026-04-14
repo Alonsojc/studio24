@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import { signOut } from '@/lib/auth';
 import GlobalSearch from './GlobalSearch';
 
 interface NavItem {
@@ -280,8 +281,20 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-5 py-4 border-t border-white/[0.06] flex items-center justify-between">
-        <p className="text-[10px] tracking-[0.15em] text-neutral-600 uppercase">Bordados &amp; Servicios</p>
+      <div className="px-5 py-4 border-t border-white/[0.06] flex items-center justify-between gap-2">
+        <button
+          onClick={() => signOut()}
+          className="w-8 h-8 rounded-lg bg-white/[0.06] text-neutral-600 hover:text-red-400 flex items-center justify-center transition-colors"
+          title="Cerrar sesión"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9"
+            />
+          </svg>
+        </button>
         <button
           onClick={toggleDark}
           className="w-8 h-8 rounded-lg bg-white/[0.06] text-neutral-500 hover:text-white flex items-center justify-center transition-colors"

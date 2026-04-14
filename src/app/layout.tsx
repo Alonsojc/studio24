@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import Sidebar from '@/components/Sidebar';
 import SeedData from '@/components/SeedData';
-import PinLock from '@/components/PinLock';
+import AuthGate from '@/components/AuthGate';
 import './globals.css';
 
 export const viewport: Viewport = {
@@ -33,11 +33,11 @@ export default function RootLayout({
   return (
     <html lang="es" className="h-full antialiased">
       <body className="min-h-full font-sans">
-        <PinLock>
+        <AuthGate>
           <SeedData />
           <Sidebar />
           <main className="lg:ml-[260px] min-h-screen px-4 py-16 lg:px-10 lg:py-8">{children}</main>
-        </PinLock>
+        </AuthGate>
       </body>
     </html>
   );
