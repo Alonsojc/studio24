@@ -226,3 +226,44 @@ export async function migrateLocalToCloud(): Promise<number> {
 
   return count;
 }
+
+// Pull from cloud: download all Supabase data into localStorage
+// Used when logging in on a new device
+export async function pullFromCloud(): Promise<number> {
+  let count = 0;
+
+  const pull = async <T>(table: string, localKey: string) => {
+    const items = await getAll<T>(table);
+    if (items.length > 0) {
+      localStorage.setItem(localKey, JSON.stringify(items));
+      count += items.length;
+    }
+  };
+
+  await pull<Cliente>('clientes', 'bordados_clientes');
+  await pull<Proveedor>('proveedores', 'bordados_proveedores');
+  await pull<Ingreso>('ingresos', 'bordados_ingresos');
+  await pull<Egreso>('egresos', 'bordados_egresos');
+  await pull<Pedido>('pedidos', 'bordados_pedidos');
+  await pull<Producto>('productos', 'bordados_productos');
+  await pull<Cotizacion>('cotizaciones', 'bordados_cotizaciones');
+  await pull<EgresoRecurrente>('egresos_recurrentes', 'bordados_egresos_recurrentes');
+  await pull<ItemInventario>('inventario', 'bordados_inventario');
+  await pull<Diseno>('disenos', 'bordados_disenos');
+  await pull<PlantillaWhatsApp>('plantillas', 'bordados_plantillas');
+
+  // Config
+  const config = await cloudGetConfig();
+  if (config.nombreNegocio || config.titular) {
+    localStorage.setItem('bordados_config', JSON.stringify(config));
+    count++;
+  }
+
+  // Recurrentes log
+  const log = await cloudGetRecurrentesLog();
+  if (log.length > 0) {
+    localStorage.setItem('bordados_recurrentes_log', JSON.stringify(log));
+  }
+
+  return count;
+}

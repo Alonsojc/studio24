@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signOut } from '@/lib/auth';
 import GlobalSearch from './GlobalSearch';
 
@@ -206,6 +206,15 @@ export default function Sidebar() {
     setOpenGroups((prev) => ({ ...prev, [idx]: !prev[idx] }));
   };
 
+  const [online, setOnline] = useState(true);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    update();
+    return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); };
+  }, []);
+
   const toggleDark = () => {
     const next = !dark;
     setDark(next);
@@ -282,6 +291,10 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="px-5 py-4 border-t border-white/[0.06] flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5" title={online ? 'Conectado a la nube' : 'Sin conexión — modo offline'}>
+          <div className={`w-2 h-2 rounded-full ${online ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`} />
+          <span className="text-[9px] text-neutral-600">{online ? 'Online' : 'Offline'}</span>
+        </div>
         <button
           onClick={() => signOut()}
           className="w-8 h-8 rounded-lg bg-white/[0.06] text-neutral-600 hover:text-red-400 flex items-center justify-center transition-colors"

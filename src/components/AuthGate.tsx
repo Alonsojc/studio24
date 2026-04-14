@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { signIn, signUp, resetPassword } from '@/lib/auth';
+import { pullFromCloud } from '@/lib/store-cloud';
 
-type View = 'login' | 'register' | 'reset' | 'check-email';
+type View = 'login' | 'register' | 'reset' | 'check-email' | 'syncing';
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -18,25 +19,38 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (user) {
+        // Sync from cloud on startup
+        await pullFromCloud().catch(() => {});
+      }
       setUser(user);
       setLoading(false);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user && _event === 'SIGNED_IN') {
+        setView('syncing');
+        await pullFromCloud().catch(() => {});
+      }
       setUser(session?.user ?? null);
       setLoading(false);
+      if (view === 'syncing') setView('login');
     });
 
     return () => subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (loading) {
+  if (loading || view === 'syncing') {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#fafafa]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
+        <div className="text-center">
+          <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin mx-auto" />
+          {view === 'syncing' && <p className="text-xs text-neutral-400 mt-3">Sincronizando datos...</p>}
+        </div>
       </div>
     );
   }
