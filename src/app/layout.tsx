@@ -13,7 +13,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: {
     default: 'Studio 24',
-    template: '%s — Studio 24',
+    template: 'Studio 24 - %s',
   },
   description: 'Sistema de control de ingresos, egresos y clientes para negocio de bordados',
   icons: {
