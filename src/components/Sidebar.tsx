@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { signOut } from '@/lib/auth';
+import { useRole } from './RoleProvider';
+import { getVisibleGroups, canAccess, roleLabel, roleColor } from '@/lib/roles';
 import GlobalSearch from './GlobalSearch';
 
 interface NavItem {
@@ -192,11 +194,15 @@ export default function Sidebar() {
     return false;
   });
 
+  const { profile, role } = useRole();
+  const visibleGroups = getVisibleGroups(role);
+  const filteredGroups = navGroups.filter((g) => visibleGroups.includes(g.label));
+
   // Auto-open group that contains active route
-  const activeGroup = navGroups.findIndex((g) => g.items.some((i) => pathname.startsWith(i.href)));
+  const activeGroup = filteredGroups.findIndex((g) => g.items.some((i) => pathname.startsWith(i.href)));
   const [openGroups, setOpenGroups] = useState<Record<number, boolean>>(() => {
     const initial: Record<number, boolean> = {};
-    navGroups.forEach((_, i) => {
+    filteredGroups.forEach((_, i) => {
       initial[i] = i === activeGroup;
     });
     return initial;
@@ -266,7 +272,7 @@ export default function Sidebar() {
         {renderLink(dashboard)}
 
         {/* Groups */}
-        {navGroups.map((group, gIdx) => {
+        {filteredGroups.map((group, gIdx) => {
           const isOpen = openGroups[gIdx] ?? false;
           const hasActive = group.items.some((i) => pathname.startsWith(i.href));
           return (
@@ -291,9 +297,11 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="px-5 py-4 border-t border-white/[0.06] flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5" title={online ? 'Conectado a la nube' : 'Sin conexión — modo offline'}>
-          <div className={`w-2 h-2 rounded-full ${online ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`} />
-          <span className="text-[9px] text-neutral-600">{online ? 'Online' : 'Offline'}</span>
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full shrink-0 ${online ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`} />
+          {profile && (
+            <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${roleColor(role)}`}>{roleLabel(role)}</span>
+          )}
         </div>
         <button
           onClick={() => signOut()}
