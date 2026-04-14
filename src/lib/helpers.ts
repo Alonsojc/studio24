@@ -44,6 +44,7 @@ export function categoriaLabel(c: CategoriaEgreso): string {
     mercancia: 'Mercancía',
     insumos: 'Insumos',
     servicios: 'Servicios',
+    error: 'Error/Desperdicio',
     maquinaria: 'Maquinaria',
     publicidad: 'Publicidad',
     renta: 'Renta/Local',

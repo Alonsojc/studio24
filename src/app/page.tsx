@@ -49,6 +49,9 @@ export default function Dashboard() {
   const ivaPagado = egresosDelMes.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
   const facturadoMes = ingresosDelMes.filter((i) => i.factura).reduce((s, i) => s + i.montoTotal, 0);
 
+  const erroresDelMes = egresosDelMes.filter((e) => e.categoria === 'error');
+  const totalErroresMes = erroresDelMes.reduce((s, e) => s + e.montoTotal, 0);
+
   const recentIngresos = [...ingresos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
   const recentEgresos = [...egresos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
 
@@ -74,6 +77,19 @@ export default function Dashboard() {
         />
         <StatCard label="Clientes" value={String(clientes.length)} subtitle="Registrados" />
       </div>
+
+      {/* Errores del mes */}
+      {totalErroresMes > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-10">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-red-600">Errores y desperdicios del mes</p>
+              <p className="text-[10px] text-red-400 mt-0.5">{erroresDelMes.length} errores · {totalEgresosMes > 0 ? ((totalErroresMes / totalEgresosMes) * 100).toFixed(1) : 0}% de los egresos</p>
+            </div>
+            <p className="text-lg font-black text-red-600">{formatCurrency(totalErroresMes)}</p>
+          </div>
+        </div>
+      )}
 
       {/* Fiscal + Payment */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-10">
