@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { generarEgresosRecurrentes } from '@/lib/recurrentes';
 import { restoreFromIDB, syncAllToIDB } from '@/lib/db';
-import { getPedidos, limpiarDuplicados } from '@/lib/store';
+import { getPedidos } from '@/lib/store';
 import { formatDate } from '@/lib/helpers';
 
 const NOTIF_KEY = 'bordados_last_notif';
@@ -77,21 +77,11 @@ export default function SeedData() {
           window.location.reload();
           return;
         }
-        try {
-          limpiarDuplicados();
-        } catch {
-          /* best-effort cleanup */
-        }
         syncAllToIDB();
         generarEgresosRecurrentes();
       })
       .catch(() => {
         // IDB not available (e.g. mobile private mode) — run startup without restore
-        try {
-          limpiarDuplicados();
-        } catch {
-          /* ignore */
-        }
         generarEgresosRecurrentes();
       });
 
