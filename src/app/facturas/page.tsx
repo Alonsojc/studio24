@@ -227,7 +227,13 @@ export default function FacturasPage() {
   };
 
   const pendientes = facturas.filter((f) => f.status !== 'done');
-  const procesadas = facturas.filter((f) => f.status === 'done');
+  const sesionProcesadas = facturas.filter((f) => f.status === 'done');
+
+  // Facturas ya vinculadas (persisten entre navegaciones)
+  const facturasVinculadas = [
+    ...ingresos.filter((i) => i.uuidCFDI).map((i) => ({ tipo: 'ingreso' as const, desc: i.descripcion, total: i.montoTotal, uuid: i.uuidCFDI!, fecha: i.fecha })),
+    ...egresos.filter((e) => e.uuidCFDI).map((e) => ({ tipo: 'egreso' as const, desc: e.descripcion, total: e.montoTotal, uuid: e.uuidCFDI!, fecha: e.fecha })),
+  ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   return (
     <div>
@@ -349,20 +355,39 @@ export default function FacturasPage() {
         </div>
       )}
 
-      {/* Processed */}
-      {procesadas.length > 0 && (
+      {/* Facturas vinculadas (persisten) */}
+      {facturasVinculadas.length > 0 && (
         <div>
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-3">{procesadas.length} procesada{procesadas.length > 1 ? 's' : ''}</h3>
-          <div className="space-y-2">
-            {procesadas.map((f) => (
-              <div key={f.id} className="bg-green-50 rounded-xl p-3 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-green-700">{f.cfdi.conceptos[0]?.descripcion || f.cfdi.nombreEmisor}</p>
-                  <p className="text-[10px] text-green-600">{f.status === 'done' ? (f.matchId ? 'Vinculada' : 'Creada') : 'Error'}</p>
-                </div>
-                <p className="text-sm font-bold text-green-700">{formatCurrency(f.cfdi.total)}</p>
-              </div>
-            ))}
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-3">
+            {facturasVinculadas.length} factura{facturasVinculadas.length > 1 ? 's' : ''} en el sistema
+          </h3>
+          <div className="bg-white rounded-2xl border border-neutral-100 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-100">
+                  <th className="px-4 py-3 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Fecha</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Tipo</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Descripción</th>
+                  <th className="px-4 py-3 text-right text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Total</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">UUID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {facturasVinculadas.map((f) => (
+                  <tr key={f.uuid} className="border-b border-neutral-50 hover:bg-neutral-50/50">
+                    <td className="px-4 py-3 text-xs text-neutral-400">{formatDate(f.fecha)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase ${f.tipo === 'ingreso' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                        {f.tipo === 'ingreso' ? 'Emitida' : 'Recibida'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-[#0a0a0a]">{f.desc}</td>
+                    <td className="px-4 py-3 text-right font-bold">{formatCurrency(f.total)}</td>
+                    <td className="px-4 py-3 text-[10px] text-neutral-300 font-mono">{f.uuid.substring(0, 8)}...</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
