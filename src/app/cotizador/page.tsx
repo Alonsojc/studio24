@@ -3,7 +3,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { formatCurrency, calcIVA } from '@/lib/helpers';
 import { v4 as uuid } from 'uuid';
-import { getClientes, getConfig, addCotizacion, updateCotizacion, getCotizaciones, getNextFolio, getProductos } from '@/lib/store';
+import {
+  getClientes,
+  getConfig,
+  addCotizacion,
+  updateCotizacion,
+  getCotizaciones,
+  getNextFolio,
+  getProductos,
+} from '@/lib/store';
 import { Cliente, ConfigNegocio, Cotizacion, Producto } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
 import { inputClass, labelClass } from '@/lib/styles';
@@ -30,6 +38,8 @@ export default function CotizadorPage() {
   const [selBordado, setSelBordado] = useState<{ label: string; precio: number } | null>(null);
   const [selPrenda, setSelPrenda] = useState<{ label: string; precio: number } | null>(null);
   const [conIVA, setConIVA] = useState(false);
+  const [moneda, setMoneda] = useState<'MXN' | 'USD'>('MXN');
+  const [tipoCambio, setTipoCambio] = useState(17.5);
   const [notas, setNotas] = useState('');
   const [copied, setCopied] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
@@ -46,11 +56,27 @@ export default function CotizadorPage() {
     setMounted(true);
   }, []);
 
-  const cfg = config || { nombreNegocio: 'STUDIO 24', titular: '', banco: '', numeroCuenta: '', clabe: '', telefono: '', email: '', direccion: '', logoUrl: '' };
+  const cfg = config || {
+    nombreNegocio: 'STUDIO 24',
+    titular: '',
+    banco: '',
+    numeroCuenta: '',
+    clabe: '',
+    telefono: '',
+    email: '',
+    direccion: '',
+    logoUrl: '',
+  };
 
-  const presetsBordado = allProductos.filter((p) => p.categoria === 'bordado').map((p) => ({ label: p.nombre, precio: p.precio }));
-  const presetsPrenda = allProductos.filter((p) => p.categoria === 'prenda').map((p) => ({ label: p.nombre, precio: p.precio }));
-  const presetsServicios = allProductos.filter((p) => p.categoria === 'servicio' || p.categoria === 'otro').map((p) => ({ label: p.nombre, precio: p.precio }));
+  const presetsBordado = allProductos
+    .filter((p) => p.categoria === 'bordado')
+    .map((p) => ({ label: p.nombre, precio: p.precio }));
+  const presetsPrenda = allProductos
+    .filter((p) => p.categoria === 'prenda')
+    .map((p) => ({ label: p.nombre, precio: p.precio }));
+  const presetsServicios = allProductos
+    .filter((p) => p.categoria === 'servicio' || p.categoria === 'otro')
+    .map((p) => ({ label: p.nombre, precio: p.precio }));
 
   const selectCliente = (id: string) => {
     setClienteId(id);
@@ -72,8 +98,14 @@ export default function CotizadorPage() {
     if (!selBordado && !selPrenda) return;
     const parts: string[] = [];
     let precio = 0;
-    if (selPrenda) { parts.push(selPrenda.label); precio += selPrenda.precio; }
-    if (selBordado) { parts.push(selBordado.label); precio += selBordado.precio; }
+    if (selPrenda) {
+      parts.push(selPrenda.label);
+      precio += selPrenda.precio;
+    }
+    if (selBordado) {
+      parts.push(selBordado.label);
+      precio += selBordado.precio;
+    }
     const desc = parts.join(' + ');
     setItems([...items, { id: String(nextIdRef.current++), descripcion: desc, cantidad: 1, precioUnitario: precio }]);
     setSelBordado(null);
@@ -86,29 +118,58 @@ export default function CotizadorPage() {
   };
 
   const updateItem = (id: string, field: keyof LineItem, value: string | number) => {
-    setItems(items.map((i) => i.id === id ? { ...i, [field]: value } : i));
+    setItems(items.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
   };
 
   const subtotal = items.reduce((s, i) => s + i.cantidad * i.precioUnitario, 0);
   const iva = conIVA ? calcIVA(subtotal) : 0;
   const total = subtotal + iva;
 
+  const fmtMoney = (amount: number) => {
+    if (moneda === 'USD') {
+      const usd = amount / tipoCambio;
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(usd);
+    }
+    return formatCurrency(amount);
+  };
+
   const today = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
 
   const guardarCotizacion = () => {
     if (items.filter((i) => i.descripcion && i.precioUnitario > 0).length === 0) return;
-    const validItems = items.filter((i) => i.descripcion && i.precioUnitario > 0).map((i) => ({ descripcion: i.descripcion, cantidad: i.cantidad, precioUnitario: i.precioUnitario }));
+    const validItems = items
+      .filter((i) => i.descripcion && i.precioUnitario > 0)
+      .map((i) => ({ descripcion: i.descripcion, cantidad: i.cantidad, precioUnitario: i.precioUnitario }));
     if (editingCotId) {
       const existing = cotizaciones.find((c) => c.id === editingCotId);
       if (existing) {
-        const updated: Cotizacion = { ...existing, clienteNombre, clienteEmpresa, items: validItems, conIVA, notas, subtotal, iva, total };
+        const updated: Cotizacion = {
+          ...existing,
+          clienteNombre,
+          clienteEmpresa,
+          items: validItems,
+          conIVA,
+          notas,
+          subtotal,
+          iva,
+          total,
+        };
         updateCotizacion(updated);
-        setCotizaciones(cotizaciones.map((c) => c.id === editingCotId ? updated : c));
+        setCotizaciones(cotizaciones.map((c) => (c.id === editingCotId ? updated : c)));
       }
     } else {
       const cot: Cotizacion = {
-        id: uuid(), folio: getNextFolio('COT'), clienteNombre, clienteEmpresa,
-        items: validItems, conIVA, notas, subtotal, iva, total, createdAt: new Date().toISOString(),
+        id: uuid(),
+        folio: getNextFolio('COT'),
+        clienteNombre,
+        clienteEmpresa,
+        items: validItems,
+        conIVA,
+        notas,
+        subtotal,
+        iva,
+        total,
+        createdAt: new Date().toISOString(),
       };
       addCotizacion(cot);
       setCotizaciones([cot, ...cotizaciones]);
@@ -137,13 +198,17 @@ export default function CotizadorPage() {
       clienteEmpresa ? clienteEmpresa : '',
       '',
       '*DETALLE:*',
-      ...items.filter((i) => i.descripcion && i.precioUnitario > 0).map((i) =>
-        `${i.descripcion} - ${i.cantidad} x ${formatCurrency(i.precioUnitario)} = ${formatCurrency(i.cantidad * i.precioUnitario)}`
-      ),
+      ...items
+        .filter((i) => i.descripcion && i.precioUnitario > 0)
+        .map(
+          (i) =>
+            `${i.descripcion} - ${i.cantidad} x ${formatCurrency(i.precioUnitario)} = ${formatCurrency(i.cantidad * i.precioUnitario)}`,
+        ),
       '',
-      `*SUBTOTAL:* ${formatCurrency(subtotal)}`,
-      conIVA ? `*IVA (16%):* ${formatCurrency(iva)}` : '',
-      `*TOTAL: ${formatCurrency(total)}*`,
+      `*SUBTOTAL:* ${fmtMoney(subtotal)}`,
+      conIVA ? `*IVA (16%):* ${fmtMoney(iva)}` : '',
+      `*TOTAL: ${fmtMoney(total)}*`,
+      moneda === 'USD' ? `(Tipo de cambio: $${tipoCambio} MXN/USD)` : '',
       '',
       '*INFORMACION DE PAGO:*',
       cfg.titular,
@@ -152,7 +217,9 @@ export default function CotizadorPage() {
       cfg.clabe ? `CLABE: ${cfg.clabe}` : '',
       '',
       notas ? `Notas: ${notas}` : '',
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
     return lines;
   };
 
@@ -168,7 +235,7 @@ export default function CotizadorPage() {
     let msg = '';
     msg += `Hola${nombre ? ` ${nombre}` : ''}! 🧵✨${nl}${nl}`;
     msg += `Gracias por tu interes en *${cfg.nombreNegocio || 'Studio 24'}*! 🎉${nl}${nl}`;
-    msg += `Te comparto la cotizacion de tu pedido por un total de *${formatCurrency(total)}*${nl}${nl}`;
+    msg += `Te comparto la cotización de tu pedido por un total de *${fmtMoney(total)}*${moneda === 'USD' ? ` (TC: $${tipoCambio})` : ''}${nl}${nl}`;
     msg += `📎 _Te adjunto el PDF con el detalle completo_${nl}${nl}`;
     if (cfg.titular || cfg.banco || cfg.numeroCuenta) {
       msg += `🏦 *Datos para transferencia:*${nl}`;
@@ -213,7 +280,10 @@ export default function CotizadorPage() {
       doc.setFont('helvetica', 'normal');
       doc.text(clienteNombre, 20, y);
       y += 5;
-      if (clienteEmpresa) { doc.text(clienteEmpresa, 20, y); y += 5; }
+      if (clienteEmpresa) {
+        doc.text(clienteEmpresa, 20, y);
+        y += 5;
+      }
     }
     y += 3;
     doc.line(20, y, w - 20, y);
@@ -239,8 +309,15 @@ export default function CotizadorPage() {
     validItems.forEach((item) => {
       doc.text(item.descripcion, 20, y);
       doc.text(String(item.cantidad), 110, y, { align: 'right' });
-      doc.text(`$ ${item.precioUnitario.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, 145, y, { align: 'right' });
-      doc.text(`$ ${(item.cantidad * item.precioUnitario).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, w - 20, y, { align: 'right' });
+      doc.text(`$ ${item.precioUnitario.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`, 145, y, {
+        align: 'right',
+      });
+      doc.text(
+        `$ ${(item.cantidad * item.precioUnitario).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`,
+        w - 20,
+        y,
+        { align: 'right' },
+      );
       y += 2;
       doc.setDrawColor(220);
       doc.setLineWidth(0.1);
@@ -281,11 +358,27 @@ export default function CotizadorPage() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(50);
-    if (cfg.titular) { doc.text(cfg.titular, 20, y); y += 5; }
-    if (cfg.banco) { doc.text(cfg.banco, 20, y); y += 5; }
-    if (cfg.numeroCuenta) { doc.text(`Numero de cuenta: ${cfg.numeroCuenta}`, 20, y); y += 5; }
-    if (cfg.clabe) { doc.text(`Cuenta clabe: ${cfg.clabe}`, 20, y); y += 5; }
-    if (notas) { y += 3; doc.setTextColor(120); doc.text(`Notas: ${notas}`, 20, y); }
+    if (cfg.titular) {
+      doc.text(cfg.titular, 20, y);
+      y += 5;
+    }
+    if (cfg.banco) {
+      doc.text(cfg.banco, 20, y);
+      y += 5;
+    }
+    if (cfg.numeroCuenta) {
+      doc.text(`Numero de cuenta: ${cfg.numeroCuenta}`, 20, y);
+      y += 5;
+    }
+    if (cfg.clabe) {
+      doc.text(`Cuenta clabe: ${cfg.clabe}`, 20, y);
+      y += 5;
+    }
+    if (notas) {
+      y += 3;
+      doc.setTextColor(120);
+      doc.text(`Notas: ${notas}`, 20, y);
+    }
 
     // Logo text
     doc.setFont('helvetica', 'bold');
@@ -298,7 +391,12 @@ export default function CotizadorPage() {
     doc.save(filename);
   };
 
-  if (!mounted) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" /></div>;
+  if (!mounted)
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
 
   return (
     <div>
@@ -315,13 +413,37 @@ export default function CotizadorPage() {
               <select value={clienteId} onChange={(e) => selectCliente(e.target.value)} className={inputClass}>
                 <option value="">-- Escribir manualmente --</option>
                 {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>{c.nombre}{c.telefono ? ` (${c.telefono})` : ''}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                    {c.telefono ? ` (${c.telefono})` : ''}
+                  </option>
                 ))}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><label className={labelClass}>Nombre</label><input type="text" value={clienteNombre} onChange={(e) => { setClienteNombre(e.target.value); setClienteId(''); }} placeholder="Nombre del contacto" className={inputClass} /></div>
-              <div><label className={labelClass}>Empresa / Dirección</label><input type="text" value={clienteEmpresa} onChange={(e) => setClienteEmpresa(e.target.value)} placeholder="Nombre de la empresa" className={inputClass} /></div>
+              <div>
+                <label className={labelClass}>Nombre</label>
+                <input
+                  type="text"
+                  value={clienteNombre}
+                  onChange={(e) => {
+                    setClienteNombre(e.target.value);
+                    setClienteId('');
+                  }}
+                  placeholder="Nombre del contacto"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Empresa / Dirección</label>
+                <input
+                  type="text"
+                  value={clienteEmpresa}
+                  onChange={(e) => setClienteEmpresa(e.target.value)}
+                  placeholder="Nombre de la empresa"
+                  className={inputClass}
+                />
+              </div>
             </div>
           </div>
 
@@ -329,28 +451,54 @@ export default function CotizadorPage() {
           <div className="bg-white rounded-2xl border border-neutral-100 p-6">
             <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-4">Armar Concepto</h3>
 
-            <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2">1. Tipo de bordado {selBordado && <span className="text-[#c72a09]">({selBordado.label})</span>}</p>
+            <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2">
+              1. Tipo de bordado {selBordado && <span className="text-[#c72a09]">({selBordado.label})</span>}
+            </p>
             <div className="flex flex-wrap gap-2 mb-4">
               {presetsBordado.map((p) => (
-                <button key={p.label} onClick={() => setSelBordado(selBordado?.label === p.label ? null : p)} className={`px-3 py-2 rounded-xl border transition-all text-left ${selBordado?.label === p.label ? 'border-[#c72a09] bg-[#c72a09]/10 ring-1 ring-[#c72a09]/30' : 'border-neutral-200 hover:border-neutral-400'}`}>
-                  <span className={`text-xs font-semibold block ${selBordado?.label === p.label ? 'text-[#c72a09]' : 'text-[#0a0a0a]'}`}>{p.label}</span>
+                <button
+                  key={p.label}
+                  onClick={() => setSelBordado(selBordado?.label === p.label ? null : p)}
+                  className={`px-3 py-2 rounded-xl border transition-all text-left ${selBordado?.label === p.label ? 'border-[#c72a09] bg-[#c72a09]/10 ring-1 ring-[#c72a09]/30' : 'border-neutral-200 hover:border-neutral-400'}`}
+                >
+                  <span
+                    className={`text-xs font-semibold block ${selBordado?.label === p.label ? 'text-[#c72a09]' : 'text-[#0a0a0a]'}`}
+                  >
+                    {p.label}
+                  </span>
                   <span className="text-[10px] text-neutral-400">{formatCurrency(p.precio)}</span>
                 </button>
               ))}
-              <button onClick={() => setSelBordado(null)} className={`px-3 py-2 rounded-xl border transition-all text-left ${!selBordado ? 'border-[#c72a09] bg-[#c72a09]/10' : 'border-neutral-200 hover:border-neutral-400'}`}>
+              <button
+                onClick={() => setSelBordado(null)}
+                className={`px-3 py-2 rounded-xl border transition-all text-left ${!selBordado ? 'border-[#c72a09] bg-[#c72a09]/10' : 'border-neutral-200 hover:border-neutral-400'}`}
+              >
                 <span className="text-xs font-semibold text-neutral-400">Sin bordado</span>
               </button>
             </div>
 
-            <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2">2. Prenda {selPrenda && <span className="text-[#c72a09]">({selPrenda.label})</span>}</p>
+            <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2">
+              2. Prenda {selPrenda && <span className="text-[#c72a09]">({selPrenda.label})</span>}
+            </p>
             <div className="flex flex-wrap gap-2 mb-5">
               {presetsPrenda.map((p) => (
-                <button key={p.label} onClick={() => setSelPrenda(selPrenda?.label === p.label ? null : p)} className={`px-3 py-2 rounded-xl border transition-all text-left ${selPrenda?.label === p.label ? 'border-[#c72a09] bg-[#c72a09]/10 ring-1 ring-[#c72a09]/30' : 'border-neutral-200 hover:border-neutral-400'}`}>
-                  <span className={`text-xs font-semibold block ${selPrenda?.label === p.label ? 'text-[#c72a09]' : 'text-[#0a0a0a]'}`}>{p.label}</span>
+                <button
+                  key={p.label}
+                  onClick={() => setSelPrenda(selPrenda?.label === p.label ? null : p)}
+                  className={`px-3 py-2 rounded-xl border transition-all text-left ${selPrenda?.label === p.label ? 'border-[#c72a09] bg-[#c72a09]/10 ring-1 ring-[#c72a09]/30' : 'border-neutral-200 hover:border-neutral-400'}`}
+                >
+                  <span
+                    className={`text-xs font-semibold block ${selPrenda?.label === p.label ? 'text-[#c72a09]' : 'text-[#0a0a0a]'}`}
+                  >
+                    {p.label}
+                  </span>
                   <span className="text-[10px] text-neutral-400">{formatCurrency(p.precio)}</span>
                 </button>
               ))}
-              <button onClick={() => setSelPrenda(null)} className={`px-3 py-2 rounded-xl border transition-all text-left ${!selPrenda ? 'border-[#c72a09] bg-[#c72a09]/10' : 'border-neutral-200 hover:border-neutral-400'}`}>
+              <button
+                onClick={() => setSelPrenda(null)}
+                className={`px-3 py-2 rounded-xl border transition-all text-left ${!selPrenda ? 'border-[#c72a09] bg-[#c72a09]/10' : 'border-neutral-200 hover:border-neutral-400'}`}
+              >
                 <span className="text-xs font-semibold text-neutral-400">Cliente trae prenda</span>
               </button>
             </div>
@@ -358,10 +506,26 @@ export default function CotizadorPage() {
             {/* Servicios - add directly */}
             {presetsServicios.length > 0 && (
               <>
-                <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2 mt-4">Servicios (agregar directo)</p>
+                <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2 mt-4">
+                  Servicios (agregar directo)
+                </p>
                 <div className="flex flex-wrap gap-2 mb-4">
                   {presetsServicios.map((p) => (
-                    <button key={p.label} onClick={() => { setItems([...items, { id: String(nextIdRef.current++), descripcion: p.label, cantidad: 1, precioUnitario: p.precio }]); }} className="px-3 py-2 rounded-xl border border-neutral-200 hover:border-[#c72a09] hover:bg-[#c72a09]/5 transition-all text-left">
+                    <button
+                      key={p.label}
+                      onClick={() => {
+                        setItems([
+                          ...items,
+                          {
+                            id: String(nextIdRef.current++),
+                            descripcion: p.label,
+                            cantidad: 1,
+                            precioUnitario: p.precio,
+                          },
+                        ]);
+                      }}
+                      className="px-3 py-2 rounded-xl border border-neutral-200 hover:border-[#c72a09] hover:bg-[#c72a09]/5 transition-all text-left"
+                    >
                       <span className="text-xs font-semibold text-[#0a0a0a] block">{p.label}</span>
                       <span className="text-[10px] text-neutral-400">{formatCurrency(p.precio)}</span>
                     </button>
@@ -378,11 +542,18 @@ export default function CotizadorPage() {
                     {[selPrenda?.label, selBordado?.label].filter(Boolean).join(' + ')}
                   </p>
                   <p className="text-xs text-neutral-400">
-                    {[selPrenda && formatCurrency(selPrenda.precio), selBordado && formatCurrency(selBordado.precio)].filter(Boolean).join(' + ')}
+                    {[selPrenda && formatCurrency(selPrenda.precio), selBordado && formatCurrency(selBordado.precio)]
+                      .filter(Boolean)
+                      .join(' + ')}
                   </p>
                 </div>
-                <span className="text-lg font-black text-[#c72a09]">{formatCurrency((selBordado?.precio || 0) + (selPrenda?.precio || 0))}</span>
-                <button onClick={addCombined} className="bg-[#c72a09] text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide hover:bg-[#a82207] transition-colors shrink-0">
+                <span className="text-lg font-black text-[#c72a09]">
+                  {formatCurrency((selBordado?.precio || 0) + (selPrenda?.precio || 0))}
+                </span>
+                <button
+                  onClick={addCombined}
+                  className="bg-[#c72a09] text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide hover:bg-[#a82207] transition-colors shrink-0"
+                >
                   Agregar
                 </button>
               </div>
@@ -392,34 +563,75 @@ export default function CotizadorPage() {
           {/* Items table */}
           <div className="bg-white rounded-2xl border border-neutral-100 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Conceptos ({items.filter((i) => i.descripcion).length})</h3>
-              <button onClick={addItem} className="bg-[#0a0a0a] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors">+ Linea manual</button>
+              <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">
+                Conceptos ({items.filter((i) => i.descripcion).length})
+              </h3>
+              <button
+                onClick={addItem}
+                className="bg-[#0a0a0a] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors"
+              >
+                + Linea manual
+              </button>
             </div>
 
             <div className="space-y-3">
               {items.map((item, idx) => (
-                <div key={item.id} className="flex gap-3 items-start p-3 rounded-xl bg-neutral-50 border border-neutral-100">
+                <div
+                  key={item.id}
+                  className="flex gap-3 items-start p-3 rounded-xl bg-neutral-50 border border-neutral-100"
+                >
                   <span className="text-[10px] font-bold text-neutral-300 mt-3 w-5 shrink-0">{idx + 1}</span>
                   <div className="flex-1 grid grid-cols-6 gap-3">
                     <div className="col-span-3">
                       <label className="text-[9px] text-neutral-400 font-medium">Descripción</label>
-                      <input type="text" value={item.descripcion} onChange={(e) => updateItem(item.id, 'descripcion', e.target.value)} placeholder="Ej: Gorras Premium" className={inputClass} />
+                      <input
+                        type="text"
+                        value={item.descripcion}
+                        onChange={(e) => updateItem(item.id, 'descripcion', e.target.value)}
+                        placeholder="Ej: Gorras Premium"
+                        className={inputClass}
+                      />
                     </div>
                     <div className="col-span-1">
                       <label className="text-[9px] text-neutral-400 font-medium">Cant.</label>
-                      <input type="number" min="1" value={item.cantidad} onChange={(e) => updateItem(item.id, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))} className={inputClass} />
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.cantidad}
+                        onChange={(e) => updateItem(item.id, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))}
+                        className={inputClass}
+                      />
                     </div>
                     <div className="col-span-1">
                       <label className="text-[9px] text-neutral-400 font-medium">Precio</label>
-                      <input type="number" step="0.01" min="0" value={item.precioUnitario || ''} onChange={(e) => updateItem(item.id, 'precioUnitario', parseFloat(e.target.value) || 0)} className={inputClass} />
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={item.precioUnitario || ''}
+                        onChange={(e) => updateItem(item.id, 'precioUnitario', parseFloat(e.target.value) || 0)}
+                        className={inputClass}
+                      />
                     </div>
                     <div className="col-span-1 flex flex-col">
                       <label className="text-[9px] text-neutral-400 font-medium">Total</label>
-                      <span className="text-sm font-bold text-[#0a0a0a] mt-2.5">{formatCurrency(item.cantidad * item.precioUnitario)}</span>
+                      <span className="text-sm font-bold text-[#0a0a0a] mt-2.5">
+                        {formatCurrency(item.cantidad * item.precioUnitario)}
+                      </span>
                     </div>
                   </div>
-                  <button onClick={() => removeItem(item.id)} className={`mt-6 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${items.length > 1 ? 'text-neutral-300 hover:text-red-500 hover:bg-red-50' : 'text-neutral-100 cursor-not-allowed'}`} disabled={items.length <= 1}>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                  <button
+                    onClick={() => removeItem(item.id)}
+                    className={`mt-6 shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${items.length > 1 ? 'text-neutral-300 hover:text-red-500 hover:bg-red-50' : 'text-neutral-100 cursor-not-allowed'}`}
+                    disabled={items.length <= 1}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                      />
+                    </svg>
                   </button>
                 </div>
               ))}
@@ -430,11 +642,55 @@ export default function CotizadorPage() {
           <div className="bg-white rounded-2xl border border-neutral-100 p-6">
             <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-4">Opciones</h3>
             <label className="flex items-center gap-2.5 cursor-pointer mb-4">
-              <input type="checkbox" checked={conIVA} onChange={(e) => setConIVA(e.target.checked)} className="w-4 h-4 accent-[#c72a09] rounded" />
+              <input
+                type="checkbox"
+                checked={conIVA}
+                onChange={(e) => setConIVA(e.target.checked)}
+                className="w-4 h-4 accent-[#c72a09] rounded"
+              />
               <span className="text-sm font-semibold text-[#0a0a0a]">Incluir IVA (16%)</span>
               {conIVA && subtotal > 0 && <span className="text-xs text-neutral-400 ml-1">{formatCurrency(iva)}</span>}
             </label>
-            <div><label className={labelClass}>Notas</label><textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Condiciones, tiempo de entrega..." className={inputClass} /></div>
+            <div className="flex items-center gap-3 mb-4">
+              <label className={labelClass + ' mb-0'}>Moneda</label>
+              <div className="flex rounded-xl border border-neutral-200 overflow-hidden">
+                <button
+                  onClick={() => setMoneda('MXN')}
+                  className={`px-3 py-1.5 text-xs font-bold ${moneda === 'MXN' ? 'bg-[#0a0a0a] text-white' : 'bg-white text-neutral-500'}`}
+                >
+                  MXN
+                </button>
+                <button
+                  onClick={() => setMoneda('USD')}
+                  className={`px-3 py-1.5 text-xs font-bold ${moneda === 'USD' ? 'bg-[#0a0a0a] text-white' : 'bg-white text-neutral-500'}`}
+                >
+                  USD
+                </button>
+              </div>
+              {moneda === 'USD' && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-neutral-400">TC:</span>
+                  <input
+                    type="number"
+                    step={0.1}
+                    min={1}
+                    value={tipoCambio}
+                    onChange={(e) => setTipoCambio(Number(e.target.value))}
+                    className="w-20 border border-neutral-200 rounded-lg px-2 py-1.5 text-xs text-center font-bold focus:outline-none focus:border-[#c72a09]"
+                  />
+                </div>
+              )}
+            </div>
+            <div>
+              <label className={labelClass}>Notas</label>
+              <textarea
+                value={notas}
+                onChange={(e) => setNotas(e.target.value)}
+                rows={2}
+                placeholder="Condiciones, tiempo de entrega..."
+                className={inputClass}
+              />
+            </div>
           </div>
         </div>
 
@@ -455,40 +711,65 @@ export default function CotizadorPage() {
               )}
               <div className="w-full h-px bg-neutral-100 my-3" />
               <div className="space-y-1.5">
-                {items.filter((i) => i.descripcion && i.precioUnitario > 0).map((i) => (
-                  <div key={i.id} className="flex justify-between text-xs">
-                    <span className="text-neutral-600">{i.descripcion} <span className="text-neutral-300">x{i.cantidad}</span></span>
-                    <span className="font-bold">{formatCurrency(i.cantidad * i.precioUnitario)}</span>
-                  </div>
-                ))}
+                {items
+                  .filter((i) => i.descripcion && i.precioUnitario > 0)
+                  .map((i) => (
+                    <div key={i.id} className="flex justify-between text-xs">
+                      <span className="text-neutral-600">
+                        {i.descripcion} <span className="text-neutral-300">x{i.cantidad}</span>
+                      </span>
+                      <span className="font-bold">{formatCurrency(i.cantidad * i.precioUnitario)}</span>
+                    </div>
+                  ))}
               </div>
               {items.filter((i) => i.descripcion && i.precioUnitario > 0).length === 0 && (
                 <p className="text-xs text-neutral-300 text-center py-4">Agrega conceptos</p>
               )}
               <div className="w-full h-px bg-neutral-100 my-3" />
               <div className="space-y-1.5">
-                <div className="flex justify-between text-xs"><span className="text-neutral-400">Subtotal</span><span className="font-bold">{formatCurrency(subtotal)}</span></div>
-                {conIVA && <div className="flex justify-between text-xs"><span className="text-neutral-400">IVA (16%)</span><span className="font-bold">{formatCurrency(iva)}</span></div>}
+                <div className="flex justify-between text-xs">
+                  <span className="text-neutral-400">Subtotal</span>
+                  <span className="font-bold">{fmtMoney(subtotal)}</span>
+                </div>
+                {conIVA && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-neutral-400">IVA (16%)</span>
+                    <span className="font-bold">{fmtMoney(iva)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-end pt-2 border-t border-neutral-100">
                   <span className="text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Total</span>
-                  <span className="text-xl font-black text-[#c72a09]">{formatCurrency(total)}</span>
+                  <span className="text-xl font-black text-[#c72a09]">{fmtMoney(total)}</span>
+                  {moneda === 'USD' && (
+                    <span className="block text-[10px] text-neutral-400 mt-0.5">({formatCurrency(total)} MXN)</span>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Actions */}
-            <button onClick={guardarCotizacion} className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors ${savedMsg ? 'bg-green-500 text-white' : 'bg-[#c72a09] text-white hover:bg-[#a82207]'}`}>
+            <button
+              onClick={guardarCotizacion}
+              className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors ${savedMsg ? 'bg-green-500 text-white' : 'bg-[#c72a09] text-white hover:bg-[#a82207]'}`}
+            >
               {savedMsg ? '¡Guardada!' : editingCotId ? 'Actualizar Cotización' : 'Guardar Cotización'}
             </button>
 
-            <button onClick={() => setShowHistorial(!showHistorial)} className={`w-full py-3 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${showHistorial ? 'bg-[#0a0a0a] text-white border-[#0a0a0a]' : 'bg-white text-neutral-500 border-neutral-200 hover:border-neutral-400'}`}>
+            <button
+              onClick={() => setShowHistorial(!showHistorial)}
+              className={`w-full py-3 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${showHistorial ? 'bg-[#0a0a0a] text-white border-[#0a0a0a]' : 'bg-white text-neutral-500 border-neutral-200 hover:border-neutral-400'}`}
+            >
               Historial ({cotizaciones.length})
             </button>
 
             {showHistorial && cotizaciones.length > 0 && (
               <div className="bg-white rounded-xl border border-neutral-100 max-h-60 overflow-y-auto">
                 {cotizaciones.map((c) => (
-                  <button key={c.id} onClick={() => loadCotizacion(c)} className="w-full text-left px-4 py-3 border-b border-neutral-50 hover:bg-neutral-50 transition-colors">
+                  <button
+                    key={c.id}
+                    onClick={() => loadCotizacion(c)}
+                    className="w-full text-left px-4 py-3 border-b border-neutral-50 hover:bg-neutral-50 transition-colors"
+                  >
                     <div className="flex justify-between items-center">
                       <span className="text-[10px] font-bold text-[#c72a09]">{c.folio}</span>
                       <span className="text-xs font-bold">{formatCurrency(c.total)}</span>
@@ -500,17 +781,34 @@ export default function CotizadorPage() {
               </div>
             )}
 
-            <button onClick={descargarPDF} className="w-full bg-[#0a0a0a] text-white py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors flex items-center justify-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            <button
+              onClick={descargarPDF}
+              className="w-full bg-[#0a0a0a] text-white py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                />
+              </svg>
               Descargar PDF
             </button>
 
-            <button onClick={enviarWhatsApp} className="w-full bg-[#25D366] text-white py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#20bd5a] transition-colors flex items-center justify-center gap-2">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            <button
+              onClick={enviarWhatsApp}
+              className="w-full bg-[#25D366] text-white py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#20bd5a] transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+              </svg>
               WhatsApp
             </button>
 
-            <button onClick={copiarTexto} className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${copied ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-neutral-500 border-neutral-200 hover:border-neutral-400'}`}>
+            <button
+              onClick={copiarTexto}
+              className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${copied ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-neutral-500 border-neutral-200 hover:border-neutral-400'}`}
+            >
               {copied ? 'Copiado!' : 'Copiar texto'}
             </button>
           </div>
