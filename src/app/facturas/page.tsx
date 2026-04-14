@@ -57,22 +57,42 @@ export default function FacturasPage() {
       if (!cfdi) continue;
 
       // Skip if UUID already exists in system or in current batch
-      if (cfdi.uuid) {
-        const yaExiste =
-          ingresos.some((i) => i.uuidCFDI === cfdi.uuid) ||
-          egresos.some((e) => e.uuidCFDI === cfdi.uuid) ||
-          nuevas.some((n) => n.cfdi.uuid === cfdi.uuid) ||
-          facturas.some((f) => f.cfdi.uuid === cfdi.uuid);
-        if (yaExiste) { skipped++; continue; }
-      }
+      // Check duplicates by UUID or by exact amount + date
+      const yaExistePorUUID = cfdi.uuid && (
+        ingresos.some((i) => i.uuidCFDI === cfdi.uuid) ||
+        egresos.some((e) => e.uuidCFDI === cfdi.uuid) ||
+        nuevas.some((n) => n.cfdi.uuid === cfdi.uuid) ||
+        facturas.some((f) => f.cfdi.uuid === cfdi.uuid)
+      );
+      const yaExistePorMonto = cfdi.total > 0 && (
+        ingresos.some((i) => i.factura && Math.abs(i.montoTotal - cfdi.total) < 0.01 && i.fecha === cfdi.fecha) ||
+        egresos.some((e) => e.factura && Math.abs(e.montoTotal - cfdi.total) < 0.01 && e.fecha === cfdi.fecha)
+      );
+      if (yaExistePorUUID || yaExistePorMonto) { skipped++; continue; }
 
       // Find matching PDF by similar name
       const baseName = xmlFile.name.replace('.xml', '');
       const pdfFile = pdfFiles.find((p) => p.name.replace('.pdf', '') === baseName);
 
-      // Determine if it's an ingreso (we emitted) or egreso (we received)
-      // TipoComprobante: I = Ingreso, E = Egreso, P = Pago
-      const tipo: 'ingreso' | 'egreso' = cfdi.tipoComprobante === 'I' ? 'ingreso' : 'egreso';
+      // Determine if it's an ingreso (Isabel emitted) or egreso (Isabel received)
+      // If Isabel is the EMISOR → she made the invoice → it's her ingreso
+      // If Isabel is the RECEPTOR → she received the invoice → it's her egreso
+      const nombreNegocio = (config?.nombreNegocio || '').toLowerCase();
+      const nombreTitular = (config?.titular || '').toLowerCase();
+      const emisorNombre = cfdi.nombreEmisor.toLowerCase();
+      const receptorNombre = cfdi.nombreReceptor.toLowerCase();
+
+      let tipo: 'ingreso' | 'egreso';
+      if (nombreTitular && emisorNombre.includes(nombreTitular)) {
+        tipo = 'ingreso'; // Isabel emitted this invoice
+      } else if (nombreTitular && receptorNombre.includes(nombreTitular)) {
+        tipo = 'egreso'; // Isabel received this invoice
+      } else if (nombreNegocio && emisorNombre.includes(nombreNegocio)) {
+        tipo = 'ingreso';
+      } else {
+        // Default: if TipoComprobante is I, it's likely a purchase (egreso for Isabel)
+        tipo = 'egreso';
+      }
 
       // Try to find a match in existing records
       const match = findMatch(cfdi, tipo);
