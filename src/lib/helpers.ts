@@ -31,8 +31,8 @@ export function conceptoLabel(c: ConceptoIngreso): string {
   const map: Record<ConceptoIngreso, string> = {
     solo_bordado: 'Solo Bordado',
     bordado_y_prenda: 'Bordado + Prenda',
-    diseno: 'Diseno',
-    reparacion: 'Reparacion',
+    diseno: 'Diseño',
+    reparacion: 'Reparación',
     otro: 'Otro',
   };
   return map[c] || c;
@@ -41,7 +41,7 @@ export function conceptoLabel(c: ConceptoIngreso): string {
 export function categoriaLabel(c: CategoriaEgreso): string {
   const map: Record<CategoriaEgreso, string> = {
     programas: 'Programas/Software',
-    mercancia: 'Mercancia',
+    mercancia: 'Mercancía',
     insumos: 'Insumos',
     servicios: 'Servicios',
     maquinaria: 'Maquinaria',
@@ -63,9 +63,9 @@ export function calcIVA(monto: number): number {
 export function estadoPedidoLabel(e: EstadoPedido): string {
   const map: Record<EstadoPedido, string> = {
     pendiente: 'Pendiente',
-    diseno: 'En Diseno',
+    diseno: 'En Diseño',
     aprobado: 'Aprobado',
-    en_maquina: 'En Maquina',
+    en_maquina: 'En Máquina',
     terminado: 'Terminado',
     entregado: 'Entregado',
     cancelado: 'Cancelado',

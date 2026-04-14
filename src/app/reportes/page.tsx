@@ -75,7 +75,7 @@ export default function ReportesPage() {
     <div>
       <PageHeader
         title="Reportes"
-        description="Analisis financiero de tu negocio"
+        description="Análisis financiero de tu negocio"
         action={
           <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-bold bg-white focus:outline-none focus:border-[#c72a09]">
             {years.map((y) => <option key={y} value={y}>{y}</option>)}
@@ -161,11 +161,11 @@ export default function ReportesPage() {
         </div>
 
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Estadisticas</h3>
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Estadísticas</h3>
           <div className="space-y-4">
             <div className="flex justify-between"><span className="text-sm text-neutral-500">Promedio por Venta</span><span className="text-sm font-bold">{ingresosYear.length > 0 ? formatCurrency(totalIngresosYear / ingresosYear.length) : '—'}</span></div>
-            <div className="flex justify-between"><span className="text-sm text-neutral-500">Ventas del Ano</span><span className="text-sm font-bold">{ingresosYear.length}</span></div>
-            <div className="flex justify-between"><span className="text-sm text-neutral-500">Gastos del Ano</span><span className="text-sm font-bold">{egresosYear.length}</span></div>
+            <div className="flex justify-between"><span className="text-sm text-neutral-500">Ventas del Año</span><span className="text-sm font-bold">{ingresosYear.length}</span></div>
+            <div className="flex justify-between"><span className="text-sm text-neutral-500">Gastos del Año</span><span className="text-sm font-bold">{egresosYear.length}</span></div>
             <div className="flex justify-between"><span className="text-sm text-neutral-500">Total Clientes</span><span className="text-sm font-bold">{totalClientes}</span></div>
             <div className="flex justify-between"><span className="text-sm text-neutral-500">% Facturado</span><span className="text-sm font-bold">{ingresosYear.length > 0 ? `${((ingresosYear.filter((i) => i.factura).length / ingresosYear.length) * 100).toFixed(0)}%` : '—'}</span></div>
             <div className="flex justify-between"><span className="text-sm text-neutral-500">Mejor Mes</span><span className="text-sm font-bold text-[#c72a09]">{monthNames[bestMonth]}</span></div>

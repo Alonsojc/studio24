@@ -9,11 +9,7 @@ import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
 import ActionMenu from '@/components/ActionMenu';
-
-const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
-const labelClass = "block text-[10px] font-bold tracking-[0.08em] text-neutral-400 uppercase mb-1.5";
-const btnPrimary = "bg-[#c72a09] text-white px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#a82207] transition-colors";
-const btnSecondary = "px-4 py-2.5 text-xs font-semibold text-neutral-400 hover:text-neutral-600 transition-colors";
+import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 
 function emptyCliente(): Omit<Cliente, 'id' | 'createdAt'> {
   return { nombre: '', telefono: '', email: '', direccion: '', logo: '', notas: '' };
@@ -74,7 +70,7 @@ export default function ClientesPage() {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState title="Sin clientes" description="Agrega tu primer cliente al catalogo" action={<button onClick={openNew} className="text-[#c72a09] font-bold text-xs uppercase tracking-wide hover:underline">+ Agregar cliente</button>} />
+        <EmptyState title="Sin clientes" description="Agrega tu primer cliente al catálogo" action={<button onClick={openNew} className="text-[#c72a09] font-bold text-xs uppercase tracking-wide hover:underline">+ Agregar cliente</button>} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((c) => {
@@ -122,7 +118,7 @@ export default function ClientesPage() {
                 <p className="text-xs text-neutral-400">{[selectedCliente.telefono, selectedCliente.email].filter(Boolean).join(' &middot; ') || 'Sin contacto'}</p>
               </div>
             </div>
-            {selectedCliente.direccion && <div><span className={labelClass}>Direccion</span><p className="text-sm text-neutral-600">{selectedCliente.direccion}</p></div>}
+            {selectedCliente.direccion && <div><span className={labelClass}>Dirección</span><p className="text-sm text-neutral-600">{selectedCliente.direccion}</p></div>}
             {selectedCliente.notas && <div><span className={labelClass}>Notas</span><p className="text-sm text-neutral-500">{selectedCliente.notas}</p></div>}
             <div>
               <span className={labelClass}>Historial ({clienteIngresos(selectedCliente.id).length} trabajos)</span>
@@ -152,10 +148,10 @@ export default function ClientesPage() {
         <div className="space-y-4">
           <div><label className={labelClass}>Nombre *</label><input type="text" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre completo o empresa" className={inputClass} /></div>
           <div className="grid grid-cols-2 gap-4">
-            <div><label className={labelClass}>Telefono</label><input type="tel" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} className={inputClass} /></div>
+            <div><label className={labelClass}>Teléfono</label><input type="tel" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} className={inputClass} /></div>
             <div><label className={labelClass}>Email</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputClass} /></div>
           </div>
-          <div><label className={labelClass}>Direccion</label><input type="text" value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} className={inputClass} /></div>
+          <div><label className={labelClass}>Dirección</label><input type="text" value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} className={inputClass} /></div>
           <div><label className={labelClass}>Logo / Imagen (URL)</label><input type="url" value={form.logo} onChange={(e) => setForm({ ...form, logo: e.target.value })} placeholder="https://ejemplo.com/logo.png" className={inputClass} />{form.logo && <img src={form.logo} alt="Preview" className="w-10 h-10 rounded-lg object-cover mt-2" />}</div>
           <div><label className={labelClass}>Notas</label><textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} placeholder="Preferencias, datos adicionales..." className={inputClass} /></div>
           {formError && <p className="text-xs text-red-500 font-semibold bg-red-50 rounded-xl px-3.5 py-2.5">{formError}</p>}

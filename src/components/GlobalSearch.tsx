@@ -16,6 +16,7 @@ export default function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -41,8 +42,14 @@ export default function GlobalSearch() {
   }, [open]);
 
   useEffect(() => {
-    if (!query || query.length < 2) { setResults([]); return; }
-    const q = query.toLowerCase();
+    if (!query || query.length < 2) { setDebouncedQuery(''); setResults([]); return; }
+    const timer = setTimeout(() => setDebouncedQuery(query), 200);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    if (!debouncedQuery || debouncedQuery.length < 2) { setResults([]); return; }
+    const q = debouncedQuery.toLowerCase();
     const r: SearchResult[] = [];
 
     getClientes().filter((c) => c.nombre.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || c.telefono.includes(q)).slice(0, 5).forEach((c) =>
@@ -66,7 +73,7 @@ export default function GlobalSearch() {
     );
 
     setResults(r);
-  }, [query]);
+  }, [debouncedQuery]);
 
   const go = (href: string) => {
     setOpen(false);

@@ -155,7 +155,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-[10px] font-bold tracking-[0.12em] text-white/30 uppercase">Pedidos Activos</h3>
-                <p className="text-xs text-white/20 mt-0.5">{activos.length} pedidos &middot; {clientes.length} clientes &middot; {formatCurrency(activos.reduce((s, p) => s + p.montoTotal, 0))} en produccion</p>
+                <p className="text-xs text-white/20 mt-0.5">{activos.length} pedidos &middot; {clientes.length} clientes &middot; {formatCurrency(activos.reduce((s, p) => s + p.montoTotal, 0))} en producción</p>
               </div>
               <Link href="/pedidos" className="text-[10px] font-bold tracking-[0.08em] text-[#c72a09] uppercase hover:underline">Ver todos</Link>
             </div>
@@ -191,7 +191,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
           <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">
-            Ultimos Ingresos
+            Últimos Ingresos
           </h3>
           {recentIngresos.length === 0 ? (
             <p className="text-sm text-neutral-300 py-8 text-center">Sin ingresos</p>
@@ -217,7 +217,7 @@ export default function Dashboard() {
 
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
           <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">
-            Ultimos Egresos
+            Últimos Egresos
           </h3>
           {recentEgresos.length === 0 ? (
             <p className="text-sm text-neutral-300 py-8 text-center">Sin egresos</p>

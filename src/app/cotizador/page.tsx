@@ -6,9 +6,7 @@ import { v4 as uuid } from 'uuid';
 import { getClientes, getConfig, addCotizacion, getCotizaciones, getNextFolio, getProductos } from '@/lib/store';
 import { Cliente, ConfigNegocio, Cotizacion, Producto } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
-
-const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
-const labelClass = "block text-[10px] font-bold tracking-[0.08em] text-neutral-400 uppercase mb-1.5";
+import { inputClass, labelClass } from '@/lib/styles';
 
 interface LineItem {
   id: string;
@@ -17,9 +15,8 @@ interface LineItem {
   precioUnitario: number;
 }
 
-let nextId = 1;
-
 export default function CotizadorPage() {
+  const nextIdRef = useRef(1);
   const [allProductos, setAllProductos] = useState<Producto[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [config, setConfigState] = useState<ConfigNegocio | null>(null);
@@ -28,7 +25,7 @@ export default function CotizadorPage() {
   const [clienteNombre, setClienteNombre] = useState('');
   const [clienteEmpresa, setClienteEmpresa] = useState('');
   const [items, setItems] = useState<LineItem[]>([
-    { id: String(nextId++), descripcion: '', cantidad: 1, precioUnitario: 0 },
+    { id: String(nextIdRef.current++), descripcion: '', cantidad: 1, precioUnitario: 0 },
   ]);
   const [selBordado, setSelBordado] = useState<{ label: string; precio: number } | null>(null);
   const [selPrenda, setSelPrenda] = useState<{ label: string; precio: number } | null>(null);
@@ -67,7 +64,7 @@ export default function CotizadorPage() {
   };
 
   const addItem = () => {
-    setItems([...items, { id: String(nextId++), descripcion: '', cantidad: 1, precioUnitario: 0 }]);
+    setItems([...items, { id: String(nextIdRef.current++), descripcion: '', cantidad: 1, precioUnitario: 0 }]);
   };
 
   const addCombined = () => {
@@ -77,13 +74,9 @@ export default function CotizadorPage() {
     if (selPrenda) { parts.push(selPrenda.label); precio += selPrenda.precio; }
     if (selBordado) { parts.push(selBordado.label); precio += selBordado.precio; }
     const desc = parts.join(' + ');
-    setItems([...items, { id: String(nextId++), descripcion: desc, cantidad: 1, precioUnitario: precio }]);
+    setItems([...items, { id: String(nextIdRef.current++), descripcion: desc, cantidad: 1, precioUnitario: precio }]);
     setSelBordado(null);
     setSelPrenda(null);
-  };
-
-  const addCustomItem = () => {
-    setItems([...items, { id: String(nextId++), descripcion: '', cantidad: 1, precioUnitario: 0 }]);
   };
 
   const removeItem = (id: string) => {
@@ -117,7 +110,7 @@ export default function CotizadorPage() {
   const loadCotizacion = (c: Cotizacion) => {
     setClienteNombre(c.clienteNombre);
     setClienteEmpresa(c.clienteEmpresa);
-    setItems(c.items.map((i, idx) => ({ id: String(nextId++), ...i })));
+    setItems(c.items.map((i, idx) => ({ id: String(nextIdRef.current++), ...i })));
     setConIVA(c.conIVA);
     setNotas(c.notas);
     setShowHistorial(false);
@@ -316,7 +309,7 @@ export default function CotizadorPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><label className={labelClass}>Nombre</label><input type="text" value={clienteNombre} onChange={(e) => { setClienteNombre(e.target.value); setClienteId(''); }} placeholder="Nombre del contacto" className={inputClass} /></div>
-              <div><label className={labelClass}>Empresa / Direccion</label><input type="text" value={clienteEmpresa} onChange={(e) => setClienteEmpresa(e.target.value)} placeholder="Nombre de la empresa" className={inputClass} /></div>
+              <div><label className={labelClass}>Empresa / Dirección</label><input type="text" value={clienteEmpresa} onChange={(e) => setClienteEmpresa(e.target.value)} placeholder="Nombre de la empresa" className={inputClass} /></div>
             </div>
           </div>
 
@@ -356,7 +349,7 @@ export default function CotizadorPage() {
                 <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-300 uppercase mb-2 mt-4">Servicios (agregar directo)</p>
                 <div className="flex flex-wrap gap-2 mb-4">
                   {presetsServicios.map((p) => (
-                    <button key={p.label} onClick={() => { setItems([...items, { id: String(nextId++), descripcion: p.label, cantidad: 1, precioUnitario: p.precio }]); }} className="px-3 py-2 rounded-xl border border-neutral-200 hover:border-[#c72a09] hover:bg-[#c72a09]/5 transition-all text-left">
+                    <button key={p.label} onClick={() => { setItems([...items, { id: String(nextIdRef.current++), descripcion: p.label, cantidad: 1, precioUnitario: p.precio }]); }} className="px-3 py-2 rounded-xl border border-neutral-200 hover:border-[#c72a09] hover:bg-[#c72a09]/5 transition-all text-left">
                       <span className="text-xs font-semibold text-[#0a0a0a] block">{p.label}</span>
                       <span className="text-[10px] text-neutral-400">{formatCurrency(p.precio)}</span>
                     </button>
@@ -388,7 +381,7 @@ export default function CotizadorPage() {
           <div className="bg-white rounded-2xl border border-neutral-100 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Conceptos ({items.filter((i) => i.descripcion).length})</h3>
-              <button onClick={addCustomItem} className="bg-[#0a0a0a] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors">+ Linea manual</button>
+              <button onClick={addItem} className="bg-[#0a0a0a] text-white px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-[0.05em] uppercase hover:bg-[#222] transition-colors">+ Linea manual</button>
             </div>
 
             <div className="space-y-3">
@@ -397,7 +390,7 @@ export default function CotizadorPage() {
                   <span className="text-[10px] font-bold text-neutral-300 mt-3 w-5 shrink-0">{idx + 1}</span>
                   <div className="flex-1 grid grid-cols-6 gap-3">
                     <div className="col-span-3">
-                      <label className="text-[9px] text-neutral-400 font-medium">Descripcion</label>
+                      <label className="text-[9px] text-neutral-400 font-medium">Descripción</label>
                       <input type="text" value={item.descripcion} onChange={(e) => updateItem(item.id, 'descripcion', e.target.value)} placeholder="Ej: Gorras Premium" className={inputClass} />
                     </div>
                     <div className="col-span-1">

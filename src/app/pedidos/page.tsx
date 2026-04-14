@@ -8,18 +8,14 @@ import { formatCurrency, formatDate, conceptoLabel, estadoPedidoLabel, estadoPed
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import ActionMenu from '@/components/ActionMenu';
-
-const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
-const labelClass = "block text-[10px] font-bold tracking-[0.08em] text-neutral-400 uppercase mb-1.5";
-const btnPrimary = "bg-[#c72a09] text-white px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase hover:bg-[#a82207] transition-colors";
-const btnSecondary = "px-4 py-2.5 text-xs font-semibold text-neutral-400 hover:text-neutral-600 transition-colors";
+import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
 const pipeline: { estado: EstadoPedido; label: string; emoji: string }[] = [
   { estado: 'pendiente', label: 'Pendiente', emoji: '📋' },
-  { estado: 'diseno', label: 'En Diseno', emoji: '🎨' },
+  { estado: 'diseno', label: 'En Diseño', emoji: '🎨' },
   { estado: 'aprobado', label: 'Aprobado', emoji: '✅' },
-  { estado: 'en_maquina', label: 'En Maquina', emoji: '🧵' },
+  { estado: 'en_maquina', label: 'En Máquina', emoji: '🧵' },
   { estado: 'terminado', label: 'Terminado', emoji: '📦' },
   { estado: 'entregado', label: 'Entregado', emoji: '🤝' },
 ];
@@ -48,11 +44,11 @@ function emptyPedido(): Omit<Pedido, 'id' | 'createdAt'> {
 }
 
 const statusMessages: Record<EstadoPedido, string> = {
-  pendiente: 'Tu pedido ha sido recibido. Te avisamos cuando empecemos el diseno.',
-  diseno: 'Estamos trabajando en el diseno de tu pedido. Te enviaremos una muestra para aprobacion.',
-  aprobado: 'El diseno fue aprobado! Tu pedido entrara a produccion pronto.',
-  en_maquina: 'Tu pedido ya esta en produccion en nuestra maquina bordadora.',
-  terminado: 'Tu pedido esta LISTO! Puedes pasar a recogerlo o coordinamos la entrega.',
+  pendiente: 'Tu pedido ha sido recibido. Te avisamos cuando empecemos el diseño.',
+  diseno: 'Estamos trabajando en el diseño de tu pedido. Te enviaremos una muestra para aprobación.',
+  aprobado: '¡El diseño fue aprobado! Tu pedido entrará a producción pronto.',
+  en_maquina: 'Tu pedido ya está en producción en nuestra máquina bordadora.',
+  terminado: '¡Tu pedido está LISTO! Puedes pasar a recogerlo o coordinamos la entrega.',
   entregado: 'Gracias por tu compra! Esperamos verte pronto.',
   cancelado: 'Tu pedido ha sido cancelado.',
 };
@@ -178,7 +174,7 @@ export default function PedidosPage() {
     <div>
       <PageHeader
         title="Pedidos"
-        description={`${activos.length} activos &middot; ${formatCurrency(totalActivos)} en produccion`}
+        description={`${activos.length} activos &middot; ${formatCurrency(totalActivos)} en producción`}
         action={
           <div className="flex gap-2">
             <div className="flex bg-neutral-100 rounded-xl p-0.5">
@@ -377,7 +373,7 @@ export default function PedidosPage() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? 'Editar Pedido' : 'Nuevo Pedido'}>
         <div className="space-y-4">
-          <div><label className={labelClass}>Descripcion *</label><input type="text" value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Ej: 20 playeras con logo bordado" className={inputClass} /></div>
+          <div><label className={labelClass}>Descripción *</label><input type="text" value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Ej: 20 playeras con logo bordado" className={inputClass} /></div>
           <div className="grid grid-cols-2 gap-4">
             <div><label className={labelClass}>Cliente</label><select value={form.clienteId} onChange={(e) => setForm({ ...form, clienteId: e.target.value })} className={inputClass}><option value="">Sin cliente</option>{clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
             <div><label className={labelClass}>Concepto</label><select value={form.concepto} onChange={(e) => setForm({ ...form, concepto: e.target.value as ConceptoIngreso })} className={inputClass}>{conceptos.map((c) => <option key={c} value={c}>{conceptoLabel(c)}</option>)}</select></div>
@@ -393,11 +389,11 @@ export default function PedidosPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div><label className={labelClass}>Estado</label><select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value as EstadoPedido })} className={inputClass}>{pipeline.map((s) => <option key={s.estado} value={s.estado}>{s.label}</option>)}<option value="cancelado">Cancelado</option></select></div>
-            <div><label className={labelClass}>Maquina</label><select value={form.maquina} onChange={(e) => setForm({ ...form, maquina: e.target.value })} className={inputClass}><option value="">Sin asignar</option><option value="Tajima SAI #1">Tajima SAI #1</option><option value="Tajima SAI #2">Tajima SAI #2</option></select></div>
+            <div><label className={labelClass}>Máquina</label><select value={form.maquina} onChange={(e) => setForm({ ...form, maquina: e.target.value })} className={inputClass}><option value="">Sin asignar</option><option value="Tajima SAI #1">Tajima SAI #1</option><option value="Tajima SAI #2">Tajima SAI #2</option></select></div>
           </div>
 
-          {/* Archivo de diseno */}
-          <div><label className={labelClass}>Archivo de diseno (.dst, .tbf)</label><input type="text" value={form.archivoDiseno} onChange={(e) => setForm({ ...form, archivoDiseno: e.target.value })} placeholder="Ej: logo_empresa.dst" className={inputClass} /></div>
+          {/* Archivo de diseño */}
+          <div><label className={labelClass}>Archivo de diseño (.dst, .tbf)</label><input type="text" value={form.archivoDiseno} onChange={(e) => setForm({ ...form, archivoDiseno: e.target.value })} placeholder="Ej: logo_empresa.dst" className={inputClass} /></div>
 
           {/* Pago */}
           <div className="bg-neutral-50 rounded-xl p-4">

@@ -4,8 +4,14 @@ import SeedData from "@/components/SeedData";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Studio24 - Control de Bordados",
+  title: {
+    default: "Studio 24 — Control de Bordados",
+    template: "%s — Studio 24",
+  },
   description: "Sistema de control de ingresos, egresos y clientes para negocio de bordados",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

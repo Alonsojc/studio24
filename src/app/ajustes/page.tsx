@@ -5,9 +5,7 @@ import { getConfig, saveConfig, exportAllData, importAllData, clearAllData, getC
 import { ConfigNegocio } from '@/lib/types';
 import { getSeedClientes, getSeedProveedores, getSeedEgresos, getSeedIngresos, getSeedRecurrentes, getSeedPedidos, getSeedProductos } from '@/lib/seed';
 import PageHeader from '@/components/PageHeader';
-
-const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
-const labelClass = "block text-[10px] font-bold tracking-[0.08em] text-neutral-400 uppercase mb-1.5";
+import { inputClass, labelClass } from '@/lib/styles';
 
 export default function AjustesPage() {
   const [config, setConfig] = useState<ConfigNegocio | null>(null);
@@ -50,7 +48,7 @@ export default function AjustesPage() {
         setImported(true);
         setTimeout(() => { setImported(false); window.location.reload(); }, 1500);
       } catch {
-        alert('Error: El archivo no es un respaldo valido.');
+        alert('Error: El archivo no es un respaldo válido.');
       }
     };
     reader.readAsText(file);
@@ -84,8 +82,8 @@ export default function AjustesPage() {
   };
 
   const handleClear = () => {
-    if (confirm('Esto borrara TODOS los datos (clientes, pedidos, ingresos, egresos, etc). Esta seguro?')) {
-      if (confirm('Ultima oportunidad. Descargar respaldo antes de borrar?')) {
+    if (confirm('Esto borrará TODOS los datos (clientes, pedidos, ingresos, egresos, etc). ¿Está seguro?')) {
+      if (confirm('Última oportunidad. ¿Descargar respaldo antes de borrar?')) {
         handleExport();
       }
       clearAllData();
@@ -95,7 +93,7 @@ export default function AjustesPage() {
 
   return (
     <div>
-      <PageHeader title="Ajustes" description="Configuracion del negocio y respaldos" />
+      <PageHeader title="Ajustes" description="Configuración del negocio y respaldos" />
 
       <div className="max-w-2xl space-y-8">
         {/* Business Info */}
@@ -107,10 +105,10 @@ export default function AjustesPage() {
               <div><label className={labelClass}>Logo (URL)</label><input type="url" value={config.logoUrl} onChange={(e) => setConfig({ ...config, logoUrl: e.target.value })} placeholder="https://..." className={inputClass} /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><label className={labelClass}>Telefono</label><input type="tel" value={config.telefono} onChange={(e) => setConfig({ ...config, telefono: e.target.value })} className={inputClass} /></div>
+              <div><label className={labelClass}>Teléfono</label><input type="tel" value={config.telefono} onChange={(e) => setConfig({ ...config, telefono: e.target.value })} className={inputClass} /></div>
               <div><label className={labelClass}>Email</label><input type="email" value={config.email} onChange={(e) => setConfig({ ...config, email: e.target.value })} className={inputClass} /></div>
             </div>
-            <div><label className={labelClass}>Direccion</label><input type="text" value={config.direccion} onChange={(e) => setConfig({ ...config, direccion: e.target.value })} className={inputClass} /></div>
+            <div><label className={labelClass}>Dirección</label><input type="text" value={config.direccion} onChange={(e) => setConfig({ ...config, direccion: e.target.value })} className={inputClass} /></div>
           </div>
         </div>
 
@@ -128,19 +126,19 @@ export default function AjustesPage() {
         </div>
 
         <button onClick={handleSave} className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors ${saved ? 'bg-green-500 text-white' : 'bg-[#c72a09] text-white hover:bg-[#a82207]'}`}>
-          {saved ? 'Guardado!' : 'Guardar Configuracion'}
+          {saved ? '¡Guardado!' : 'Guardar Configuración'}
         </button>
 
         {/* Backup */}
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
           <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Respaldo de Datos</h3>
-          <p className="text-xs text-neutral-400 mb-4">Los datos se guardan en este navegador. Si cambias de compu o borras datos del navegador, los pierdes. Haz respaldos frecuentes.</p>
+          <p className="text-xs text-neutral-400 mb-4">Los datos se guardan en este navegador. Si cambias de computadora o borras datos del navegador, los pierdes. Haz respaldos frecuentes.</p>
           <div className="grid grid-cols-2 gap-3">
             <button onClick={handleExport} className={`py-3 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${exported ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}>
-              {exported ? 'Descargado!' : 'Descargar Respaldo'}
+              {exported ? '¡Descargado!' : 'Descargar Respaldo'}
             </button>
             <button onClick={() => fileRef.current?.click()} className={`py-3 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${imported ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}>
-              {imported ? 'Importado!' : 'Importar Respaldo'}
+              {imported ? '¡Importado!' : 'Importar Respaldo'}
             </button>
             <input ref={fileRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
           </div>
@@ -151,7 +149,7 @@ export default function AjustesPage() {
           <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-3">Datos de Demostración</h3>
           <p className="text-xs text-neutral-400 mb-4">Carga datos de ejemplo (clientes, pedidos, ingresos, egresos, productos) para probar el sistema.</p>
           <button onClick={handleSeedData} className={`px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${seeded ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}>
-            {seeded ? '¡Datos cargados!' : 'Cargar Datos Demo'}
+            {seeded ? '¡Cargados!' : 'Cargar Datos Demo'}
           </button>
         </div>
 
