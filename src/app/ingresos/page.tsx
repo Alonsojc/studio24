@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, addIngreso, updateIngreso, deleteIngreso, getClientes } from '@/lib/store';
 import { Ingreso, Cliente, ConceptoIngreso, FormaPago } from '@/lib/types';
-import { formatCurrency, formatDate, formaPagoLabel, conceptoLabel, todayString, calcIVA } from '@/lib/helpers';
+import { formatCurrency, formatDate, formaPagoLabel, conceptoLabel, todayString, calcIVA, validateIngreso } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
@@ -29,6 +29,7 @@ export default function IngresosPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyIngreso());
+  const [formError, setFormError] = useState<string | null>(null);
   const [filterConcepto, setFilterConcepto] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [mounted, setMounted] = useState(false);
@@ -42,10 +43,12 @@ export default function IngresosPage() {
 
   if (!mounted) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" /></div>;
 
-  const openNew = () => { setEditingId(null); setForm(emptyIngreso()); setModalOpen(true); };
-  const openEdit = (i: Ingreso) => { setEditingId(i.id); setForm({ ...i }); setModalOpen(true); };
+  const openNew = () => { setEditingId(null); setForm(emptyIngreso()); setFormError(null); setModalOpen(true); };
+  const openEdit = (i: Ingreso) => { setEditingId(i.id); setForm({ ...i }); setFormError(null); setModalOpen(true); };
   const handleSave = () => {
-    if (!form.descripcion || form.monto <= 0) return;
+    const error = validateIngreso(form);
+    if (error) { setFormError(error); return; }
+    setFormError(null);
     const iva = form.factura ? calcIVA(form.monto) : 0;
     const data: Ingreso = { ...(form as Ingreso), id: editingId || uuid(), iva, montoTotal: form.monto + iva, createdAt: editingId ? (form as Ingreso).createdAt : new Date().toISOString() };
     editingId ? updateIngreso(data) : addIngreso(data);
@@ -148,6 +151,7 @@ export default function IngresosPage() {
           </div>
           {form.factura && <div><label className={labelClass}>No. Factura</label><input type="text" value={form.numeroFactura} onChange={(e) => setForm({ ...form, numeroFactura: e.target.value })} className={inputClass} /></div>}
           <div><label className={labelClass}>Notas</label><textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} rows={2} className={inputClass} /></div>
+          {formError && <p className="text-xs text-red-500 font-semibold bg-red-50 rounded-xl px-3.5 py-2.5">{formError}</p>}
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
             <button onClick={() => setModalOpen(false)} className={btnSecondary}>Cancelar</button>
             <button onClick={handleSave} className={btnPrimary}>{editingId ? 'Guardar' : 'Registrar'}</button>

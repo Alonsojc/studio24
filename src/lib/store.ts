@@ -21,8 +21,19 @@ function getItems<T>(key: string): T[] {
   return data ? JSON.parse(data) : [];
 }
 
+function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+      throw new Error('Sin espacio en el navegador. Exporta un respaldo desde Ajustes y borra datos antiguos.');
+    }
+    throw e;
+  }
+}
+
 function setItems<T>(key: string, items: T[]): void {
-  localStorage.setItem(key, JSON.stringify(items));
+  safeSetItem(key, JSON.stringify(items));
 }
 
 function addItem<T extends { id: string }>(key: string, item: T): T {
@@ -99,11 +110,11 @@ export const deleteCotizacion = (id: string) => deleteItem<Cotizacion>(KEYS.coti
 
 // Config
 const defaultConfig: ConfigNegocio = {
-  nombreNegocio: 'STUDIO 24',
-  titular: 'Isabel Janeiro Cangas',
-  banco: 'BBVA',
-  numeroCuenta: '152 585 2856',
-  clabe: '012180015258528567',
+  nombreNegocio: '',
+  titular: '',
+  banco: '',
+  numeroCuenta: '',
+  clabe: '',
   telefono: '',
   email: '',
   direccion: '',
@@ -117,7 +128,7 @@ export function getConfig(): ConfigNegocio {
 }
 
 export function saveConfig(config: ConfigNegocio): void {
-  localStorage.setItem(KEYS.config, JSON.stringify(config));
+  safeSetItem(KEYS.config, JSON.stringify(config));
 }
 
 // Backup / Restore
@@ -133,8 +144,22 @@ export function exportAllData(): string {
 
 export function importAllData(json: string): void {
   const data = JSON.parse(json);
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    throw new Error('El respaldo debe ser un objeto JSON válido');
+  }
+  // Validar que las claves conocidas contengan arrays (excepto config)
+  const validKeys = Object.keys(KEYS);
+  for (const key of validKeys) {
+    if (key === 'config') continue;
+    if (data[key] !== undefined && !Array.isArray(data[key])) {
+      throw new Error(`La sección "${key}" debe ser una lista`);
+    }
+  }
+  if (data.config !== undefined && (typeof data.config !== 'object' || Array.isArray(data.config))) {
+    throw new Error('La sección "config" debe ser un objeto');
+  }
   Object.entries(KEYS).forEach(([key, storageKey]) => {
-    if (data[key]) localStorage.setItem(storageKey, JSON.stringify(data[key]));
+    if (data[key]) safeSetItem(storageKey, JSON.stringify(data[key]));
   });
   if (data.config) saveConfig(data.config);
 }
@@ -145,11 +170,15 @@ export function clearAllData(): void {
   localStorage.setItem('bordados_seeded', '1');
 }
 
-// Next folio
+// Next folio — usa un contador incremental persistente para que nunca se repita
+const FOLIO_COUNTER_KEY = 'bordados_folio_counter';
+
 export function getNextFolio(prefix: string): string {
-  const cotizaciones = getCotizaciones();
-  const num = cotizaciones.length + 1;
-  return `${prefix}-${String(num).padStart(3, '0')}`;
+  const stored = localStorage.getItem(FOLIO_COUNTER_KEY);
+  const current = stored ? parseInt(stored, 10) : getCotizaciones().length;
+  const next = current + 1;
+  safeSetItem(FOLIO_COUNTER_KEY, String(next));
+  return `${prefix}-${String(next).padStart(3, '0')}`;
 }
 
 // Log de meses ya procesados para recurrentes (evita duplicados)
@@ -163,6 +192,6 @@ export function addRecurrenteLog(key: string): void {
   const log = getRecurrentesLog();
   if (!log.includes(key)) {
     log.push(key);
-    localStorage.setItem(KEYS.recurrentesLog, JSON.stringify(log));
+    safeSetItem(KEYS.recurrentesLog, JSON.stringify(log));
   }
 }

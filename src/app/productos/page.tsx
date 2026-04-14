@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getProductos, addProducto, updateProducto, deleteProducto } from '@/lib/store';
 import { Producto, CategoriaProducto } from '@/lib/types';
-import { formatCurrency } from '@/lib/helpers';
+import { formatCurrency, validateProducto } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import ActionMenu from '@/components/ActionMenu';
@@ -30,6 +30,7 @@ export default function ProductosPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyProducto());
+  const [formError, setFormError] = useState<string | null>(null);
   const [filterCat, setFilterCat] = useState<string>('all');
   const [mounted, setMounted] = useState(false);
 
@@ -48,11 +49,14 @@ export default function ProductosPage() {
   const openNew = (cat?: CategoriaProducto) => {
     setEditingId(null);
     setForm({ ...emptyProducto(), categoria: cat || 'bordado' });
+    setFormError(null);
     setModalOpen(true);
   };
-  const openEdit = (p: Producto) => { setEditingId(p.id); setForm({ ...p }); setModalOpen(true); };
+  const openEdit = (p: Producto) => { setEditingId(p.id); setForm({ ...p }); setFormError(null); setModalOpen(true); };
   const handleSave = () => {
-    if (!form.nombre || form.precio < 0) return;
+    const error = validateProducto(form);
+    if (error) { setFormError(error); return; }
+    setFormError(null);
     const data: Producto = { ...(form as Producto), id: editingId || uuid(), createdAt: editingId ? (form as Producto).createdAt : new Date().toISOString() };
     editingId ? updateProducto(data) : addProducto(data);
     setModalOpen(false); reload();
@@ -151,6 +155,7 @@ export default function ProductosPage() {
             <input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} className="w-4 h-4 accent-[#c72a09] rounded" />
             <span className="text-sm text-neutral-600">Producto activo (visible en cotizador)</span>
           </label>
+          {formError && <p className="text-xs text-red-500 font-semibold bg-red-50 rounded-xl px-3.5 py-2.5">{formError}</p>}
           <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
             <button onClick={() => setModalOpen(false)} className={btnSecondary}>Cancelar</button>
             <button onClick={handleSave} className={btnPrimary}>{editingId ? 'Guardar' : 'Crear'}</button>

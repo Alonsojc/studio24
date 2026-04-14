@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { getConfig, saveConfig, exportAllData, importAllData, clearAllData } from '@/lib/store';
+import { getConfig, saveConfig, exportAllData, importAllData, clearAllData, getClientes, getProveedores, getEgresos, getIngresos } from '@/lib/store';
 import { ConfigNegocio } from '@/lib/types';
+import { getSeedClientes, getSeedProveedores, getSeedEgresos, getSeedIngresos, getSeedRecurrentes, getSeedPedidos, getSeedProductos } from '@/lib/seed';
 import PageHeader from '@/components/PageHeader';
 
 const inputClass = "w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-[#c72a09] focus:ring-1 focus:ring-[#c72a09]/20 transition-colors";
@@ -13,6 +14,7 @@ export default function AjustesPage() {
   const [saved, setSaved] = useState(false);
   const [exported, setExported] = useState(false);
   const [imported, setImported] = useState(false);
+  const [seeded, setSeeded] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setConfig(getConfig()); }, []);
@@ -52,6 +54,33 @@ export default function AjustesPage() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleSeedData = () => {
+    const hasData = getClientes().length > 0 || getProveedores().length > 0 || getEgresos().length > 0 || getIngresos().length > 0;
+    if (hasData) {
+      if (!confirm('Ya existen datos en el sistema. Cargar datos demo agregará registros adicionales. ¿Continuar?')) return;
+    }
+    const clientes = getSeedClientes();
+    const proveedores = getSeedProveedores();
+    const clienteIds = clientes.map((c) => c.id);
+    const proveedorIds = proveedores.map((p) => p.id);
+    const egresos = getSeedEgresos(proveedorIds);
+    const ingresos = getSeedIngresos(clienteIds);
+    const recurrentes = getSeedRecurrentes();
+    const pedidos = getSeedPedidos(clienteIds);
+    const productos = getSeedProductos();
+
+    localStorage.setItem('bordados_clientes', JSON.stringify([...getClientes(), ...clientes]));
+    localStorage.setItem('bordados_proveedores', JSON.stringify([...getProveedores(), ...proveedores]));
+    localStorage.setItem('bordados_egresos', JSON.stringify([...getEgresos(), ...egresos]));
+    localStorage.setItem('bordados_ingresos', JSON.stringify([...getIngresos(), ...ingresos]));
+    localStorage.setItem('bordados_egresos_recurrentes', JSON.stringify(recurrentes));
+    localStorage.setItem('bordados_pedidos', JSON.stringify(pedidos));
+    localStorage.setItem('bordados_productos', JSON.stringify(productos));
+
+    setSeeded(true);
+    setTimeout(() => { setSeeded(false); window.location.reload(); }, 1500);
   };
 
   const handleClear = () => {
@@ -115,6 +144,15 @@ export default function AjustesPage() {
             </button>
             <input ref={fileRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
           </div>
+        </div>
+
+        {/* Demo Data */}
+        <div className="bg-white rounded-2xl border border-neutral-100 p-6">
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-3">Datos de Demostración</h3>
+          <p className="text-xs text-neutral-400 mb-4">Carga datos de ejemplo (clientes, pedidos, ingresos, egresos, productos) para probar el sistema.</p>
+          <button onClick={handleSeedData} className={`px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${seeded ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}>
+            {seeded ? '¡Datos cargados!' : 'Cargar Datos Demo'}
+          </button>
         </div>
 
         {/* Danger Zone */}
