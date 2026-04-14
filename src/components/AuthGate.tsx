@@ -122,10 +122,11 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       <div className="bg-white rounded-2xl p-8 w-full max-w-sm shadow-2xl">
         {/* Logo */}
         <div className="text-center mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-[#c72a09] text-white flex items-center justify-center text-xl font-black mx-auto mb-4">
-            S24
+          <div className="flex items-center justify-center gap-0 mb-4">
+            <span className="text-[24px] font-black tracking-[-0.03em] text-[#0a0a0a] lowercase">studio</span>
+            <span className="h-[1.5px] bg-[#0a0a0a] mx-2 w-8" />
+            <span className="text-[24px] font-black tracking-[-0.03em] text-[#0a0a0a]">24</span>
           </div>
-          <h1 className="text-lg font-black text-[#0a0a0a]">Studio 24</h1>
           <p className="text-xs text-neutral-400 mt-1">
             {view === 'login' && 'Inicia sesión para acceder'}
             {view === 'register' && 'Crea tu cuenta'}

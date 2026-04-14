@@ -254,11 +254,11 @@ export default function Sidebar() {
     <>
       {/* Logo */}
       <Link href="/" onClick={() => setMobileOpen(false)} className="block px-7 pt-8 pb-5 hover:opacity-80 transition-opacity">
-        <div className="flex items-baseline gap-0">
-          <span className="text-[28px] font-black tracking-[-0.06em] text-white uppercase">STUDIO</span>
-          <span className="text-[28px] font-black tracking-[-0.06em] text-[#c72a09]">24</span>
+        <div className="flex items-center gap-0">
+          <span className="text-[22px] font-black tracking-[-0.03em] text-white lowercase">studio</span>
+          <span className="flex-1 h-[1.5px] bg-white mx-2 min-w-[30px]" />
+          <span className="text-[22px] font-black tracking-[-0.03em] text-white">24</span>
         </div>
-        <div className="w-8 h-[2px] bg-[#c72a09] mt-2" />
       </Link>
 
       {/* Search */}
