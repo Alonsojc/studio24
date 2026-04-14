@@ -295,24 +295,31 @@ export default function FiscalPage() {
 
       {/* Acumulado Anual */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Facturado Anual" value={formatCurrency(acumIngresosFacturados)} subtitle={`${year}`} />
+        <StatCard
+          label="Facturado Anual"
+          value={formatCurrency(acumIngresosFacturados)}
+          subtitle={`${year}`}
+          color="green"
+        />
         <StatCard
           label="IVA pagado (acum.)"
           value={formatCurrency(acumIVAPorPagar)}
           subtitle={
             ivaFavorAcum > 0 ? `Saldo a favor: ${formatCurrency(ivaFavorAcum)}` : 'IVA trasladado – acreditable'
           }
+          color="red"
         />
         <StatCard
           label="ISR pagado (acum.)"
           value={formatCurrency(acumISR)}
           subtitle={perdidaAcum > 0 ? `Pérdida pendiente: ${formatCurrency(perdidaAcum)}` : 'Tabla Art. 96 LISR'}
+          color="red"
         />
         <StatCard
           label="Total Impuestos"
           value={formatCurrency(acumTotalImpuestos)}
           subtitle="IVA + ISR estimado"
-          accent
+          color={acumTotalImpuestos > 0 ? 'red' : 'default'}
         />
       </div>
 
@@ -422,7 +429,7 @@ export default function FiscalPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* IVA */}
           <div>
-            <p className="text-sm font-black tracking-[0.1em] text-white/60 uppercase mb-3">IVA</p>
+            <p className="text-sm font-black tracking-[0.1em] text-white/60 uppercase mb-3 text-center">IVA</p>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-sm text-white/50">Trasladado</span>
@@ -451,7 +458,9 @@ export default function FiscalPage() {
 
           {/* ISR */}
           <div>
-            <p className="text-sm font-black tracking-[0.1em] text-white/60 uppercase mb-3">ISR (Pago Provisional)</p>
+            <p className="text-sm font-black tracking-[0.1em] text-white/60 uppercase mb-3 text-center">
+              ISR (Pago Provisional)
+            </p>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-sm text-white/50">Ingresos facturados</span>
@@ -488,7 +497,9 @@ export default function FiscalPage() {
 
           {/* Total */}
           <div>
-            <p className="text-sm font-black tracking-[0.1em] text-white/60 uppercase mb-3">Total a Pagar</p>
+            <p className="text-sm font-black tracking-[0.1em] text-white/60 uppercase mb-3 text-center">
+              Total a Pagar
+            </p>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-sm text-white/50">IVA</span>
