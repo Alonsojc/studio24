@@ -1,4 +1,4 @@
-const CACHE_NAME = 'studio24-v2';
+const CACHE_NAME = 'studio24-v3';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

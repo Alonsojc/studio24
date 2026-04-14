@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { generarEgresosRecurrentes } from '@/lib/recurrentes';
 import { restoreFromIDB, syncAllToIDB } from '@/lib/db';
-import { getPedidos } from '@/lib/store';
+import { getPedidos, limpiarDuplicados } from '@/lib/store';
 import { formatDate } from '@/lib/helpers';
 
 const NOTIF_KEY = 'bordados_last_notif';
@@ -69,16 +69,31 @@ export default function SeedData() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Intentar restaurar datos desde IDB si localStorage está vacío
-    restoreFromIDB().then((restored) => {
-      if (restored) window.location.reload();
-      else {
-        // Sync current localStorage to IDB as backup
+    // Intentar restaurar datos desde IDB si localStorage está vacío.
+    // generarEgresosRecurrentes runs AFTER restore to avoid race-condition duplicates.
+    restoreFromIDB()
+      .then((restored) => {
+        if (restored) {
+          window.location.reload();
+          return;
+        }
+        try {
+          limpiarDuplicados();
+        } catch {
+          /* best-effort cleanup */
+        }
         syncAllToIDB();
-      }
-    });
-
-    generarEgresosRecurrentes();
+        generarEgresosRecurrentes();
+      })
+      .catch(() => {
+        // IDB not available (e.g. mobile private mode) — run startup without restore
+        try {
+          limpiarDuplicados();
+        } catch {
+          /* ignore */
+        }
+        generarEgresosRecurrentes();
+      });
 
     // Registrar Service Worker para PWA offline
     if ('serviceWorker' in navigator) {
