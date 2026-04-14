@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { generarEgresosRecurrentes } from '@/lib/recurrentes';
 import { restoreFromIDB, syncAllToIDB } from '@/lib/db';
-import { getPedidos } from '@/lib/store';
+import { getPedidos, limpiarDuplicados } from '@/lib/store';
 import { formatDate } from '@/lib/helpers';
 
 const NOTIF_KEY = 'bordados_last_notif';
@@ -75,6 +75,7 @@ export default function SeedData() {
       if (restored) {
         window.location.reload();
       } else {
+        limpiarDuplicados();
         syncAllToIDB();
         generarEgresosRecurrentes();
       }
