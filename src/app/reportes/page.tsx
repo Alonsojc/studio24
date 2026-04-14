@@ -205,15 +205,15 @@ export default function ReportesPage() {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: '12px' }} />
-              <Bar dataKey="Ingresos" fill="#16a34a" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="Egresos" fill="#dc2626" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="Ingresos" fill="#0a0a0a" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="Egresos" fill="#c72a09" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        {/* Pie Charts — Ingresos first, Egresos second */}
+        {/* Pie Charts — Ingresos left, Egresos right */}
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
           <h3 className="text-[10px] font-bold tracking-[0.12em] text-green-600 uppercase mb-6">
             Ingresos por Concepto
@@ -221,17 +221,28 @@ export default function ReportesPage() {
           {conceptoData.length === 0 ? (
             <p className="text-sm text-neutral-300 text-center py-12">Sin datos</p>
           ) : (
-            <div className="h-80">
+            <div className="h-96">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={conceptoData}
                     cx="50%"
                     cy="50%"
-                    outerRadius={90}
-                    innerRadius={45}
+                    outerRadius={100}
+                    innerRadius={50}
+                    paddingAngle={2}
                     dataKey="value"
-                    label={({ name, percent }) => `${name || ''} ${((percent as number) * 100).toFixed(0)}%`}
+                    label={({ name, percent, x, y }) => (
+                      <text
+                        x={x}
+                        y={y}
+                        textAnchor={x > 200 ? 'start' : 'end'}
+                        dominantBaseline="central"
+                        style={{ fontSize: 12 }}
+                      >
+                        {`${name || ''} ${((percent as number) * 100).toFixed(0)}%`}
+                      </text>
+                    )}
                     labelLine={true}
                   >
                     {conceptoData.map((_, idx) => (
@@ -253,17 +264,28 @@ export default function ReportesPage() {
           {categoriaData.length === 0 ? (
             <p className="text-sm text-neutral-300 text-center py-12">Sin datos</p>
           ) : (
-            <div className="h-80">
+            <div className="h-96">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={categoriaData}
                     cx="50%"
                     cy="50%"
-                    outerRadius={90}
-                    innerRadius={45}
+                    outerRadius={100}
+                    innerRadius={50}
+                    paddingAngle={2}
                     dataKey="value"
-                    label={({ name, percent }) => `${name || ''} ${((percent as number) * 100).toFixed(0)}%`}
+                    label={({ name, percent, x, y }) => (
+                      <text
+                        x={x}
+                        y={y}
+                        textAnchor={x > 200 ? 'start' : 'end'}
+                        dominantBaseline="central"
+                        style={{ fontSize: 12 }}
+                      >
+                        {`${name || ''} ${((percent as number) * 100).toFixed(0)}%`}
+                      </text>
+                    )}
                     labelLine={true}
                   >
                     {categoriaData.map((_, idx) => (
