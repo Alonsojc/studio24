@@ -18,10 +18,42 @@ import type {
 
 // --- Mappers: camelCase <-> snake_case ---
 
+// Manual overrides for keys that don't convert cleanly
+const SNAKE_OVERRIDES: Record<string, string> = {
+  uuidCFDI: 'uuid_cfdi',
+  xmlUrl: 'xml_url',
+  pdfUrl: 'pdf_url',
+  logoUrl: 'logo_url',
+  createdAt: 'created_at',
+  clienteId: 'cliente_id',
+  pedidoId: 'pedido_id',
+  proveedorId: 'proveedor_id',
+  montoTotal: 'monto_total',
+  formaPago: 'forma_pago',
+  numeroFactura: 'numero_factura',
+  precioUnitario: 'precio_unitario',
+  costoMateriales: 'costo_materiales',
+  estadoPago: 'estado_pago',
+  montoPagado: 'monto_pagado',
+  archivoDiseno: 'archivo_diseno',
+  fechaPedido: 'fecha_pedido',
+  fechaEntrega: 'fecha_entrega',
+  fechaEntregaReal: 'fecha_entrega_real',
+  diaDelMes: 'dia_del_mes',
+  stockMinimo: 'stock_minimo',
+  conIVA: 'con_iva',
+  clienteNombre: 'cliente_nombre',
+  clienteEmpresa: 'cliente_empresa',
+  nombreNegocio: 'nombre_negocio',
+  numeroCuenta: 'numero_cuenta',
+  regimenFiscal: 'regimen_fiscal',
+  codigoPostal: 'codigo_postal',
+};
+
 function toSnake(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
-    const snakeKey = key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
+    const snakeKey = SNAKE_OVERRIDES[key] || key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
     result[snakeKey] = value;
   }
   return result;
