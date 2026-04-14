@@ -8,19 +8,37 @@ import { downloadCSV } from '@/lib/csv';
 import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
 
-// Bimestres SAT: Ene-Feb, Mar-Abr, May-Jun, Jul-Ago, Sep-Oct, Nov-Dic
-const BIMESTRES = [
-  { label: 'Ene – Feb', meses: [0, 1] },
-  { label: 'Mar – Abr', meses: [2, 3] },
-  { label: 'May – Jun', meses: [4, 5] },
-  { label: 'Jul – Ago', meses: [6, 7] },
-  { label: 'Sep – Oct', meses: [8, 9] },
-  { label: 'Nov – Dic', meses: [10, 11] },
+// Meses para pagos provisionales (Persona Física con Act. Empresarial)
+const MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
-// ISR RIF tabla simplificada (rangos mensuales aproximados para RESICO)
-// Estos son estimaciones — el contador ajusta con las tablas oficiales
-const ISR_RATE_RESICO = 0.025; // 2.5% tasa RESICO para ingresos < 3.5M anuales
+// Tabla ISR mensual 2024 — Persona Física (Art. 96 LISR)
+const TABLA_ISR_MENSUAL = [
+  { limInf: 0, limSup: 746.04, cuota: 0, tasa: 0.0192 },
+  { limInf: 746.05, limSup: 6332.05, cuota: 14.32, tasa: 0.064 },
+  { limInf: 6332.06, limSup: 11128.01, cuota: 371.83, tasa: 0.1088 },
+  { limInf: 11128.02, limSup: 12935.82, cuota: 893.63, tasa: 0.16 },
+  { limInf: 12935.83, limSup: 15487.71, cuota: 1182.88, tasa: 0.1792 },
+  { limInf: 15487.72, limSup: 31236.49, cuota: 1640.18, tasa: 0.2136 },
+  { limInf: 31236.50, limSup: 49233.00, cuota: 5004.12, tasa: 0.2352 },
+  { limInf: 49233.01, limSup: 93993.90, cuota: 9236.89, tasa: 0.30 },
+  { limInf: 93993.91, limSup: 125325.20, cuota: 22665.17, tasa: 0.32 },
+  { limInf: 125325.21, limSup: 375975.61, cuota: 32691.18, tasa: 0.34 },
+  { limInf: 375975.62, limSup: Infinity, cuota: 117912.32, tasa: 0.35 },
+];
+
+function calcISR(baseGravable: number): number {
+  if (baseGravable <= 0) return 0;
+  for (const rango of TABLA_ISR_MENSUAL) {
+    if (baseGravable >= rango.limInf && baseGravable <= rango.limSup) {
+      return rango.cuota + (baseGravable - rango.limInf) * rango.tasa;
+    }
+  }
+  const last = TABLA_ISR_MENSUAL[TABLA_ISR_MENSUAL.length - 1];
+  return last.cuota + (baseGravable - last.limInf) * last.tasa;
+}
 
 export default function FiscalPage() {
   const isClient = typeof window !== 'undefined';
@@ -28,7 +46,7 @@ export default function FiscalPage() {
   const [egresos] = useState<Egreso[]>(() => (isClient ? getEgresos() : []));
   const [mounted] = useState(() => isClient);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [selectedBim, setSelectedBim] = useState(() => Math.floor(new Date().getMonth() / 2));
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth());
 
   if (!mounted) {
     return (
@@ -52,26 +70,26 @@ export default function FiscalPage() {
   const ingresosYear = ingresos.filter((i) => new Date(i.fecha).getFullYear() === year);
   const egresosYear = egresos.filter((e) => new Date(e.fecha).getFullYear() === year);
 
-  // Datos por bimestre
-  const bimData = BIMESTRES.map((bim, idx) => {
-    const ingBim = ingresosYear.filter((i) => bim.meses.includes(new Date(i.fecha).getMonth()));
-    const egBim = egresosYear.filter((e) => bim.meses.includes(new Date(e.fecha).getMonth()));
+  // Datos por mes (pagos provisionales mensuales)
+  const monthData = MESES.map((label, idx) => {
+    const ingMes = ingresosYear.filter((i) => new Date(i.fecha).getMonth() === idx);
+    const egMes = egresosYear.filter((e) => new Date(e.fecha).getMonth() === idx);
 
-    const ingresosBrutos = ingBim.reduce((s, i) => s + i.monto, 0);
-    const ingresosFacturados = ingBim.filter((i) => i.factura).reduce((s, i) => s + i.monto, 0);
-    const ivaTrasladado = ingBim.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
-    const ivaAcreditable = egBim.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
+    const ingresosBrutos = ingMes.reduce((s, i) => s + i.monto, 0);
+    const ingresosFacturados = ingMes.filter((i) => i.factura).reduce((s, i) => s + i.monto, 0);
+    const ivaTrasladado = ingMes.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
+    const ivaAcreditable = egMes.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
     const ivaPorPagar = Math.max(0, ivaTrasladado - ivaAcreditable);
     const ivaAFavor = Math.max(0, ivaAcreditable - ivaTrasladado);
-    const egresosBrutos = egBim.reduce((s, e) => s + e.monto, 0);
-    const egresosDeducibles = egBim.filter((e) => e.factura).reduce((s, e) => s + e.monto, 0);
+    const egresosBrutos = egMes.reduce((s, e) => s + e.monto, 0);
+    const egresosDeducibles = egMes.filter((e) => e.factura).reduce((s, e) => s + e.monto, 0);
     const baseISR = Math.max(0, ingresosFacturados - egresosDeducibles);
-    const isrEstimado = baseISR * ISR_RATE_RESICO;
+    const isrEstimado = calcISR(baseISR);
     const totalImpuestos = ivaPorPagar + isrEstimado;
 
     return {
       idx,
-      label: bim.label,
+      label,
       ingresosBrutos,
       ingresosFacturados,
       ingresosNoFacturados: ingresosBrutos - ingresosFacturados,
@@ -85,27 +103,27 @@ export default function FiscalPage() {
       baseISR,
       isrEstimado,
       totalImpuestos,
-      numIngresos: ingBim.length,
-      numFacturas: ingBim.filter((i) => i.factura).length,
-      numEgresos: egBim.length,
-      numFacturasEgreso: egBim.filter((e) => e.factura).length,
-      ingresos: ingBim,
-      egresos: egBim,
+      numIngresos: ingMes.length,
+      numFacturas: ingMes.filter((i) => i.factura).length,
+      numEgresos: egMes.length,
+      numFacturasEgreso: egMes.filter((e) => e.factura).length,
+      ingresos: ingMes,
+      egresos: egMes,
     };
   });
 
-  const sel = bimData[selectedBim];
+  const sel = monthData[selectedMonth];
 
   // Acumulado anual
-  const acumIngresosFacturados = bimData.reduce((s, b) => s + b.ingresosFacturados, 0);
-  const acumIVAPorPagar = bimData.reduce((s, b) => s + b.ivaPorPagar, 0);
-  const acumISR = bimData.reduce((s, b) => s + b.isrEstimado, 0);
+  const acumIngresosFacturados = monthData.reduce((s, b) => s + b.ingresosFacturados, 0);
+  const acumIVAPorPagar = monthData.reduce((s, b) => s + b.ivaPorPagar, 0);
+  const acumISR = monthData.reduce((s, b) => s + b.isrEstimado, 0);
   const acumTotalImpuestos = acumIVAPorPagar + acumISR;
 
   // Export para contador
   const exportarParaContador = () => {
     const headers = [
-      'Bimestre',
+      'Mes',
       'Ingresos Facturados',
       'Ingresos No Facturados',
       'IVA Trasladado',
@@ -115,10 +133,10 @@ export default function FiscalPage() {
       'IVA por Pagar',
       'IVA a Favor',
       'Base ISR',
-      'ISR Estimado (RESICO 2.5%)',
+      'ISR Estimado (Tabla Art. 96)',
       'Total Impuestos',
     ];
-    const rows = bimData.map((b) => [
+    const rows = monthData.map((b) => [
       b.label,
       String(b.ingresosFacturados),
       String(b.ingresosNoFacturados),
@@ -135,23 +153,23 @@ export default function FiscalPage() {
     // Fila de totales
     rows.push([
       'TOTAL ANUAL',
-      String(bimData.reduce((s, b) => s + b.ingresosFacturados, 0)),
-      String(bimData.reduce((s, b) => s + b.ingresosNoFacturados, 0)),
-      String(bimData.reduce((s, b) => s + b.ivaTrasladado, 0)),
-      String(bimData.reduce((s, b) => s + b.egresosDeducibles, 0)),
-      String(bimData.reduce((s, b) => s + b.egresosNoDeducibles, 0)),
-      String(bimData.reduce((s, b) => s + b.ivaAcreditable, 0)),
+      String(monthData.reduce((s, b) => s + b.ingresosFacturados, 0)),
+      String(monthData.reduce((s, b) => s + b.ingresosNoFacturados, 0)),
+      String(monthData.reduce((s, b) => s + b.ivaTrasladado, 0)),
+      String(monthData.reduce((s, b) => s + b.egresosDeducibles, 0)),
+      String(monthData.reduce((s, b) => s + b.egresosNoDeducibles, 0)),
+      String(monthData.reduce((s, b) => s + b.ivaAcreditable, 0)),
       String(acumIVAPorPagar),
-      String(bimData.reduce((s, b) => s + b.ivaAFavor, 0)),
-      String(bimData.reduce((s, b) => s + b.baseISR, 0)),
+      String(monthData.reduce((s, b) => s + b.ivaAFavor, 0)),
+      String(monthData.reduce((s, b) => s + b.baseISR, 0)),
       String(acumISR),
       String(acumTotalImpuestos),
     ]);
-    downloadCSV(`fiscal_${year}_bimestral`, headers, rows);
+    downloadCSV(`fiscal_${year}_mensual`, headers, rows);
   };
 
   const exportarDetalle = () => {
-    // Exportar el detalle de ingresos y egresos del bimestre seleccionado
+    // Exportar el detalle de ingresos y egresos del mes seleccionado
     const headers = [
       'Tipo',
       'Fecha',
@@ -194,7 +212,7 @@ export default function FiscalPage() {
     <div>
       <PageHeader
         title="Declaración Fiscal"
-        description="Resumen bimestral para el SAT"
+        description="Resumen mensual para el SAT"
         action={
           <div className="flex gap-2 items-center">
             <select
@@ -233,7 +251,7 @@ export default function FiscalPage() {
           value={formatCurrency(acumIVAPorPagar)}
           subtitle="IVA trasladado – acreditable"
         />
-        <StatCard label="ISR Estimado (acum.)" value={formatCurrency(acumISR)} subtitle="RESICO 2.5%" />
+        <StatCard label="ISR Estimado (acum.)" value={formatCurrency(acumISR)} subtitle="Tabla Art. 96 LISR" />
         <StatCard
           label="Total Impuestos"
           value={formatCurrency(acumTotalImpuestos)}
@@ -242,22 +260,22 @@ export default function FiscalPage() {
         />
       </div>
 
-      {/* Bimestres */}
-      <div className="grid grid-cols-6 gap-2 mb-8">
-        {bimData.map((b, idx) => (
+      {/* Meses */}
+      <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2 mb-8">
+        {monthData.map((b, idx) => (
           <button
             key={idx}
-            onClick={() => setSelectedBim(idx)}
+            onClick={() => setSelectedMonth(idx)}
             className={`p-3 rounded-xl text-center border transition-all ${
-              selectedBim === idx ? 'border-[#c72a09] bg-[#c72a09]/5' : 'border-neutral-200 hover:border-neutral-400'
+              selectedMonth === idx ? 'border-[#c72a09] bg-[#c72a09]/5' : 'border-neutral-200 hover:border-neutral-400'
             }`}
           >
             <p
-              className={`text-[10px] font-bold tracking-[0.05em] uppercase ${selectedBim === idx ? 'text-[#c72a09]' : 'text-neutral-400'}`}
+              className={`text-[10px] font-bold tracking-[0.05em] uppercase ${selectedMonth === idx ? 'text-[#c72a09]' : 'text-neutral-400'}`}
             >
               {b.label}
             </p>
-            <p className={`text-sm font-black mt-1 ${selectedBim === idx ? 'text-[#c72a09]' : 'text-[#0a0a0a]'}`}>
+            <p className={`text-sm font-black mt-1 ${selectedMonth === idx ? 'text-[#c72a09]' : 'text-[#0a0a0a]'}`}>
               {formatCurrency(b.totalImpuestos)}
             </p>
             <p className="text-[9px] text-neutral-400 mt-0.5">{b.numFacturas} facturas</p>
@@ -265,7 +283,7 @@ export default function FiscalPage() {
         ))}
       </div>
 
-      {/* Detalle del bimestre */}
+      {/* Detalle del mes */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Ingresos */}
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
@@ -332,7 +350,7 @@ export default function FiscalPage() {
         </div>
       </div>
 
-      {/* Resumen fiscal del bimestre */}
+      {/* Resumen fiscal del mes */}
       <div className="bg-[#0a0a0a] rounded-2xl p-6 mb-8">
         <div className="flex justify-between items-center mb-5">
           <h3 className="text-[10px] font-bold tracking-[0.12em] text-white/30 uppercase">
@@ -369,7 +387,7 @@ export default function FiscalPage() {
 
           {/* ISR */}
           <div>
-            <p className="text-[9px] font-bold tracking-[0.1em] text-white/20 uppercase mb-3">ISR (RESICO)</p>
+            <p className="text-[9px] font-bold tracking-[0.1em] text-white/20 uppercase mb-3">ISR (Pago Provisional)</p>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-sm text-white/50">Ingresos facturados</span>
@@ -384,7 +402,7 @@ export default function FiscalPage() {
                 <span className="text-sm font-bold text-white">{formatCurrency(sel.baseISR)}</span>
               </div>
               <div className="border-t border-white/10 pt-2 flex justify-between">
-                <span className="text-sm font-bold text-white">ISR estimado (2.5%)</span>
+                <span className="text-sm font-bold text-white">ISR estimado</span>
                 <span className="text-lg font-black text-amber-400">{formatCurrency(sel.isrEstimado)}</span>
               </div>
             </div>
@@ -414,10 +432,10 @@ export default function FiscalPage() {
       {/* Disclaimer */}
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
         <p className="text-xs text-amber-700">
-          <span className="font-bold">Nota:</span> Los cálculos de ISR usan la tasa RESICO simplificada (2.5% sobre
-          ingresos facturados menos deducciones). Las cifras son estimaciones para referencia. Consulta con tu contador
-          para la declaración definitiva. El IVA se calcula como trasladado (cobrado en facturas de venta) menos
-          acreditable (pagado en facturas de compra).
+          <span className="font-bold">Nota:</span> Los cálculos de ISR usan la tabla del Art. 96 LISR para Persona
+          Física con Actividad Empresarial (pagos provisionales mensuales). Las cifras son estimaciones para referencia.
+          Consulta con tu contador para la declaración definitiva. El IVA se calcula como trasladado (cobrado en
+          facturas de venta) menos acreditable (pagado en facturas de compra).
         </p>
       </div>
     </div>
