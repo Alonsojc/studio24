@@ -160,16 +160,19 @@ export default function ReportesPage() {
           label={`Ingresos ${mesInicio === 0 && mesFin === 11 ? 'Anuales' : `${monthNames[mesInicio]}–${monthNames[mesFin]}`}`}
           value={formatCurrency(totalIngresosYear)}
           subtitle={`${ingresosYear.length} ventas`}
+          color="green"
         />
         <StatCard
           label={`Egresos ${mesInicio === 0 && mesFin === 11 ? 'Anuales' : `${monthNames[mesInicio]}–${monthNames[mesFin]}`}`}
           value={formatCurrency(totalEgresosYear)}
           subtitle={`${egresosYear.length} gastos`}
+          color="red"
         />
         <StatCard
           label={`Ganancia ${mesInicio === 0 && mesFin === 11 ? 'Anual' : `${monthNames[mesInicio]}–${monthNames[mesFin]}`}`}
           value={formatCurrency(gananciaYear)}
-          accent
+          subtitle={gananciaYear >= 0 ? 'Positiva' : 'Negativa'}
+          color={gananciaYear >= 0 ? 'green' : 'red'}
         />
         <StatCard
           label="IVA por Pagar"
