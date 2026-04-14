@@ -412,8 +412,9 @@ export default function CotizadorPage() {
             <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-4">Cliente</h3>
             <div className="mb-4">
               <label className={labelClass}>Seleccionar cliente</label>
-              <select value={clienteId} onChange={(e) => selectCliente(e.target.value)} className={inputClass}>
+              <select value={clienteId} onChange={(e) => { if (e.target.value === '__new__') { window.open('/studio24/clientes', '_blank'); return; } selectCliente(e.target.value); }} className={inputClass}>
                 <option value="">-- Escribir manualmente --</option>
+                <option value="__new__">+ Nuevo cliente</option>
                 {clientes.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.nombre}
