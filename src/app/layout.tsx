@@ -12,12 +12,12 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: 'Studio 24 — Control de Bordados',
+    default: 'Studio 24',
     template: '%s — Studio 24',
   },
   description: 'Sistema de control de ingresos, egresos y clientes para negocio de bordados',
   icons: {
-    icon: '/favicon.svg',
+    icon: '/studio24/favicon.svg',
   },
   manifest: '/studio24/manifest.json',
   appleWebApp: {
