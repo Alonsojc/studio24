@@ -480,7 +480,7 @@ export default function EgresosPage() {
                   <td className="px-5 py-4 text-neutral-400 text-xs">{proveedorName(e.proveedorId) || '—'}</td>
                   <td className="px-5 py-4 text-neutral-400 text-xs">{formaPagoLabel(e.formaPago)}</td>
                   <td className="px-5 py-4 text-right">
-                    <span className="font-bold text-[#0a0a0a]">{formatCurrency(e.montoTotal)}</span>
+                    <span className="font-bold text-red-600">{formatCurrency(e.montoTotal)}</span>
                     {e.iva > 0 && (
                       <span className="block text-[10px] text-neutral-300">IVA: {formatCurrency(e.iva)}</span>
                     )}

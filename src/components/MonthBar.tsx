@@ -32,10 +32,10 @@ export default function MonthBar({ items, year, selectedMonth, onSelect, color =
   const activeValueColor = color === 'green' ? 'text-green-600' : 'text-red-600';
 
   return (
-    <div className="grid grid-cols-4 md:grid-cols-7 lg:grid-cols-13 gap-2 mb-6">
+    <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-thin">
       <button
         onClick={() => onSelect('all')}
-        className={`p-3 rounded-xl text-center border transition-all ${
+        className={`p-3 rounded-xl text-center border transition-all shrink-0 min-w-[5.5rem] ${
           isAll ? activeColor : 'border-neutral-200 hover:border-neutral-400'
         }`}
       >
@@ -55,7 +55,7 @@ export default function MonthBar({ items, year, selectedMonth, onSelect, color =
           <button
             key={b.key}
             onClick={() => onSelect(isActive ? 'all' : b.key)}
-            className={`p-3 rounded-xl text-center border transition-all ${
+            className={`p-3 rounded-xl text-center border transition-all shrink-0 min-w-[5.5rem] ${
               isActive ? activeColor : 'border-neutral-200 hover:border-neutral-400'
             }`}
           >
