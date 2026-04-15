@@ -63,10 +63,12 @@ export default function Dashboard() {
     if (filter === 'todo') return false;
     const m = parseInt(fecha.substring(5, 7), 10);
     const y = parseInt(fecha.substring(0, 4), 10);
-    if (filter === 'año') return y === currentYear - 1;
-    const prevM = currentMonth; // currentMonth is 0-indexed, so it equals the 1-indexed previous month
-    if (prevM === 0) return y === currentYear - 1 && m === 12;
-    return y === currentYear && m === prevM;
+    const yearNum = parseInt(currentYear, 10);
+    const monthNum = parseInt(currentMonth, 10);
+    if (filter === 'año') return y === yearNum - 1;
+    const prevM = monthNum; // currentMonth is 1-indexed; prevM equals the 1-indexed previous month
+    if (prevM === 1) return y === yearNum - 1 && m === 12;
+    return y === yearNum && m === prevM - 1;
   };
   const prevIngresos =
     filter !== 'todo' ? ingresos.filter((i) => prevFilterFn(i.fecha)).reduce((s, i) => s + i.montoTotal, 0) : 0;
