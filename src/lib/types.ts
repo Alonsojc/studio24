@@ -54,6 +54,7 @@ export interface Egreso {
   uuidCFDI?: string;
   xmlUrl?: string;
   pdfUrl?: string;
+  soloFiscal?: boolean;
   notas: string;
   createdAt: string;
 }

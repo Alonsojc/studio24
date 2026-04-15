@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getEgresos, getProveedores, getEgresosRecurrentes } from '@/lib/store';
+import { cloudGetEgresos, cloudGetProveedores, cloudGetEgresosRecurrentes } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import {
   addEgreso,
   updateEgreso,
@@ -10,8 +12,9 @@ import {
   addEgresoRecurrente,
   updateEgresoRecurrente,
   deleteEgresoRecurrente,
+  getNextFolio,
 } from '@/lib/store-sync';
-import { Egreso, Proveedor, EgresoRecurrente, CategoriaEgreso, FormaPago } from '@/lib/types';
+import { Egreso, EgresoRecurrente, CategoriaEgreso, FormaPago } from '@/lib/types';
 import {
   formatCurrency,
   formatDate,
@@ -66,6 +69,7 @@ function emptyEgreso(): Omit<Egreso, 'id' | 'createdAt'> {
     formaPago: 'efectivo',
     factura: false,
     numeroFactura: '',
+    soloFiscal: false,
     notas: '',
   };
 }
@@ -85,12 +89,18 @@ function emptyRecurrente(): Omit<EgresoRecurrente, 'id' | 'createdAt'> {
 }
 
 export default function EgresosPage() {
-  const isClient = typeof window !== 'undefined';
-  const [egresos, setEgresos] = useState<Egreso[]>(() =>
-    isClient ? getEgresos().sort((a, b) => b.fecha.localeCompare(a.fecha)) : [],
+  const { data: egresosRaw, reload: reloadEgresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
+  const { data: proveedores } = useCloudStore(getProveedores, cloudGetProveedores, 'bordados_proveedores');
+  const { data: recurrentes, reload: reloadRec } = useCloudStore(
+    getEgresosRecurrentes,
+    cloudGetEgresosRecurrentes,
+    'bordados_egresos_recurrentes',
   );
-  const [proveedores] = useState<Proveedor[]>(() => (isClient ? getProveedores() : []));
-  const [recurrentes, setRecurrentes] = useState<EgresoRecurrente[]>(() => (isClient ? getEgresosRecurrentes() : []));
+  const egresos = [...egresosRaw].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const reload = () => {
+    reloadEgresos();
+    reloadRec();
+  };
   const [modalOpen, setModalOpen] = useState(false);
   const [recModalOpen, setRecModalOpen] = useState(false);
   const [recPanelOpen, setRecPanelOpen] = useState(false);
@@ -98,19 +108,15 @@ export default function EgresosPage() {
   const [editingRecId, setEditingRecId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyEgreso());
   const [recForm, setRecForm] = useState(emptyRecurrente());
+  const [formSnapshot, setFormSnapshot] = useState('');
+  const [recFormSnapshot, setRecFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [recFormError, setRecFormError] = useState<string | null>(null);
   const [filterCat, setFilterCat] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
-  const [mounted] = useState(() => isClient);
 
-  const reload = useCallback(() => {
-    setEgresos(getEgresos().sort((a, b) => b.fecha.localeCompare(a.fecha)));
-    setRecurrentes(getEgresosRecurrentes());
-  }, []);
-
-  if (!mounted)
+  if (egresosRaw.length === 0 && typeof window === 'undefined')
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
@@ -119,13 +125,16 @@ export default function EgresosPage() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm(emptyEgreso());
+    const initial = emptyEgreso();
+    setForm(initial);
+    setFormSnapshot(JSON.stringify(initial));
     setFormError(null);
     setModalOpen(true);
   };
   const openEdit = (e: Egreso) => {
     setEditingId(e.id);
     setForm({ ...e });
+    setFormSnapshot(JSON.stringify(e));
     setFormError(null);
     setModalOpen(true);
   };
@@ -166,13 +175,16 @@ export default function EgresosPage() {
 
   const openNewRec = () => {
     setEditingRecId(null);
-    setRecForm(emptyRecurrente());
+    const initial = emptyRecurrente();
+    setRecForm(initial);
+    setRecFormSnapshot(JSON.stringify(initial));
     setRecFormError(null);
     setRecModalOpen(true);
   };
   const openEditRec = (r: EgresoRecurrente) => {
     setEditingRecId(r.id);
     setRecForm({ ...r });
+    setRecFormSnapshot(JSON.stringify(r));
     setRecFormError(null);
     setRecModalOpen(true);
   };
@@ -466,10 +478,20 @@ export default function EgresosPage() {
             </thead>
             <tbody>
               {filtered.map((e) => (
-                <tr key={e.id} className="border-b border-neutral-50 hover:bg-neutral-50/50 transition-colors">
+                <tr
+                  key={e.id}
+                  className={`border-b border-neutral-50 transition-colors ${e.soloFiscal ? 'bg-purple-50/30' : 'hover:bg-neutral-50/50'}`}
+                >
                   <td className="px-5 py-4 text-neutral-400 text-xs">{formatDate(e.fecha)}</td>
                   <td className="px-5 py-4">
-                    <span className="font-semibold text-[#0a0a0a]">{e.descripcion}</span>
+                    <span className={`font-semibold ${e.soloFiscal ? 'text-neutral-400' : 'text-[#0a0a0a]'}`}>
+                      {e.descripcion}
+                    </span>
+                    {e.soloFiscal && (
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-100 text-purple-600 uppercase">
+                        Solo fiscal
+                      </span>
+                    )}
                     {e.subcategoria && <span className="block text-xs text-neutral-300 mt-0.5">{e.subcategoria}</span>}
                   </td>
                   <td className="px-5 py-4">
@@ -480,7 +502,9 @@ export default function EgresosPage() {
                   <td className="px-5 py-4 text-neutral-400 text-xs">{proveedorName(e.proveedorId) || '—'}</td>
                   <td className="px-5 py-4 text-neutral-400 text-xs">{formaPagoLabel(e.formaPago)}</td>
                   <td className="px-5 py-4 text-right">
-                    <span className="font-bold text-red-600">{formatCurrency(e.montoTotal)}</span>
+                    <span className={`font-bold ${e.soloFiscal ? 'text-purple-500' : 'text-red-600'}`}>
+                      {formatCurrency(e.montoTotal)}
+                    </span>
                     {e.iva > 0 && (
                       <span className="block text-[10px] text-neutral-300">IVA: {formatCurrency(e.iva)}</span>
                     )}
@@ -499,6 +523,13 @@ export default function EgresosPage() {
                       <ActionMenu
                         items={[
                           { label: 'Editar', onClick: () => openEdit(e) },
+                          {
+                            label: e.soloFiscal ? 'Quitar solo fiscal' : 'Marcar solo fiscal',
+                            onClick: () => {
+                              updateEgreso({ ...e, soloFiscal: !e.soloFiscal });
+                              reload();
+                            },
+                          },
                           { label: 'Eliminar', onClick: () => handleDelete(e.id), danger: true },
                         ]}
                       />
@@ -512,7 +543,12 @@ export default function EgresosPage() {
       )}
 
       {/* Egreso Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? 'Editar Egreso' : 'Nuevo Egreso'}>
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editingId ? 'Editar Egreso' : 'Nuevo Egreso'}
+        dirty={JSON.stringify(form) !== formSnapshot}
+      >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -620,7 +656,14 @@ export default function EgresosPage() {
               <input
                 type="checkbox"
                 checked={form.factura}
-                onChange={(e) => setForm({ ...form, factura: e.target.checked })}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  const updates: Partial<typeof form> = { factura: checked };
+                  if (checked && !form.numeroFactura && !editingId) {
+                    updates.numeroFactura = getNextFolio('EGR');
+                  }
+                  setForm({ ...form, ...updates });
+                }}
                 className="w-4 h-4 accent-[#c72a09] rounded"
               />
               <span className="text-sm text-neutral-600">Factura (IVA 16%)</span>
@@ -639,10 +682,21 @@ export default function EgresosPage() {
                 type="text"
                 value={form.numeroFactura}
                 onChange={(e) => setForm({ ...form, numeroFactura: e.target.value })}
+                placeholder="Se genera automáticamente"
                 className={inputClass}
               />
             </div>
           )}
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.soloFiscal || false}
+              onChange={(e) => setForm({ ...form, soloFiscal: e.target.checked })}
+              className="w-4 h-4 accent-[#7c3aed] rounded"
+            />
+            <span className="text-sm text-neutral-600">Solo fiscal</span>
+            <span className="text-[10px] text-neutral-400">(no afecta reportes del negocio)</span>
+          </label>
           <div>
             <label className={labelClass}>Notas</label>
             <textarea
@@ -671,6 +725,7 @@ export default function EgresosPage() {
         open={recModalOpen}
         onClose={() => setRecModalOpen(false)}
         title={editingRecId ? 'Editar Recurrente' : 'Nuevo Recurrente'}
+        dirty={JSON.stringify(recForm) !== recFormSnapshot}
       >
         <div className="space-y-4">
           <div className="bg-neutral-50 rounded-xl p-3.5 text-xs text-neutral-500">

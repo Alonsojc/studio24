@@ -3,6 +3,8 @@
 import { useState, useRef, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, getEgresos, getConfig } from '@/lib/store';
+import { cloudGetIngresos, cloudGetEgresos } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import { addIngreso, updateIngreso, addEgreso, updateEgreso } from '@/lib/store-sync';
 import { Ingreso, Egreso } from '@/lib/types';
 import { formatCurrency, formatDate, todayString, calcIVA } from '@/lib/helpers';
@@ -30,8 +32,8 @@ interface FacturaPendiente {
 
 export default function FacturasPage() {
   const isClient = typeof window !== 'undefined';
-  const [ingresos] = useState(() => (isClient ? getIngresos() : []));
-  const [egresos] = useState(() => (isClient ? getEgresos() : []));
+  const { data: ingresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const { data: egresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
   const [config] = useState(() => (isClient ? getConfig() : null));
   const [mounted] = useState(() => isClient);
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
@@ -49,8 +51,6 @@ export default function FacturasPage() {
         <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
       </div>
     );
-
-  const miRFC = config?.nombreNegocio || ''; // TODO: add RFC to config
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -166,6 +166,9 @@ export default function FacturasPage() {
   const processAll = async () => {
     setProcessing(true);
     const updated = [...facturas];
+    // Re-read fresh data to avoid overwriting UUIDs set in a previous session
+    const freshIngresos = getIngresos();
+    const freshEgresos = getEgresos();
     // Track IDs already processed in this batch to prevent double-linking
     const processedMatchIds = new Set<string>();
 
@@ -181,30 +184,44 @@ export default function FacturasPage() {
       try {
         const current = updated[i];
         if (current.status === 'matched' && current.matchId) {
-          processedMatchIds.add(current.matchId);
+          // Double-check the record hasn't been linked to a CFDI since we last read
+          const freshRec =
+            current.tipo === 'ingreso'
+              ? freshIngresos.find((r) => r.id === current.matchId)
+              : freshEgresos.find((r) => r.id === current.matchId);
+          if (freshRec && (freshRec as Ingreso).uuidCFDI) {
+            // Already linked — demote to "new" to create a fresh record instead
+            updated[i] = { ...current, status: 'new', matchId: undefined, matchDesc: undefined };
+          } else {
+            processedMatchIds.add(current.matchId);
+          }
+        }
+
+        const afterCheck = updated[i];
+        if (afterCheck.status === 'matched' && afterCheck.matchId) {
           // Link to existing record
-          if (current.tipo === 'ingreso') {
-            const existing = ingresos.find((r) => r.id === current.matchId);
+          if (afterCheck.tipo === 'ingreso') {
+            const existing = freshIngresos.find((r) => r.id === afterCheck.matchId);
             if (existing) {
               updateIngreso({
                 ...existing,
                 factura: true,
-                numeroFactura: current.cfdi.uuid,
-                uuidCFDI: current.cfdi.uuid,
-                iva: current.cfdi.iva,
-                montoTotal: current.cfdi.total,
+                numeroFactura: afterCheck.cfdi.uuid,
+                uuidCFDI: afterCheck.cfdi.uuid,
+                iva: afterCheck.cfdi.iva,
+                montoTotal: afterCheck.cfdi.total,
               });
             }
           } else {
-            const existing = egresos.find((r) => r.id === current.matchId);
+            const existing = freshEgresos.find((r) => r.id === afterCheck.matchId);
             if (existing) {
               updateEgreso({
                 ...existing,
                 factura: true,
-                numeroFactura: current.cfdi.uuid,
-                uuidCFDI: current.cfdi.uuid,
-                iva: current.cfdi.iva,
-                montoTotal: current.cfdi.total,
+                numeroFactura: afterCheck.cfdi.uuid,
+                uuidCFDI: afterCheck.cfdi.uuid,
+                iva: afterCheck.cfdi.iva,
+                montoTotal: afterCheck.cfdi.total,
               });
             }
           }

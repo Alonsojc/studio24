@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { getIngresos, getEgresos, getClientes } from '@/lib/store';
-import { Ingreso, Egreso } from '@/lib/types';
+import { cloudGetIngresos, cloudGetEgresos, cloudGetClientes } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
@@ -26,10 +27,11 @@ import { Cell } from 'recharts';
 const COLORS = ['#c72a09', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#ec4899', '#0891b2', '#65a30d'];
 
 export default function ReportesPage() {
+  const { data: ingresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const { data: egresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
+  const { data: clientesList } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
+  const totalClientes = clientesList.length;
   const isClient = typeof window !== 'undefined';
-  const [ingresos] = useState<Ingreso[]>(() => (isClient ? getIngresos() : []));
-  const [egresos] = useState<Egreso[]>(() => (isClient ? getEgresos() : []));
-  const [totalClientes] = useState(() => (isClient ? getClientes().length : 0));
   const [year, setYear] = useState(new Date().getFullYear());
   const [mesInicio, setMesInicio] = useState(0);
   const [mesFin, setMesFin] = useState(11);
@@ -59,9 +61,11 @@ export default function ReportesPage() {
   };
   const ingresosYear = ingresos.filter((i) => inRange(i.fecha));
   const egresosYear = egresos.filter((e) => inRange(e.fecha));
+  // Exclude soloFiscal egresos from business reports (they only count in Fiscal)
+  const egresosNegocio = egresosYear.filter((e) => !e.soloFiscal);
 
   const totalIngresosYear = ingresosYear.reduce((s, i) => s + i.montoTotal, 0);
-  const totalEgresosYear = egresosYear.reduce((s, e) => s + e.montoTotal, 0);
+  const totalEgresosYear = egresosNegocio.reduce((s, e) => s + e.montoTotal, 0);
   const gananciaYear = totalIngresosYear - totalEgresosYear;
   const ivaCobradoYear = ingresosYear.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
   const ivaPagadoYear = egresosYear.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
@@ -72,12 +76,12 @@ export default function ReportesPage() {
   const monthlyData = monthNames.map((name, idx) => {
     const ms = String(idx + 1).padStart(2, '0');
     const ing = ingresosYear.filter((i) => i.fecha.substring(5, 7) === ms).reduce((s, i) => s + i.montoTotal, 0);
-    const eg = egresosYear.filter((e) => e.fecha.substring(5, 7) === ms).reduce((s, e) => s + e.montoTotal, 0);
+    const eg = egresosNegocio.filter((e) => e.fecha.substring(5, 7) === ms).reduce((s, e) => s + e.montoTotal, 0);
     return { name, Ingresos: ing, Egresos: eg, Ganancia: ing - eg };
   });
 
   const categoriaData = Object.entries(
-    egresosYear.reduce<Record<string, number>>((acc, e) => {
+    egresosNegocio.reduce<Record<string, number>>((acc, e) => {
       const cat = categoriaLabel(e.categoria);
       acc[cat] = (acc[cat] || 0) + e.montoTotal;
       return acc;
@@ -168,7 +172,7 @@ export default function ReportesPage() {
         <StatCard
           label={`Egresos ${mesInicio === 0 && mesFin === 11 ? 'Anuales' : `${monthNames[mesInicio]}–${monthNames[mesFin]}`}`}
           value={formatCurrency(totalEgresosYear)}
-          subtitle={`${egresosYear.length} gastos`}
+          subtitle={`${egresosNegocio.length} gastos`}
           color="red"
         />
         <StatCard
@@ -358,7 +362,7 @@ export default function ReportesPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-sm text-neutral-500">Gastos del Año</span>
-              <span className="text-sm font-bold">{egresosYear.length}</span>
+              <span className="text-sm font-bold">{egresosNegocio.length}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-sm text-neutral-500">Total Clientes</span>

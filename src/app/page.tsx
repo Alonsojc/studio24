@@ -47,15 +47,17 @@ export default function Dashboard() {
 
   const ingresosFiltered = ingresos.filter((i) => filterFn(i.fecha));
   const egresosFiltered = egresos.filter((e) => filterFn(e.fecha));
+  // Exclude soloFiscal egresos from business metrics (they only count in Fiscal)
+  const egresosNegocio = egresosFiltered.filter((e) => !e.soloFiscal);
 
   const totalIngresos = ingresosFiltered.reduce((s, i) => s + i.montoTotal, 0);
-  const totalEgresos = egresosFiltered.reduce((s, e) => s + e.montoTotal, 0);
+  const totalEgresos = egresosNegocio.reduce((s, e) => s + e.montoTotal, 0);
   const ganancia = totalIngresos - totalEgresos;
   const ivaCobrado = ingresosFiltered.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
   const ivaPagado = egresosFiltered.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
   const facturado = ingresosFiltered.filter((i) => i.factura).reduce((s, i) => s + i.montoTotal, 0);
 
-  const errores = egresosFiltered.filter((e) => e.categoria === 'error');
+  const errores = egresosNegocio.filter((e) => e.categoria === 'error');
   const totalErrores = errores.reduce((s, e) => s + e.montoTotal, 0);
 
   // Trend: compare with previous period
@@ -63,15 +65,19 @@ export default function Dashboard() {
     if (filter === 'todo') return false;
     const m = parseInt(fecha.substring(5, 7), 10);
     const y = parseInt(fecha.substring(0, 4), 10);
-    if (filter === 'año') return y === currentYear - 1;
-    const prevM = currentMonth; // currentMonth is 0-indexed, so it equals the 1-indexed previous month
-    if (prevM === 0) return y === currentYear - 1 && m === 12;
-    return y === currentYear && m === prevM;
+    const yearNum = parseInt(currentYear, 10);
+    const monthNum = parseInt(currentMonth, 10);
+    if (filter === 'año') return y === yearNum - 1;
+    const prevM = monthNum; // currentMonth is 1-indexed; prevM equals the 1-indexed previous month
+    if (prevM === 1) return y === yearNum - 1 && m === 12;
+    return y === yearNum && m === prevM - 1;
   };
   const prevIngresos =
     filter !== 'todo' ? ingresos.filter((i) => prevFilterFn(i.fecha)).reduce((s, i) => s + i.montoTotal, 0) : 0;
   const prevEgresos =
-    filter !== 'todo' ? egresos.filter((e) => prevFilterFn(e.fecha)).reduce((s, e) => s + e.montoTotal, 0) : 0;
+    filter !== 'todo'
+      ? egresos.filter((e) => prevFilterFn(e.fecha) && !e.soloFiscal).reduce((s, e) => s + e.montoTotal, 0)
+      : 0;
   const trendIng = prevIngresos > 0 ? ((totalIngresos - prevIngresos) / prevIngresos) * 100 : 0;
   const trendEg = prevEgresos > 0 ? ((totalEgresos - prevEgresos) / prevEgresos) * 100 : 0;
   const trendLabel = (pct: number) => {
@@ -118,7 +124,7 @@ export default function Dashboard() {
         <StatCard
           label="Egresos"
           value={formatCurrency(totalEgresos)}
-          subtitle={trendLabel(trendEg) || `${egresosFiltered.length} gastos`}
+          subtitle={trendLabel(trendEg) || `${egresosNegocio.length} gastos`}
           color="red"
         />
         <StatCard
@@ -380,13 +386,22 @@ export default function Dashboard() {
                   className="flex items-center justify-between py-3 border-b border-neutral-50 last:border-0"
                 >
                   <div>
-                    <p className="text-sm font-semibold text-[#0a0a0a]">{e.descripcion}</p>
+                    <p className="text-sm font-semibold text-[#0a0a0a]">
+                      {e.descripcion}
+                      {e.soloFiscal && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-100 text-purple-600 uppercase">
+                          Fiscal
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-neutral-400 mt-0.5">
                       {formatDate(e.fecha)} &middot; {categoriaLabel(e.categoria)}
                       {e.factura && <span className="text-[#c72a09] font-semibold"> &middot; F</span>}
                     </p>
                   </div>
-                  <span className="text-sm font-bold text-red-500">-{formatCurrency(e.montoTotal)}</span>
+                  <span className={`text-sm font-bold ${e.soloFiscal ? 'text-purple-400' : 'text-red-500'}`}>
+                    -{formatCurrency(e.montoTotal)}
+                  </span>
                 </div>
               ))}
             </div>

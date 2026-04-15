@@ -48,6 +48,7 @@ const SNAKE_OVERRIDES: Record<string, string> = {
   numeroCuenta: 'numero_cuenta',
   regimenFiscal: 'regimen_fiscal',
   codigoPostal: 'codigo_postal',
+  soloFiscal: 'solo_fiscal',
 };
 
 function toSnake(obj: Record<string, unknown>): Record<string, unknown> {
@@ -186,6 +187,9 @@ export async function cloudSaveConfig(config: ConfigNegocio): Promise<void> {
   const { error } = await supabase.from('config').upsert({
     nombre_negocio: config.nombreNegocio,
     titular: config.titular,
+    rfc: config.rfc,
+    regimen_fiscal: config.regimenFiscal,
+    codigo_postal: config.codigoPostal,
     banco: config.banco,
     numero_cuenta: config.numeroCuenta,
     clabe: config.clabe,
@@ -221,10 +225,7 @@ export async function cloudAddRecurrenteLog(key: string): Promise<void> {
 export async function migrateLocalToCloud(): Promise<number> {
   let count = 0;
 
-  const migrate = async <T extends { id: string }>(
-    localKey: string,
-    cloudUpsert: (item: T) => Promise<T>,
-  ) => {
+  const migrate = async <T extends { id: string }>(localKey: string, cloudUpsert: (item: T) => Promise<T>) => {
     const raw = localStorage.getItem(localKey);
     if (!raw) return;
     const items: T[] = JSON.parse(raw);
@@ -256,7 +257,9 @@ export async function migrateLocalToCloud(): Promise<number> {
     try {
       await cloudSaveConfig(JSON.parse(configRaw));
       count++;
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // Mark as migrated
@@ -290,10 +293,20 @@ export async function pullFromCloud(): Promise<number> {
   await pull<Diseno>('disenos', 'bordados_disenos');
   await pull<PlantillaWhatsApp>('plantillas', 'bordados_plantillas');
 
-  // Config
-  const config = await cloudGetConfig();
-  if (config.nombreNegocio || config.titular) {
-    localStorage.setItem('bordados_config', JSON.stringify(config));
+  // Config — merge cloud into local so we don't overwrite fields
+  // that may not exist in Supabase yet (e.g. rfc, regimenFiscal)
+  const cloudConfig = await cloudGetConfig();
+  if (cloudConfig.nombreNegocio || cloudConfig.titular) {
+    const localRaw = localStorage.getItem('bordados_config');
+    const localConfig = localRaw ? JSON.parse(localRaw) : {};
+    // Cloud wins for non-empty fields; local preserved for fields cloud doesn't have
+    const merged = { ...localConfig };
+    for (const [key, value] of Object.entries(cloudConfig)) {
+      if (value !== '' && value !== null && value !== undefined) {
+        merged[key] = value;
+      }
+    }
+    localStorage.setItem('bordados_config', JSON.stringify(merged));
     count++;
   }
 
