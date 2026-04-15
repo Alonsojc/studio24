@@ -58,6 +58,28 @@ export default function Dashboard() {
   const errores = egresosFiltered.filter((e) => e.categoria === 'error');
   const totalErrores = errores.reduce((s, e) => s + e.montoTotal, 0);
 
+  // Trend: compare with previous period
+  const prevFilterFn = (fecha: string) => {
+    if (filter === 'todo') return false;
+    const m = parseInt(fecha.substring(5, 7), 10);
+    const y = parseInt(fecha.substring(0, 4), 10);
+    if (filter === 'año') return y === currentYear - 1;
+    const prevM = currentMonth; // currentMonth is 0-indexed, so it equals the 1-indexed previous month
+    if (prevM === 0) return y === currentYear - 1 && m === 12;
+    return y === currentYear && m === prevM;
+  };
+  const prevIngresos =
+    filter !== 'todo' ? ingresos.filter((i) => prevFilterFn(i.fecha)).reduce((s, i) => s + i.montoTotal, 0) : 0;
+  const prevEgresos =
+    filter !== 'todo' ? egresos.filter((e) => prevFilterFn(e.fecha)).reduce((s, e) => s + e.montoTotal, 0) : 0;
+  const trendIng = prevIngresos > 0 ? ((totalIngresos - prevIngresos) / prevIngresos) * 100 : 0;
+  const trendEg = prevEgresos > 0 ? ((totalEgresos - prevEgresos) / prevEgresos) * 100 : 0;
+  const trendLabel = (pct: number) => {
+    if (pct === 0) return '';
+    const arrow = pct > 0 ? '+' : '';
+    return `${arrow}${pct.toFixed(0)}% vs anterior`;
+  };
+
   const recentIngresos = [...ingresos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
   const recentEgresos = [...egresos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
 
@@ -92,13 +114,13 @@ export default function Dashboard() {
         <StatCard
           label="Ingresos"
           value={formatCurrency(totalIngresos)}
-          subtitle={`${ingresosFiltered.length} ventas`}
+          subtitle={trendLabel(trendIng) || `${ingresosFiltered.length} ventas`}
           color="green"
         />
         <StatCard
           label="Egresos"
           value={formatCurrency(totalEgresos)}
-          subtitle={`${egresosFiltered.length} gastos`}
+          subtitle={trendLabel(trendEg) || `${egresosFiltered.length} gastos`}
           color="red"
         />
         <StatCard
@@ -112,7 +134,7 @@ export default function Dashboard() {
 
       {/* Errores */}
       {totalErrores > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-10">
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-red-600">Errores y desperdicios</p>
@@ -125,6 +147,67 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Facturas pendientes + Facturado vs No facturado */}
+      {(() => {
+        const sinFacturaIng = ingresosFiltered.filter((i) => !i.factura && i.montoTotal >= 1000);
+        const sinFacturaEg = egresosFiltered.filter((e) => !e.factura && e.montoTotal >= 1000);
+        const totalSinFactura = sinFacturaIng.length + sinFacturaEg.length;
+        const noFacturado = totalIngresos - facturado;
+        const pctFacturado = totalIngresos > 0 ? (facturado / totalIngresos) * 100 : 0;
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-10">
+            {/* Facturado vs No Facturado */}
+            <div className="bg-white rounded-2xl border border-neutral-100 p-5">
+              <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-3">
+                Facturado vs No facturado
+              </h3>
+              <div className="flex items-center gap-4 mb-2">
+                <span className="text-2xl font-black text-[#0a0a0a]">{pctFacturado.toFixed(0)}%</span>
+                <div className="flex-1">
+                  <div className="w-full bg-neutral-100 rounded-full h-2.5">
+                    <div
+                      className="bg-green-500 h-2.5 rounded-full transition-all"
+                      style={{ width: `${pctFacturado}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-green-600 font-bold">Facturado: {formatCurrency(facturado)}</span>
+                <span className="text-neutral-400 font-bold">Sin factura: {formatCurrency(noFacturado)}</span>
+              </div>
+            </div>
+
+            {/* Facturas pendientes */}
+            {totalSinFactura > 0 ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+                <h3 className="text-[10px] font-bold tracking-[0.12em] text-amber-700 uppercase mb-2">
+                  Facturas pendientes
+                </h3>
+                <p className="text-xs text-amber-600">
+                  <span className="font-black text-lg text-amber-700">{totalSinFactura}</span> registros mayores a
+                  $1,000 sin factura
+                </p>
+                {sinFacturaIng.length > 0 && (
+                  <p className="text-[10px] text-amber-500 mt-1">
+                    {sinFacturaIng.length} ingreso{sinFacturaIng.length > 1 ? 's' : ''} — considera emitir factura
+                  </p>
+                )}
+                {sinFacturaEg.length > 0 && (
+                  <p className="text-[10px] text-amber-500 mt-0.5">
+                    {sinFacturaEg.length} egreso{sinFacturaEg.length > 1 ? 's' : ''} — considera pedir factura
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="bg-green-50 border border-green-200 rounded-2xl p-5 flex items-center">
+                <p className="text-xs text-green-600 font-bold">Todos los registros mayores a $1,000 tienen factura</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Fiscal + Payment */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-10">
