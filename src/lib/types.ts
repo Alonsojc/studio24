@@ -7,18 +7,13 @@ export type CategoriaEgreso =
   | 'mercancia'
   | 'insumos'
   | 'servicios'
+  | 'error'
   | 'maquinaria'
   | 'publicidad'
   | 'renta'
   | 'otro';
 
-export type SubcategoriaInsumo =
-  | 'telas'
-  | 'hilos'
-  | 'agujas'
-  | 'repuestos_maquina'
-  | 'estabilizadores'
-  | 'otro';
+export type SubcategoriaInsumo = 'telas' | 'hilos' | 'agujas' | 'repuestos_maquina' | 'estabilizadores' | 'otro';
 
 export interface Cliente {
   id: string;
@@ -56,6 +51,10 @@ export interface Egreso {
   formaPago: FormaPago;
   factura: boolean;
   numeroFactura: string;
+  uuidCFDI?: string;
+  xmlUrl?: string;
+  pdfUrl?: string;
+  soloFiscal?: boolean;
   notas: string;
   createdAt: string;
 }
@@ -112,6 +111,7 @@ export interface Ingreso {
   id: string;
   fecha: string;
   clienteId: string;
+  pedidoId?: string;
   descripcion: string;
   concepto: ConceptoIngreso;
   monto: number;
@@ -120,6 +120,9 @@ export interface Ingreso {
   formaPago: FormaPago;
   factura: boolean;
   numeroFactura: string;
+  uuidCFDI?: string;
+  xmlUrl?: string;
+  pdfUrl?: string;
   notas: string;
   createdAt: string;
 }
@@ -149,9 +152,57 @@ export interface Producto {
   createdAt: string;
 }
 
+// --- Inventario ---
+
+export type CategoriaInventario = 'hilo' | 'prenda' | 'insumo' | 'repuesto' | 'otro';
+export type UnidadInventario = 'piezas' | 'conos' | 'metros' | 'rollos' | 'paquetes' | 'unidades';
+
+export interface ItemInventario {
+  id: string;
+  nombre: string;
+  categoria: CategoriaInventario;
+  unidad: UnidadInventario;
+  stock: number;
+  stockMinimo: number;
+  costo: number;
+  color: string;
+  marca: string;
+  ubicacion: string;
+  notas: string;
+  createdAt: string;
+}
+
+// --- Biblioteca de diseños ---
+
+export interface Diseno {
+  id: string;
+  nombre: string;
+  archivo: string;
+  clienteId: string;
+  puntadas: number;
+  colores: number;
+  ancho: number;
+  alto: number;
+  tags: string[];
+  notas: string;
+  createdAt: string;
+}
+
+// --- Plantillas WhatsApp ---
+
+export interface PlantillaWhatsApp {
+  id: string;
+  nombre: string;
+  mensaje: string;
+  createdAt: string;
+}
+
 export interface ConfigNegocio {
   nombreNegocio: string;
   titular: string;
+  rfc: string;
+  regimenFiscal: string;
+  codigoPostal: string;
   banco: string;
   numeroCuenta: string;
   clabe: string;

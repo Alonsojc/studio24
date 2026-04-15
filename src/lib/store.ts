@@ -1,6 +1,20 @@
 'use client';
 
-import { Cliente, Proveedor, Egreso, Ingreso, EgresoRecurrente, Pedido, Cotizacion, ConfigNegocio, Producto } from './types';
+import {
+  Cliente,
+  Proveedor,
+  Egreso,
+  Ingreso,
+  EgresoRecurrente,
+  Pedido,
+  Cotizacion,
+  ConfigNegocio,
+  Producto,
+  ItemInventario,
+  Diseno,
+  PlantillaWhatsApp,
+} from './types';
+import { mirrorToIDB, removeFromIDB } from './db';
 
 const KEYS = {
   clientes: 'bordados_clientes',
@@ -13,6 +27,9 @@ const KEYS = {
   productos: 'bordados_productos',
   egresosRecurrentes: 'bordados_egresos_recurrentes',
   recurrentesLog: 'bordados_recurrentes_log',
+  inventario: 'bordados_inventario',
+  disenos: 'bordados_disenos',
+  plantillas: 'bordados_plantillas',
 } as const;
 
 function getItems<T>(key: string): T[] {
@@ -21,8 +38,20 @@ function getItems<T>(key: string): T[] {
   return data ? JSON.parse(data) : [];
 }
 
+function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+    mirrorToIDB(key, value);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+      throw new Error('Sin espacio en el navegador. Exporta un respaldo desde Ajustes y borra datos antiguos.');
+    }
+    throw e;
+  }
+}
+
 function setItems<T>(key: string, items: T[]): void {
-  localStorage.setItem(key, JSON.stringify(items));
+  safeSetItem(key, JSON.stringify(items));
 }
 
 function addItem<T extends { id: string }>(key: string, item: T): T {
@@ -46,7 +75,7 @@ function deleteItem<T extends { id: string }>(key: string, id: string): void {
   const items = getItems<T>(key);
   setItems(
     key,
-    items.filter((i) => i.id !== id)
+    items.filter((i) => i.id !== id),
   );
 }
 
@@ -95,15 +124,37 @@ export const deleteProducto = (id: string) => deleteItem<Producto>(KEYS.producto
 // Cotizaciones
 export const getCotizaciones = () => getItems<Cotizacion>(KEYS.cotizaciones);
 export const addCotizacion = (c: Cotizacion) => addItem(KEYS.cotizaciones, c);
+export const updateCotizacion = (c: Cotizacion) => updateItem(KEYS.cotizaciones, c);
 export const deleteCotizacion = (id: string) => deleteItem<Cotizacion>(KEYS.cotizaciones, id);
+
+// Inventario
+export const getInventario = () => getItems<ItemInventario>(KEYS.inventario);
+export const addItemInventario = (i: ItemInventario) => addItem(KEYS.inventario, i);
+export const updateItemInventario = (i: ItemInventario) => updateItem(KEYS.inventario, i);
+export const deleteItemInventario = (id: string) => deleteItem<ItemInventario>(KEYS.inventario, id);
+
+// Diseños
+export const getDisenos = () => getItems<Diseno>(KEYS.disenos);
+export const addDiseno = (d: Diseno) => addItem(KEYS.disenos, d);
+export const updateDiseno = (d: Diseno) => updateItem(KEYS.disenos, d);
+export const deleteDiseno = (id: string) => deleteItem<Diseno>(KEYS.disenos, id);
+
+// Plantillas WhatsApp
+export const getPlantillas = () => getItems<PlantillaWhatsApp>(KEYS.plantillas);
+export const addPlantilla = (p: PlantillaWhatsApp) => addItem(KEYS.plantillas, p);
+export const updatePlantilla = (p: PlantillaWhatsApp) => updateItem(KEYS.plantillas, p);
+export const deletePlantilla = (id: string) => deleteItem<PlantillaWhatsApp>(KEYS.plantillas, id);
 
 // Config
 const defaultConfig: ConfigNegocio = {
-  nombreNegocio: 'STUDIO 24',
-  titular: 'Isabel Janeiro Cangas',
-  banco: 'BBVA',
-  numeroCuenta: '152 585 2856',
-  clabe: '012180015258528567',
+  nombreNegocio: '',
+  titular: '',
+  rfc: '',
+  regimenFiscal: '',
+  codigoPostal: '',
+  banco: '',
+  numeroCuenta: '',
+  clabe: '',
   telefono: '',
   email: '',
   direccion: '',
@@ -117,7 +168,7 @@ export function getConfig(): ConfigNegocio {
 }
 
 export function saveConfig(config: ConfigNegocio): void {
-  localStorage.setItem(KEYS.config, JSON.stringify(config));
+  safeSetItem(KEYS.config, JSON.stringify(config));
 }
 
 // Backup / Restore
@@ -133,23 +184,44 @@ export function exportAllData(): string {
 
 export function importAllData(json: string): void {
   const data = JSON.parse(json);
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    throw new Error('El respaldo debe ser un objeto JSON válido');
+  }
+  // Validar que las claves conocidas contengan arrays (excepto config)
+  const validKeys = Object.keys(KEYS);
+  for (const key of validKeys) {
+    if (key === 'config') continue;
+    if (data[key] !== undefined && !Array.isArray(data[key])) {
+      throw new Error(`La sección "${key}" debe ser una lista`);
+    }
+  }
+  if (data.config !== undefined && (typeof data.config !== 'object' || Array.isArray(data.config))) {
+    throw new Error('La sección "config" debe ser un objeto');
+  }
   Object.entries(KEYS).forEach(([key, storageKey]) => {
-    if (data[key]) localStorage.setItem(storageKey, JSON.stringify(data[key]));
+    if (data[key]) safeSetItem(storageKey, JSON.stringify(data[key]));
   });
   if (data.config) saveConfig(data.config);
 }
 
 export function clearAllData(): void {
-  Object.values(KEYS).forEach((key) => localStorage.removeItem(key));
+  Object.values(KEYS).forEach((key) => {
+    localStorage.removeItem(key);
+    removeFromIDB(key);
+  });
   // Keep seeded flag so demo data doesn't reload
   localStorage.setItem('bordados_seeded', '1');
 }
 
-// Next folio
+// Next folio — usa un contador incremental persistente para que nunca se repita
+const FOLIO_COUNTER_KEY = 'bordados_folio_counter';
+
 export function getNextFolio(prefix: string): string {
-  const cotizaciones = getCotizaciones();
-  const num = cotizaciones.length + 1;
-  return `${prefix}-${String(num).padStart(3, '0')}`;
+  const stored = localStorage.getItem(FOLIO_COUNTER_KEY);
+  const current = stored ? parseInt(stored, 10) : getCotizaciones().length;
+  const next = current + 1;
+  safeSetItem(FOLIO_COUNTER_KEY, String(next));
+  return `${prefix}-${String(next).padStart(3, '0')}`;
 }
 
 // Log de meses ya procesados para recurrentes (evita duplicados)
@@ -163,6 +235,6 @@ export function addRecurrenteLog(key: string): void {
   const log = getRecurrentesLog();
   if (!log.includes(key)) {
     log.push(key);
-    localStorage.setItem(KEYS.recurrentesLog, JSON.stringify(log));
+    safeSetItem(KEYS.recurrentesLog, JSON.stringify(log));
   }
 }
