@@ -293,10 +293,20 @@ export async function pullFromCloud(): Promise<number> {
   await pull<Diseno>('disenos', 'bordados_disenos');
   await pull<PlantillaWhatsApp>('plantillas', 'bordados_plantillas');
 
-  // Config
-  const config = await cloudGetConfig();
-  if (config.nombreNegocio || config.titular) {
-    localStorage.setItem('bordados_config', JSON.stringify(config));
+  // Config — merge cloud into local so we don't overwrite fields
+  // that may not exist in Supabase yet (e.g. rfc, regimenFiscal)
+  const cloudConfig = await cloudGetConfig();
+  if (cloudConfig.nombreNegocio || cloudConfig.titular) {
+    const localRaw = localStorage.getItem('bordados_config');
+    const localConfig = localRaw ? JSON.parse(localRaw) : {};
+    // Cloud wins for non-empty fields; local preserved for fields cloud doesn't have
+    const merged = { ...localConfig };
+    for (const [key, value] of Object.entries(cloudConfig)) {
+      if (value !== '' && value !== null && value !== undefined) {
+        merged[key] = value;
+      }
+    }
+    localStorage.setItem('bordados_config', JSON.stringify(merged));
     count++;
   }
 
