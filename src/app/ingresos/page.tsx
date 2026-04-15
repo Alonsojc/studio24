@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, getClientes } from '@/lib/store';
-import { addIngreso, updateIngreso, deleteIngreso } from '@/lib/store-sync';
+import { addIngreso, updateIngreso, deleteIngreso, getNextFolio } from '@/lib/store-sync';
 import { Ingreso, Cliente, ConceptoIngreso, FormaPago } from '@/lib/types';
 import {
   formatCurrency,
@@ -419,7 +419,15 @@ export default function IngresosPage() {
               <input
                 type="checkbox"
                 checked={form.factura}
-                onChange={(e) => setForm({ ...form, factura: e.target.checked })}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  const updates: Partial<typeof form> = { factura: checked };
+                  // Auto-generate folio when enabling factura on a new record
+                  if (checked && !form.numeroFactura && !editingId) {
+                    updates.numeroFactura = getNextFolio('ING');
+                  }
+                  setForm({ ...form, ...updates });
+                }}
                 className="w-4 h-4 accent-[#c72a09] rounded"
               />
               <span className="text-sm text-neutral-600">Factura (IVA 16%)</span>
@@ -438,6 +446,7 @@ export default function IngresosPage() {
                 type="text"
                 value={form.numeroFactura}
                 onChange={(e) => setForm({ ...form, numeroFactura: e.target.value })}
+                placeholder="Se genera automáticamente"
                 className={inputClass}
               />
             </div>

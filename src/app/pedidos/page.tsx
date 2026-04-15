@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getPedidos, getClientes } from '@/lib/store';
-import { addPedido, updatePedido, deletePedido, addIngreso } from '@/lib/store-sync';
+import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolio } from '@/lib/store-sync';
 import { Pedido, Cliente, EstadoPedido, EstadoPago, ConceptoIngreso, Ingreso } from '@/lib/types';
 import {
   formatCurrency,
@@ -13,6 +13,7 @@ import {
   estadoPedidoColor,
   todayString,
   validatePedido,
+  calcIVA,
 } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
@@ -164,7 +165,8 @@ export default function PedidosPage() {
       // If fully paid, offer to create Ingreso
       if ((p.estadoPago === 'pagado' || p.montoPagado >= p.montoTotal) && p.montoTotal > 0) {
         if (confirm('Pedido entregado y pagado. ¿Crear ingreso automáticamente?')) {
-          crearIngresoDePedido(p);
+          const conFactura = confirm('¿Facturar este ingreso? (IVA 16%)');
+          crearIngresoDePedido(p, conFactura);
         }
       }
     }
@@ -172,7 +174,8 @@ export default function PedidosPage() {
     reload();
   };
 
-  const crearIngresoDePedido = (p: Pedido) => {
+  const crearIngresoDePedido = (p: Pedido, conFactura: boolean) => {
+    const iva = conFactura ? calcIVA(p.montoTotal) : 0;
     const ingreso: Ingreso = {
       id: uuid(),
       fecha: todayString(),
@@ -181,11 +184,11 @@ export default function PedidosPage() {
       descripcion: p.descripcion,
       concepto: p.concepto,
       monto: p.montoTotal,
-      iva: 0,
-      montoTotal: p.montoTotal,
+      iva,
+      montoTotal: p.montoTotal + iva,
       formaPago: 'transferencia',
-      factura: false,
-      numeroFactura: '',
+      factura: conFactura,
+      numeroFactura: conFactura ? getNextFolio('ING') : '',
       notas: `Generado desde pedido`,
       createdAt: new Date().toISOString(),
     };
@@ -767,7 +770,8 @@ export default function PedidosPage() {
                                       {
                                         label: 'Crear Ingreso',
                                         onClick: () => {
-                                          crearIngresoDePedido(p);
+                                          const conFactura = confirm('¿Facturar este ingreso? (IVA 16%)');
+                                          crearIngresoDePedido(p, conFactura);
                                           alert('Ingreso creado!');
                                         },
                                       },
@@ -804,7 +808,13 @@ export default function PedidosPage() {
               <label className={labelClass}>Cliente</label>
               <select
                 value={form.clienteId}
-                onChange={(e) => { if (e.target.value === '__new__') { window.open('/studio24/clientes', '_blank'); return; } setForm({ ...form, clienteId: e.target.value }); }}
+                onChange={(e) => {
+                  if (e.target.value === '__new__') {
+                    window.open('/studio24/clientes', '_blank');
+                    return;
+                  }
+                  setForm({ ...form, clienteId: e.target.value });
+                }}
                 className={inputClass}
               >
                 <option value="">Sin cliente</option>

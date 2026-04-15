@@ -10,6 +10,7 @@ import {
   addEgresoRecurrente,
   updateEgresoRecurrente,
   deleteEgresoRecurrente,
+  getNextFolio,
 } from '@/lib/store-sync';
 import { Egreso, Proveedor, EgresoRecurrente, CategoriaEgreso, FormaPago } from '@/lib/types';
 import {
@@ -640,7 +641,14 @@ export default function EgresosPage() {
               <input
                 type="checkbox"
                 checked={form.factura}
-                onChange={(e) => setForm({ ...form, factura: e.target.checked })}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  const updates: Partial<typeof form> = { factura: checked };
+                  if (checked && !form.numeroFactura && !editingId) {
+                    updates.numeroFactura = getNextFolio('EGR');
+                  }
+                  setForm({ ...form, ...updates });
+                }}
                 className="w-4 h-4 accent-[#c72a09] rounded"
               />
               <span className="text-sm text-neutral-600">Factura (IVA 16%)</span>
@@ -659,6 +667,7 @@ export default function EgresosPage() {
                 type="text"
                 value={form.numeroFactura}
                 onChange={(e) => setForm({ ...form, numeroFactura: e.target.value })}
+                placeholder="Se genera automáticamente"
                 className={inputClass}
               />
             </div>
