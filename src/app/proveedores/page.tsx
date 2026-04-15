@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getProveedores, getEgresos } from '@/lib/store';
+import { cloudGetProveedores, cloudGetEgresos } from '@/lib/store-cloud';
 import { addProveedor, updateProveedor, deleteProveedor } from '@/lib/store-sync';
-import { Proveedor, Egreso } from '@/lib/types';
+import { useCloudStore } from '@/lib/useCloudStore';
+import { Proveedor } from '@/lib/types';
 import { formatCurrency, validateProveedor } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
@@ -27,30 +29,23 @@ function emptyProveedor(): Omit<Proveedor, 'id' | 'createdAt'> {
 }
 
 export default function ProveedoresPage() {
-  const isClient = typeof window !== 'undefined';
-  const [proveedores, setProveedores] = useState<Proveedor[]>(() =>
-    isClient ? getProveedores().sort((a, b) => a.nombre.localeCompare(b.nombre)) : [],
+  const { data: proveedoresRaw, reload: reloadProv } = useCloudStore(
+    getProveedores,
+    cloudGetProveedores,
+    'bordados_proveedores',
   );
-  const [egresos, setEgresos] = useState<Egreso[]>(() => (isClient ? getEgresos() : []));
+  const { data: egresos, reload: reloadEg } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
+  const proveedores = [...proveedoresRaw].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const reload = () => {
+    reloadProv();
+    reloadEg();
+  };
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyProveedor());
   const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [mounted] = useState(() => isClient);
-
-  const reload = useCallback(() => {
-    setProveedores(getProveedores().sort((a, b) => a.nombre.localeCompare(b.nombre)));
-    setEgresos(getEgresos());
-  }, []);
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   const openNew = () => {
     setEditingId(null);

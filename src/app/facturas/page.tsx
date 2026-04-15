@@ -3,6 +3,8 @@
 import { useState, useRef, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, getEgresos, getConfig } from '@/lib/store';
+import { cloudGetIngresos, cloudGetEgresos } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import { addIngreso, updateIngreso, addEgreso, updateEgreso } from '@/lib/store-sync';
 import { Ingreso, Egreso } from '@/lib/types';
 import { formatCurrency, formatDate, todayString, calcIVA } from '@/lib/helpers';
@@ -30,8 +32,8 @@ interface FacturaPendiente {
 
 export default function FacturasPage() {
   const isClient = typeof window !== 'undefined';
-  const [ingresos] = useState(() => (isClient ? getIngresos() : []));
-  const [egresos] = useState(() => (isClient ? getEgresos() : []));
+  const { data: ingresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const { data: egresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
   const [config] = useState(() => (isClient ? getConfig() : null));
   const [mounted] = useState(() => isClient);
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);

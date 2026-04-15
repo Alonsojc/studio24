@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getPedidos, getClientes } from '@/lib/store';
+import { cloudGetPedidos, cloudGetClientes } from '@/lib/store-cloud';
 import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolio } from '@/lib/store-sync';
-import { Pedido, Cliente, EstadoPedido, EstadoPago, ConceptoIngreso, Ingreso } from '@/lib/types';
+import { useCloudStore } from '@/lib/useCloudStore';
+import { Pedido, EstadoPedido, EstadoPago, ConceptoIngreso, Ingreso } from '@/lib/types';
 import {
   formatCurrency,
   formatDate,
@@ -85,8 +87,17 @@ const statusMessages: Record<EstadoPedido, string> = {
 };
 
 export default function PedidosPage() {
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const { data: pedidosRaw, reload: reloadPedidos } = useCloudStore(getPedidos, cloudGetPedidos, 'bordados_pedidos');
+  const { data: clientes, reload: reloadClientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
+  const pedidos = [...pedidosRaw].sort((a, b) => {
+    if (a.urgente && !b.urgente) return -1;
+    if (!a.urgente && b.urgente) return 1;
+    return b.fechaPedido.localeCompare(a.fechaPedido);
+  });
+  const reload = () => {
+    reloadPedidos();
+    reloadClientes();
+  };
   const [modalOpen, setModalOpen] = useState(false);
   const [checklistOpen, setChecklistOpen] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -94,23 +105,9 @@ export default function PedidosPage() {
   const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
-  const [mounted, setMounted] = useState(false);
+  const isClient = typeof window !== 'undefined';
+  const [mounted] = useState(() => isClient);
 
-  const reload = useCallback(() => {
-    setPedidos(
-      getPedidos().sort((a, b) => {
-        if (a.urgente && !b.urgente) return -1;
-        if (!a.urgente && b.urgente) return 1;
-        return b.fechaPedido.localeCompare(a.fechaPedido);
-      }),
-    );
-    setClientes(getClientes());
-  }, []);
-
-  useEffect(() => {
-    reload();
-    setMounted(true);
-  }, [reload]);
   if (!mounted)
     return (
       <div className="flex items-center justify-center min-h-[60vh]">

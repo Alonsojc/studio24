@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, getClientes } from '@/lib/store';
+import { cloudGetIngresos, cloudGetClientes } from '@/lib/store-cloud';
 import { addIngreso, updateIngreso, deleteIngreso, getNextFolio } from '@/lib/store-sync';
-import { Ingreso, Cliente, ConceptoIngreso, FormaPago } from '@/lib/types';
+import { useCloudStore } from '@/lib/useCloudStore';
+import { Ingreso, ConceptoIngreso, FormaPago } from '@/lib/types';
 import {
   formatCurrency,
   formatDate,
@@ -42,11 +44,9 @@ function emptyIngreso(): Omit<Ingreso, 'id' | 'createdAt'> {
 }
 
 export default function IngresosPage() {
-  const isClient = typeof window !== 'undefined';
-  const [ingresos, setIngresos] = useState<Ingreso[]>(() =>
-    isClient ? getIngresos().sort((a, b) => b.fecha.localeCompare(a.fecha)) : [],
-  );
-  const [clientes] = useState<Cliente[]>(() => (isClient ? getClientes() : []));
+  const { data: ingresosRaw, reload } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const { data: clientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
+  const ingresos = [...ingresosRaw].sort((a, b) => b.fecha.localeCompare(a.fecha));
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyIngreso());
@@ -55,18 +55,6 @@ export default function IngresosPage() {
   const [filterConcepto, setFilterConcepto] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
-  const [mounted] = useState(() => isClient);
-
-  const reload = useCallback(() => {
-    setIngresos(getIngresos().sort((a, b) => b.fecha.localeCompare(a.fecha)));
-  }, []);
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   const openNew = () => {
     setEditingId(null);

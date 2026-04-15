@@ -48,6 +48,7 @@ const SNAKE_OVERRIDES: Record<string, string> = {
   numeroCuenta: 'numero_cuenta',
   regimenFiscal: 'regimen_fiscal',
   codigoPostal: 'codigo_postal',
+  soloFiscal: 'solo_fiscal',
 };
 
 function toSnake(obj: Record<string, unknown>): Record<string, unknown> {

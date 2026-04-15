@@ -2,7 +2,8 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { getIngresos, getEgresos, getClientes, getProveedores } from '@/lib/store';
-import { Ingreso, Egreso, Cliente, Proveedor } from '@/lib/types';
+import { cloudGetIngresos, cloudGetEgresos, cloudGetClientes, cloudGetProveedores } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import { formatCurrency, formatDate } from '@/lib/helpers';
 import {
   parseBankCSV,
@@ -19,11 +20,11 @@ import { btnPrimary } from '@/lib/styles';
 type FilterTab = 'todos' | 'matched' | 'unmatched';
 
 export default function ConciliacionPage() {
+  const { data: ingresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const { data: egresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
+  const { data: clientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
+  const { data: proveedores } = useCloudStore(getProveedores, cloudGetProveedores, 'bordados_proveedores');
   const isClient = typeof window !== 'undefined';
-  const [ingresos] = useState<Ingreso[]>(() => (isClient ? getIngresos() : []));
-  const [egresos] = useState<Egreso[]>(() => (isClient ? getEgresos() : []));
-  const [clientes] = useState<Cliente[]>(() => (isClient ? getClientes() : []));
-  const [proveedores] = useState<Proveedor[]>(() => (isClient ? getProveedores() : []));
   const [results, setResults] = useState<MatchResult[] | null>(null);
   const [summary, setSummary] = useState<ConciliacionSummary | null>(null);
   const [filterTab, setFilterTab] = useState<FilterTab>('todos');

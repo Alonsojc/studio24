@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getProductos } from '@/lib/store';
+import { cloudGetProductos } from '@/lib/store-cloud';
 import { addProducto, updateProducto, deleteProducto } from '@/lib/store-sync';
+import { useCloudStore } from '@/lib/useCloudStore';
 import { Producto, CategoriaProducto } from '@/lib/types';
 import { formatCurrency, validateProducto } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
@@ -23,32 +25,20 @@ function emptyProducto(): Omit<Producto, 'id' | 'createdAt'> {
 }
 
 export default function ProductosPage() {
-  const isClient = typeof window !== 'undefined';
+  const { data: productosRaw, reload } = useCloudStore(getProductos, cloudGetProductos, 'bordados_productos');
   const sortProductos = (list: Producto[]) =>
-    list.sort((a, b) => {
+    [...list].sort((a, b) => {
       const catOrder: Record<string, number> = { bordado: 0, prenda: 1, servicio: 2, otro: 3 };
       if (catOrder[a.categoria] !== catOrder[b.categoria]) return catOrder[a.categoria] - catOrder[b.categoria];
       return a.nombre.localeCompare(b.nombre);
     });
-  const [productos, setProductos] = useState<Producto[]>(() => (isClient ? sortProductos(getProductos()) : []));
+  const productos = sortProductos(productosRaw);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyProducto());
   const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [filterCat, setFilterCat] = useState<string>('all');
-  const [mounted] = useState(() => isClient);
-
-  const reload = useCallback(() => {
-    setProductos(sortProductos(getProductos()));
-  }, []);
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   const openNew = (cat?: CategoriaProducto) => {
     setEditingId(null);

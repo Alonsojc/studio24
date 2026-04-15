@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { getIngresos, getEgresos, getConfig } from '@/lib/store';
-import { Ingreso, Egreso } from '@/lib/types';
+import { cloudGetIngresos, cloudGetEgresos } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
 import { downloadCSV } from '@/lib/csv';
 import { MESES, calcMonthData, getPerdidaArrastrable, savePerdida, getPerdidas } from '@/lib/fiscal';
@@ -12,8 +13,8 @@ import StatCard from '@/components/StatCard';
 
 export default function FiscalPage() {
   const isClient = typeof window !== 'undefined';
-  const [ingresos] = useState<Ingreso[]>(() => (isClient ? getIngresos() : []));
-  const [egresos] = useState<Egreso[]>(() => (isClient ? getEgresos() : []));
+  const { data: ingresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const { data: egresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
   const [mounted] = useState(() => isClient);
   const [year, setYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth());

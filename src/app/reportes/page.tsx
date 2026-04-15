@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { getIngresos, getEgresos, getClientes } from '@/lib/store';
-import { Ingreso, Egreso } from '@/lib/types';
+import { cloudGetIngresos, cloudGetEgresos, cloudGetClientes } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
@@ -26,10 +27,11 @@ import { Cell } from 'recharts';
 const COLORS = ['#c72a09', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#ec4899', '#0891b2', '#65a30d'];
 
 export default function ReportesPage() {
+  const { data: ingresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const { data: egresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
+  const { data: clientesList } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
+  const totalClientes = clientesList.length;
   const isClient = typeof window !== 'undefined';
-  const [ingresos] = useState<Ingreso[]>(() => (isClient ? getIngresos() : []));
-  const [egresos] = useState<Egreso[]>(() => (isClient ? getEgresos() : []));
-  const [totalClientes] = useState(() => (isClient ? getClientes().length : 0));
   const [year, setYear] = useState(new Date().getFullYear());
   const [mesInicio, setMesInicio] = useState(0);
   const [mesFin, setMesFin] = useState(11);

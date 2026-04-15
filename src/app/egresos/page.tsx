@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getEgresos, getProveedores, getEgresosRecurrentes } from '@/lib/store';
+import { cloudGetEgresos, cloudGetProveedores, cloudGetEgresosRecurrentes } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import {
   addEgreso,
   updateEgreso,
@@ -12,7 +14,7 @@ import {
   deleteEgresoRecurrente,
   getNextFolio,
 } from '@/lib/store-sync';
-import { Egreso, Proveedor, EgresoRecurrente, CategoriaEgreso, FormaPago } from '@/lib/types';
+import { Egreso, EgresoRecurrente, CategoriaEgreso, FormaPago } from '@/lib/types';
 import {
   formatCurrency,
   formatDate,
@@ -87,12 +89,18 @@ function emptyRecurrente(): Omit<EgresoRecurrente, 'id' | 'createdAt'> {
 }
 
 export default function EgresosPage() {
-  const isClient = typeof window !== 'undefined';
-  const [egresos, setEgresos] = useState<Egreso[]>(() =>
-    isClient ? getEgresos().sort((a, b) => b.fecha.localeCompare(a.fecha)) : [],
+  const { data: egresosRaw, reload: reloadEgresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
+  const { data: proveedores } = useCloudStore(getProveedores, cloudGetProveedores, 'bordados_proveedores');
+  const { data: recurrentes, reload: reloadRec } = useCloudStore(
+    getEgresosRecurrentes,
+    cloudGetEgresosRecurrentes,
+    'bordados_egresos_recurrentes',
   );
-  const [proveedores] = useState<Proveedor[]>(() => (isClient ? getProveedores() : []));
-  const [recurrentes, setRecurrentes] = useState<EgresoRecurrente[]>(() => (isClient ? getEgresosRecurrentes() : []));
+  const egresos = [...egresosRaw].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const reload = () => {
+    reloadEgresos();
+    reloadRec();
+  };
   const [modalOpen, setModalOpen] = useState(false);
   const [recModalOpen, setRecModalOpen] = useState(false);
   const [recPanelOpen, setRecPanelOpen] = useState(false);
@@ -107,14 +115,8 @@ export default function EgresosPage() {
   const [filterCat, setFilterCat] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
-  const [mounted] = useState(() => isClient);
 
-  const reload = useCallback(() => {
-    setEgresos(getEgresos().sort((a, b) => b.fecha.localeCompare(a.fecha)));
-    setRecurrentes(getEgresosRecurrentes());
-  }, []);
-
-  if (!mounted)
+  if (egresosRaw.length === 0 && typeof window === 'undefined')
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
