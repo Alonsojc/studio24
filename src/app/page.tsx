@@ -35,14 +35,14 @@ export default function Dashboard() {
   }
 
   const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
+  const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+  const currentYear = String(now.getFullYear());
+  const currentYearMonth = `${currentYear}-${currentMonth}`;
 
   const filterFn = (fecha: string) => {
     if (filter === 'todo') return true;
-    const d = new Date(fecha);
-    if (filter === 'año') return d.getFullYear() === currentYear;
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    if (filter === 'año') return fecha.startsWith(currentYear + '-');
+    return fecha.startsWith(currentYearMonth);
   };
 
   const ingresosFiltered = ingresos.filter((i) => filterFn(i.fecha));
@@ -76,9 +76,7 @@ export default function Dashboard() {
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`px-3.5 py-2 rounded-lg text-xs font-bold tracking-[0.03em] transition-all ${
-                  filter === f ? 'bg-white text-[#0a0a0a] shadow-sm' : 'text-neutral-400 hover:text-neutral-600'
-                }`}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold tracking-[0.03em] transition-all ${filter === f ? 'bg-white text-[#0a0a0a] shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}
               >
                 {filterLabels[f]}
               </button>
@@ -110,7 +108,7 @@ export default function Dashboard() {
         <StatCard label="Clientes" value={String(clientes.length)} subtitle="Registrados" />
       </div>
 
-      {/* Errores */}
+      {/* Errores del mes */}
       {totalErrores > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-10">
           <div className="flex items-center justify-between">

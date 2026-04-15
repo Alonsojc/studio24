@@ -293,8 +293,42 @@ export default function FiscalPage() {
         }
       />
 
-      {/* Acumulado Anual + Mes seleccionado */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+      {/* SAT Deadline Alert */}
+      {(() => {
+        const hoy = new Date();
+        if (hoy.getFullYear() !== year) return null;
+        const mesActual = hoy.getMonth(); // 0-indexed
+        const mesPrevio = mesActual === 0 ? 11 : mesActual - 1;
+        const diaLimite = 17;
+        const diasRestantes =
+          mesActual === (mesPrevio + 1) % 12 && hoy.getDate() <= diaLimite ? diaLimite - hoy.getDate() : -1;
+        const mesNombre = MESES[mesPrevio];
+        if (diasRestantes < 0) return null;
+        const urgente = diasRestantes <= 3;
+        return (
+          <div
+            className={`rounded-2xl p-4 mb-6 flex items-center justify-between ${urgente ? 'bg-red-50 border border-red-200' : 'bg-amber-50 border border-amber-200'}`}
+          >
+            <div>
+              <p className={`text-xs font-bold ${urgente ? 'text-red-600' : 'text-amber-700'}`}>
+                Declaración de {mesNombre} —{' '}
+                {diasRestantes === 0
+                  ? 'Vence hoy'
+                  : `${diasRestantes} día${diasRestantes > 1 ? 's' : ''} restante${diasRestantes > 1 ? 's' : ''}`}
+              </p>
+              <p className={`text-[10px] mt-0.5 ${urgente ? 'text-red-400' : 'text-amber-500'}`}>
+                Fecha límite SAT: 17 de {MESES[mesActual].toLowerCase()} {year}
+              </p>
+            </div>
+            <p className={`text-lg font-black ${urgente ? 'text-red-600' : 'text-amber-700'}`}>
+              {formatCurrency(monthData[mesPrevio]?.totalImpuestos || 0)}
+            </p>
+          </div>
+        );
+      })()}
+
+      {/* Acumulado Anual */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard
           label="Facturado Anual"
           value={formatCurrency(acumIngresosFacturados)}

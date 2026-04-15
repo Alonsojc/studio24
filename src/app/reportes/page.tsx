@@ -8,8 +8,9 @@ import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
 
-const BarChart = dynamic(() => import('recharts').then((m) => m.BarChart), { ssr: false });
+const ComposedChart = dynamic(() => import('recharts').then((m) => m.ComposedChart), { ssr: false });
 const Bar = dynamic(() => import('recharts').then((m) => m.Bar), { ssr: false });
+const Line = dynamic(() => import('recharts').then((m) => m.Line), { ssr: false });
 const XAxis = dynamic(() => import('recharts').then((m) => m.XAxis), { ssr: false });
 const YAxis = dynamic(() => import('recharts').then((m) => m.YAxis), { ssr: false });
 const Tooltip = dynamic(() => import('recharts').then((m) => m.Tooltip), { ssr: false });
@@ -43,8 +44,8 @@ export default function ReportesPage() {
 
   const years = Array.from(
     new Set([
-      ...ingresos.map((i) => new Date(i.fecha).getFullYear()),
-      ...egresos.map((e) => new Date(e.fecha).getFullYear()),
+      ...ingresos.map((i) => parseInt(i.fecha.substring(0, 4), 10)),
+      ...egresos.map((e) => parseInt(e.fecha.substring(0, 4), 10)),
       new Date().getFullYear(),
     ]),
   )
@@ -52,8 +53,9 @@ export default function ReportesPage() {
     .reverse();
 
   const inRange = (fecha: string) => {
-    const d = new Date(fecha);
-    return d.getFullYear() === year && d.getMonth() >= mesInicio && d.getMonth() <= mesFin;
+    const y = parseInt(fecha.substring(0, 4), 10);
+    const m = parseInt(fecha.substring(5, 7), 10) - 1;
+    return y === year && m >= mesInicio && m <= mesFin;
   };
   const ingresosYear = ingresos.filter((i) => inRange(i.fecha));
   const egresosYear = egresos.filter((e) => inRange(e.fecha));
@@ -67,11 +69,12 @@ export default function ReportesPage() {
   const noFacturadoIngresos = totalIngresosYear - facturadoIngresos;
 
   const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-  const monthlyData = monthNames.map((name, idx) => ({
-    name,
-    Ingresos: ingresosYear.filter((i) => new Date(i.fecha).getMonth() === idx).reduce((s, i) => s + i.montoTotal, 0),
-    Egresos: egresosYear.filter((e) => new Date(e.fecha).getMonth() === idx).reduce((s, e) => s + e.montoTotal, 0),
-  }));
+  const monthlyData = monthNames.map((name, idx) => {
+    const ms = String(idx + 1).padStart(2, '0');
+    const ing = ingresosYear.filter((i) => i.fecha.substring(5, 7) === ms).reduce((s, i) => s + i.montoTotal, 0);
+    const eg = egresosYear.filter((e) => e.fecha.substring(5, 7) === ms).reduce((s, e) => s + e.montoTotal, 0);
+    return { name, Ingresos: ing, Egresos: eg, Ganancia: ing - eg };
+  });
 
   const categoriaData = Object.entries(
     egresosYear.reduce<Record<string, number>>((acc, e) => {
@@ -188,7 +191,7 @@ export default function ReportesPage() {
         </h3>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={monthlyData} barGap={2}>
+            <ComposedChart data={monthlyData} barGap={2}>
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#a3a3a3' }} axisLine={false} tickLine={false} />
               <YAxis
                 tick={{ fontSize: 11, fill: '#a3a3a3' }}
@@ -205,9 +208,10 @@ export default function ReportesPage() {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: '12px' }} />
-              <Bar dataKey="Ingresos" fill="#0a0a0a" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="Egresos" fill="#c72a09" radius={[6, 6, 0, 0]} />
-            </BarChart>
+              <Bar dataKey="Ingresos" fill="#16a34a" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="Egresos" fill="#dc2626" radius={[6, 6, 0, 0]} />
+              <Line type="monotone" dataKey="Ganancia" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
