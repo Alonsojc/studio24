@@ -24,6 +24,7 @@ import {
   sendPendingInvoiceNotification,
   type NotifPrefs,
 } from '@/lib/notifications';
+import { listBackups, downloadBackup, autoBackupIfDue } from '@/lib/auto-backup';
 import {
   getSeedClientes,
   getSeedProveedores,
@@ -444,6 +445,9 @@ export default function AjustesPage() {
           </div>
         </div>
 
+        {/* Cloud Backups */}
+        <CloudBackups />
+
         {/* Team Management (admin only) */}
         {role === 'admin' && (
           <div className="bg-white rounded-2xl border border-neutral-100 p-6">
@@ -512,6 +516,122 @@ export default function AjustesPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function CloudBackups() {
+  const [backups, setBackups] = useState<{ name: string; date: string; size: number }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupDone, setBackupDone] = useState(false);
+
+  const loadBackups = async () => {
+    setLoading(true);
+    const list = await listBackups();
+    setBackups(list);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadBackups();
+  }, []);
+
+  const handleBackupNow = async () => {
+    setBackingUp(true);
+    // Force backup regardless of interval
+    localStorage.removeItem('bordados_last_backup');
+    await autoBackupIfDue();
+    setBackingUp(false);
+    setBackupDone(true);
+    setTimeout(() => setBackupDone(false), 2000);
+    loadBackups();
+  };
+
+  const handleDownload = async (fileName: string) => {
+    const json = await downloadBackup(fileName);
+    if (!json) return;
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `studio24_backup_${fileName}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleRestore = async (fileName: string) => {
+    if (
+      !confirm(
+        `¿Restaurar el respaldo del ${fileName.replace('.json', '')}? Esto sobreescribirá todos tus datos actuales.`,
+      )
+    )
+      return;
+    const json = await downloadBackup(fileName);
+    if (!json) {
+      alert('Error al descargar el respaldo');
+      return;
+    }
+    try {
+      const { importAllData } = await import('@/lib/store');
+      importAllData(json);
+      alert('Respaldo restaurado. La página se recargará.');
+      window.location.reload();
+    } catch {
+      alert('Error: el respaldo no es válido.');
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-neutral-100 p-6">
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Respaldos en la Nube</h3>
+          <p className="text-xs text-neutral-400 mt-1">
+            Se crean automáticamente cada semana. Se guardan los últimos 4.
+          </p>
+        </div>
+        <button
+          onClick={handleBackupNow}
+          disabled={backingUp}
+          className={`px-4 py-2 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${backupDone ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'} disabled:opacity-50`}
+        >
+          {backingUp ? 'Subiendo...' : backupDone ? '¡Listo!' : 'Respaldar ahora'}
+        </button>
+      </div>
+      {loading ? (
+        <p className="text-xs text-neutral-300 text-center py-4">Cargando...</p>
+      ) : backups.length === 0 ? (
+        <p className="text-xs text-neutral-300 text-center py-4">No hay respaldos en la nube todavía</p>
+      ) : (
+        <div className="space-y-2">
+          {backups.map((b) => (
+            <div
+              key={b.name}
+              className="flex items-center justify-between py-2 border-b border-neutral-50 last:border-0"
+            >
+              <div>
+                <p className="text-sm font-semibold text-[#0a0a0a]">{b.date}</p>
+                {b.size > 0 && <p className="text-[10px] text-neutral-400">{(b.size / 1024).toFixed(0)} KB</p>}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleDownload(b.name)}
+                  className="text-[10px] font-bold text-neutral-400 hover:text-[#0a0a0a] uppercase tracking-wide transition-colors"
+                >
+                  Descargar
+                </button>
+                <button
+                  onClick={() => handleRestore(b.name)}
+                  className="text-[10px] font-bold text-[#c72a09] hover:text-[#a82207] uppercase tracking-wide transition-colors"
+                >
+                  Restaurar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

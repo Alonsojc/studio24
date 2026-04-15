@@ -32,6 +32,7 @@ import ActionMenu from '@/components/ActionMenu';
 import { downloadCSV } from '@/lib/csv';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 import MonthBar from '@/components/MonthBar';
+import Pagination, { PAGE_SIZE } from '@/components/Pagination';
 
 const categorias: CategoriaEgreso[] = [
   'programas',
@@ -115,6 +116,7 @@ export default function EgresosPage() {
   const [filterCat, setFilterCat] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+  const [page, setPage] = useState(0);
 
   if (egresosRaw.length === 0 && typeof window === 'undefined')
     return (
@@ -231,6 +233,7 @@ export default function EgresosPage() {
     return true;
   });
   const totalFiltered = filtered.reduce((s, e) => s + e.montoTotal, 0);
+  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalErrores = egresos.filter((e) => e.categoria === 'error').reduce((s, e) => s + e.montoTotal, 0);
   const pctErrores =
     egresos.length > 0 ? (egresos.filter((e) => e.categoria === 'error').length / egresos.length) * 100 : 0;
@@ -260,6 +263,7 @@ export default function EgresosPage() {
               onChange={(e) => {
                 setFilterYear(Number(e.target.value));
                 setFilterMonth('all');
+                setPage(0);
               }}
               className="border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-bold bg-white focus:outline-none focus:border-[#c72a09]"
             >
@@ -364,13 +368,25 @@ export default function EgresosPage() {
         </div>
       )}
 
-      <MonthBar items={egresos} year={filterYear} selectedMonth={filterMonth} onSelect={setFilterMonth} color="red" />
+      <MonthBar
+        items={egresos}
+        year={filterYear}
+        selectedMonth={filterMonth}
+        onSelect={(m: string) => {
+          setFilterMonth(m);
+          setPage(0);
+        }}
+        color="red"
+      />
 
       {/* Filters */}
       <div className="flex gap-3 mb-6 flex-wrap items-center">
         <select
           value={filterCat}
-          onChange={(e) => setFilterCat(e.target.value)}
+          onChange={(e) => {
+            setFilterCat(e.target.value);
+            setPage(0);
+          }}
           className="border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-medium bg-white focus:outline-none focus:border-[#c72a09]"
         >
           <option value="all">Todas las categorias</option>
@@ -477,7 +493,7 @@ export default function EgresosPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => (
+              {paged.map((e) => (
                 <tr
                   key={e.id}
                   className={`border-b border-neutral-50 transition-colors ${e.soloFiscal ? 'bg-purple-50/30' : 'hover:bg-neutral-50/50'}`}
@@ -541,6 +557,8 @@ export default function EgresosPage() {
           </table>
         </div>
       )}
+
+      <Pagination total={filtered.length} page={page} onPageChange={setPage} />
 
       {/* Egreso Modal */}
       <Modal
