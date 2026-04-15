@@ -306,7 +306,7 @@ export default function ReportesPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-[#0a0a0a] rounded-2xl p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-white/30 uppercase mb-5">Resumen Fiscal Anual</h3>
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-white/50 uppercase mb-5">Resumen Fiscal Anual</h3>
           <div className="space-y-4">
             <div className="flex justify-between">
               <span className="text-sm text-white/50">Facturado (Ingresos)</span>

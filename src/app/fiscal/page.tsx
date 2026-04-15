@@ -293,8 +293,8 @@ export default function FiscalPage() {
         }
       />
 
-      {/* Acumulado Anual */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      {/* Acumulado Anual + Mes seleccionado */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <StatCard
           label="Facturado Anual"
           value={formatCurrency(acumIngresosFacturados)}
@@ -316,10 +316,24 @@ export default function FiscalPage() {
           color="red"
         />
         <StatCard
-          label="Total Impuestos"
+          label="Total Acumulado"
           value={formatCurrency(acumTotalImpuestos)}
-          subtitle="IVA + ISR estimado"
+          subtitle="IVA + ISR anual"
           color={acumTotalImpuestos > 0 ? 'red' : 'default'}
+        />
+        <StatCard
+          label={`Pagar en ${sel.label}`}
+          value={formatCurrency(sel.totalImpuestos)}
+          subtitle={
+            sel.ivaPorPagar > 0 && sel.isrEstimado > 0
+              ? `IVA ${formatCurrency(sel.ivaPorPagar)} + ISR ${formatCurrency(sel.isrEstimado)}`
+              : sel.ivaPorPagar > 0
+                ? `IVA ${formatCurrency(sel.ivaPorPagar)}`
+                : sel.isrEstimado > 0
+                  ? `ISR ${formatCurrency(sel.isrEstimado)}`
+                  : 'Sin impuestos'
+          }
+          accent
         />
       </div>
 
@@ -416,7 +430,7 @@ export default function FiscalPage() {
       {/* Resumen fiscal del mes */}
       <div className="bg-[#0a0a0a] rounded-2xl p-6 mb-8">
         <div className="flex justify-between items-center mb-5">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-white/30 uppercase">
+          <h3 className="text-[10px] font-bold tracking-[0.12em] text-white/50 uppercase">
             Resumen Fiscal — {sel.label} {year}
           </h3>
           <button
