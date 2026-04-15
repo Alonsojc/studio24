@@ -50,6 +50,7 @@ export default function IngresosPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyIngreso());
+  const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [filterConcepto, setFilterConcepto] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>('all');
@@ -69,13 +70,16 @@ export default function IngresosPage() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm(emptyIngreso());
+    const initial = emptyIngreso();
+    setForm(initial);
+    setFormSnapshot(JSON.stringify(initial));
     setFormError(null);
     setModalOpen(true);
   };
   const openEdit = (i: Ingreso) => {
     setEditingId(i.id);
     setForm({ ...i });
+    setFormSnapshot(JSON.stringify(i));
     setFormError(null);
     setModalOpen(true);
   };
@@ -328,6 +332,7 @@ export default function IngresosPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editingId ? 'Editar Ingreso' : 'Nuevo Ingreso'}
+        dirty={JSON.stringify(form) !== formSnapshot}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">

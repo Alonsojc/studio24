@@ -7,6 +7,7 @@ import { signOut } from '@/lib/auth';
 import { useRole } from './RoleProvider';
 import { getVisibleGroups, canAccess, roleLabel, roleColor } from '@/lib/roles';
 import GlobalSearch from './GlobalSearch';
+import SyncIndicator from './SyncIndicator';
 
 interface NavItem {
   href: string;
@@ -313,6 +314,9 @@ export default function Sidebar() {
         {/* Ajustes */}
         <div className="pt-2 border-t border-white/[0.04] mt-2">{renderLink(ajustes)}</div>
       </nav>
+
+      {/* Sync status */}
+      <SyncIndicator />
 
       {/* Footer */}
       <div className="px-5 py-4 border-t border-white/[0.06] flex items-center justify-between gap-2">

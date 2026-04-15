@@ -91,6 +91,7 @@ export default function PedidosPage() {
   const [checklistOpen, setChecklistOpen] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyPedido());
+  const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
   const [mounted, setMounted] = useState(false);
@@ -119,13 +120,16 @@ export default function PedidosPage() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm(emptyPedido());
+    const initial = emptyPedido();
+    setForm(initial);
+    setFormSnapshot(JSON.stringify(initial));
     setFormError(null);
     setModalOpen(true);
   };
   const openEdit = (p: Pedido) => {
     setEditingId(p.id);
     setForm({ ...p });
+    setFormSnapshot(JSON.stringify(p));
     setFormError(null);
     setModalOpen(true);
   };
@@ -791,7 +795,12 @@ export default function PedidosPage() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? 'Editar Pedido' : 'Nuevo Pedido'}>
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editingId ? 'Editar Pedido' : 'Nuevo Pedido'}
+        dirty={JSON.stringify(form) !== formSnapshot}
+      >
         <div className="space-y-4">
           <div>
             <label className={labelClass}>Descripción *</label>

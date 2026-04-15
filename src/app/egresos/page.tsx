@@ -100,6 +100,8 @@ export default function EgresosPage() {
   const [editingRecId, setEditingRecId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyEgreso());
   const [recForm, setRecForm] = useState(emptyRecurrente());
+  const [formSnapshot, setFormSnapshot] = useState('');
+  const [recFormSnapshot, setRecFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [recFormError, setRecFormError] = useState<string | null>(null);
   const [filterCat, setFilterCat] = useState<string>('all');
@@ -121,13 +123,16 @@ export default function EgresosPage() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm(emptyEgreso());
+    const initial = emptyEgreso();
+    setForm(initial);
+    setFormSnapshot(JSON.stringify(initial));
     setFormError(null);
     setModalOpen(true);
   };
   const openEdit = (e: Egreso) => {
     setEditingId(e.id);
     setForm({ ...e });
+    setFormSnapshot(JSON.stringify(e));
     setFormError(null);
     setModalOpen(true);
   };
@@ -168,13 +173,16 @@ export default function EgresosPage() {
 
   const openNewRec = () => {
     setEditingRecId(null);
-    setRecForm(emptyRecurrente());
+    const initial = emptyRecurrente();
+    setRecForm(initial);
+    setRecFormSnapshot(JSON.stringify(initial));
     setRecFormError(null);
     setRecModalOpen(true);
   };
   const openEditRec = (r: EgresoRecurrente) => {
     setEditingRecId(r.id);
     setRecForm({ ...r });
+    setRecFormSnapshot(JSON.stringify(r));
     setRecFormError(null);
     setRecModalOpen(true);
   };
@@ -533,7 +541,12 @@ export default function EgresosPage() {
       )}
 
       {/* Egreso Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? 'Editar Egreso' : 'Nuevo Egreso'}>
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editingId ? 'Editar Egreso' : 'Nuevo Egreso'}
+        dirty={JSON.stringify(form) !== formSnapshot}
+      >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -710,6 +723,7 @@ export default function EgresosPage() {
         open={recModalOpen}
         onClose={() => setRecModalOpen(false)}
         title={editingRecId ? 'Editar Recurrente' : 'Nuevo Recurrente'}
+        dirty={JSON.stringify(recForm) !== recFormSnapshot}
       >
         <div className="space-y-4">
           <div className="bg-neutral-50 rounded-xl p-3.5 text-xs text-neutral-500">

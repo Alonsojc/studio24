@@ -28,6 +28,7 @@ export default function ClientesPage() {
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyCliente());
+  const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [mounted] = useState(() => isClient);
@@ -47,13 +48,16 @@ export default function ClientesPage() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm(emptyCliente());
+    const initial = emptyCliente();
+    setForm(initial);
+    setFormSnapshot(JSON.stringify(initial));
     setFormError(null);
     setModalOpen(true);
   };
   const openEdit = (c: Cliente) => {
     setEditingId(c.id);
     setForm({ ...c });
+    setFormSnapshot(JSON.stringify(c));
     setFormError(null);
     setModalOpen(true);
   };
@@ -308,6 +312,7 @@ export default function ClientesPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editingId ? 'Editar Cliente' : 'Nuevo Cliente'}
+        dirty={JSON.stringify(form) !== formSnapshot}
       >
         <div className="space-y-4">
           <div>
