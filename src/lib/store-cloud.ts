@@ -186,6 +186,9 @@ export async function cloudSaveConfig(config: ConfigNegocio): Promise<void> {
   const { error } = await supabase.from('config').upsert({
     nombre_negocio: config.nombreNegocio,
     titular: config.titular,
+    rfc: config.rfc,
+    regimen_fiscal: config.regimenFiscal,
+    codigo_postal: config.codigoPostal,
     banco: config.banco,
     numero_cuenta: config.numeroCuenta,
     clabe: config.clabe,
@@ -221,10 +224,7 @@ export async function cloudAddRecurrenteLog(key: string): Promise<void> {
 export async function migrateLocalToCloud(): Promise<number> {
   let count = 0;
 
-  const migrate = async <T extends { id: string }>(
-    localKey: string,
-    cloudUpsert: (item: T) => Promise<T>,
-  ) => {
+  const migrate = async <T extends { id: string }>(localKey: string, cloudUpsert: (item: T) => Promise<T>) => {
     const raw = localStorage.getItem(localKey);
     if (!raw) return;
     const items: T[] = JSON.parse(raw);
@@ -256,7 +256,9 @@ export async function migrateLocalToCloud(): Promise<number> {
     try {
       await cloudSaveConfig(JSON.parse(configRaw));
       count++;
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // Mark as migrated
