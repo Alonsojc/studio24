@@ -66,6 +66,7 @@ function emptyEgreso(): Omit<Egreso, 'id' | 'createdAt'> {
     formaPago: 'efectivo',
     factura: false,
     numeroFactura: '',
+    soloFiscal: false,
     notas: '',
   };
 }
@@ -466,10 +467,20 @@ export default function EgresosPage() {
             </thead>
             <tbody>
               {filtered.map((e) => (
-                <tr key={e.id} className="border-b border-neutral-50 hover:bg-neutral-50/50 transition-colors">
+                <tr
+                  key={e.id}
+                  className={`border-b border-neutral-50 transition-colors ${e.soloFiscal ? 'bg-purple-50/30' : 'hover:bg-neutral-50/50'}`}
+                >
                   <td className="px-5 py-4 text-neutral-400 text-xs">{formatDate(e.fecha)}</td>
                   <td className="px-5 py-4">
-                    <span className="font-semibold text-[#0a0a0a]">{e.descripcion}</span>
+                    <span className={`font-semibold ${e.soloFiscal ? 'text-neutral-400' : 'text-[#0a0a0a]'}`}>
+                      {e.descripcion}
+                    </span>
+                    {e.soloFiscal && (
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-100 text-purple-600 uppercase">
+                        Solo fiscal
+                      </span>
+                    )}
                     {e.subcategoria && <span className="block text-xs text-neutral-300 mt-0.5">{e.subcategoria}</span>}
                   </td>
                   <td className="px-5 py-4">
@@ -480,7 +491,9 @@ export default function EgresosPage() {
                   <td className="px-5 py-4 text-neutral-400 text-xs">{proveedorName(e.proveedorId) || '—'}</td>
                   <td className="px-5 py-4 text-neutral-400 text-xs">{formaPagoLabel(e.formaPago)}</td>
                   <td className="px-5 py-4 text-right">
-                    <span className="font-bold text-red-600">{formatCurrency(e.montoTotal)}</span>
+                    <span className={`font-bold ${e.soloFiscal ? 'text-purple-500' : 'text-red-600'}`}>
+                      {formatCurrency(e.montoTotal)}
+                    </span>
                     {e.iva > 0 && (
                       <span className="block text-[10px] text-neutral-300">IVA: {formatCurrency(e.iva)}</span>
                     )}
@@ -499,6 +512,13 @@ export default function EgresosPage() {
                       <ActionMenu
                         items={[
                           { label: 'Editar', onClick: () => openEdit(e) },
+                          {
+                            label: e.soloFiscal ? 'Quitar solo fiscal' : 'Marcar solo fiscal',
+                            onClick: () => {
+                              updateEgreso({ ...e, soloFiscal: !e.soloFiscal });
+                              reload();
+                            },
+                          },
                           { label: 'Eliminar', onClick: () => handleDelete(e.id), danger: true },
                         ]}
                       />
@@ -643,6 +663,16 @@ export default function EgresosPage() {
               />
             </div>
           )}
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.soloFiscal || false}
+              onChange={(e) => setForm({ ...form, soloFiscal: e.target.checked })}
+              className="w-4 h-4 accent-[#7c3aed] rounded"
+            />
+            <span className="text-sm text-neutral-600">Solo fiscal</span>
+            <span className="text-[10px] text-neutral-400">(no afecta reportes del negocio)</span>
+          </label>
           <div>
             <label className={labelClass}>Notas</label>
             <textarea

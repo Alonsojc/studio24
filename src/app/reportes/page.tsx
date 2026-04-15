@@ -59,9 +59,11 @@ export default function ReportesPage() {
   };
   const ingresosYear = ingresos.filter((i) => inRange(i.fecha));
   const egresosYear = egresos.filter((e) => inRange(e.fecha));
+  // Exclude soloFiscal egresos from business reports (they only count in Fiscal)
+  const egresosNegocio = egresosYear.filter((e) => !e.soloFiscal);
 
   const totalIngresosYear = ingresosYear.reduce((s, i) => s + i.montoTotal, 0);
-  const totalEgresosYear = egresosYear.reduce((s, e) => s + e.montoTotal, 0);
+  const totalEgresosYear = egresosNegocio.reduce((s, e) => s + e.montoTotal, 0);
   const gananciaYear = totalIngresosYear - totalEgresosYear;
   const ivaCobradoYear = ingresosYear.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
   const ivaPagadoYear = egresosYear.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
@@ -72,12 +74,12 @@ export default function ReportesPage() {
   const monthlyData = monthNames.map((name, idx) => {
     const ms = String(idx + 1).padStart(2, '0');
     const ing = ingresosYear.filter((i) => i.fecha.substring(5, 7) === ms).reduce((s, i) => s + i.montoTotal, 0);
-    const eg = egresosYear.filter((e) => e.fecha.substring(5, 7) === ms).reduce((s, e) => s + e.montoTotal, 0);
+    const eg = egresosNegocio.filter((e) => e.fecha.substring(5, 7) === ms).reduce((s, e) => s + e.montoTotal, 0);
     return { name, Ingresos: ing, Egresos: eg, Ganancia: ing - eg };
   });
 
   const categoriaData = Object.entries(
-    egresosYear.reduce<Record<string, number>>((acc, e) => {
+    egresosNegocio.reduce<Record<string, number>>((acc, e) => {
       const cat = categoriaLabel(e.categoria);
       acc[cat] = (acc[cat] || 0) + e.montoTotal;
       return acc;
@@ -168,7 +170,7 @@ export default function ReportesPage() {
         <StatCard
           label={`Egresos ${mesInicio === 0 && mesFin === 11 ? 'Anuales' : `${monthNames[mesInicio]}–${monthNames[mesFin]}`}`}
           value={formatCurrency(totalEgresosYear)}
-          subtitle={`${egresosYear.length} gastos`}
+          subtitle={`${egresosNegocio.length} gastos`}
           color="red"
         />
         <StatCard
@@ -358,7 +360,7 @@ export default function ReportesPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-sm text-neutral-500">Gastos del Año</span>
-              <span className="text-sm font-bold">{egresosYear.length}</span>
+              <span className="text-sm font-bold">{egresosNegocio.length}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-sm text-neutral-500">Total Clientes</span>
