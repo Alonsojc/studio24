@@ -53,8 +53,11 @@ export default function IngresosPage() {
   const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [filterConcepto, setFilterConcepto] = useState<string>('all');
-  const [filterMonth, setFilterMonth] = useState<string>('all');
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+  const now = new Date();
+  const [filterMonth, setFilterMonth] = useState<string>(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+  );
+  const [filterYear, setFilterYear] = useState(now.getFullYear());
 
   const openNew = () => {
     setEditingId(null);
