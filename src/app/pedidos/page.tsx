@@ -6,6 +6,7 @@ import { getPedidos, getClientes } from '@/lib/store';
 import { cloudGetPedidos, cloudGetClientes } from '@/lib/store-cloud';
 import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolio } from '@/lib/store-sync';
 import { useCloudStore } from '@/lib/useCloudStore';
+import Pagination, { PAGE_SIZE } from '@/components/Pagination';
 import { Pedido, EstadoPedido, EstadoPago, ConceptoIngreso, Ingreso } from '@/lib/types';
 import {
   formatCurrency,
@@ -105,6 +106,8 @@ export default function PedidosPage() {
   const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
+  const [page, setPage] = useState(0);
+  const pagedPedidos = pedidos.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const isClient = typeof window !== 'undefined';
   const [mounted] = useState(() => isClient);
 
@@ -609,7 +612,7 @@ export default function PedidosPage() {
                 </tr>
               </thead>
               <tbody>
-                {pedidos.map((p) => (
+                {pagedPedidos.map((p) => (
                   <tr key={p.id} className="border-b border-neutral-50 hover:bg-neutral-50/50">
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2">
@@ -668,6 +671,8 @@ export default function PedidosPage() {
             </table>
           </div>
         ))}
+
+      {view === 'lista' && <Pagination total={pedidos.length} page={page} onPageChange={setPage} />}
 
       {/* Pagos View */}
       {view === 'pagos' && (

@@ -240,7 +240,7 @@ export default function FiscalPage() {
       {(() => {
         const hoy = new Date();
         if (hoy.getFullYear() !== year) return null;
-        const mesActual = hoy.getMonth();
+        const mesActual = hoy.getMonth(); // 0-indexed
         const mesPrevio = mesActual === 0 ? 11 : mesActual - 1;
         const diaLimite = 17;
         const diasRestantes =
@@ -291,6 +291,7 @@ export default function FiscalPage() {
           </div>
         </div>
       )}
+
 
       {/* Acumulado Anual */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

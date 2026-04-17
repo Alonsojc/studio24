@@ -23,6 +23,7 @@ import ActionMenu from '@/components/ActionMenu';
 import { downloadCSV } from '@/lib/csv';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 import MonthBar from '@/components/MonthBar';
+import Pagination, { PAGE_SIZE } from '@/components/Pagination';
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
 const formasPago: FormaPago[] = ['efectivo', 'tarjeta', 'transferencia', 'otro'];
@@ -53,8 +54,12 @@ export default function IngresosPage() {
   const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [filterConcepto, setFilterConcepto] = useState<string>('all');
-  const [filterMonth, setFilterMonth] = useState<string>('all');
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+  const now = new Date();
+  const [filterMonth, setFilterMonth] = useState<string>(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+  );
+  const [filterYear, setFilterYear] = useState(now.getFullYear());
+  const [page, setPage] = useState(0);
 
   const openNew = () => {
     setEditingId(null);
@@ -122,6 +127,7 @@ export default function IngresosPage() {
     return true;
   });
   const totalFiltered = filtered.reduce((s, i) => s + i.montoTotal, 0);
+  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
     <div>
@@ -135,6 +141,7 @@ export default function IngresosPage() {
               onChange={(e) => {
                 setFilterYear(Number(e.target.value));
                 setFilterMonth('all');
+                setPage(0);
               }}
               className="border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-bold bg-white focus:outline-none focus:border-[#c72a09]"
             >
@@ -155,14 +162,20 @@ export default function IngresosPage() {
         items={ingresos}
         year={filterYear}
         selectedMonth={filterMonth}
-        onSelect={setFilterMonth}
+        onSelect={(m: string) => {
+          setFilterMonth(m);
+          setPage(0);
+        }}
         color="green"
       />
 
       <div className="flex gap-3 mb-6 flex-wrap items-center">
         <select
           value={filterConcepto}
-          onChange={(e) => setFilterConcepto(e.target.value)}
+          onChange={(e) => {
+            setFilterConcepto(e.target.value);
+            setPage(0);
+          }}
           className="border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-medium bg-white focus:outline-none focus:border-[#c72a09]"
         >
           <option value="all">Todos los conceptos</option>
@@ -266,7 +279,7 @@ export default function IngresosPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((i) => (
+              {paged.map((i) => (
                 <tr key={i.id} className="border-b border-neutral-50 hover:bg-neutral-50/50 transition-colors">
                   <td className="px-5 py-4 text-neutral-400 text-xs">{formatDate(i.fecha)}</td>
                   <td className="px-5 py-4 font-semibold text-[#0a0a0a]">
@@ -315,6 +328,8 @@ export default function IngresosPage() {
           </table>
         </div>
       )}
+
+      <Pagination total={filtered.length} page={page} onPageChange={setPage} />
 
       <Modal
         open={modalOpen}

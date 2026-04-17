@@ -36,18 +36,18 @@ export default function MonthBar({ items, year, selectedMonth, onSelect, color =
       <button
         onClick={() => onSelect('all')}
         className={`p-3 rounded-xl text-center border transition-all shrink-0 min-w-[5.5rem] ${
-          isAll ? activeColor : 'border-neutral-200 hover:border-neutral-400'
+          isAll ? activeColor : 'bg-neutral-100 border-neutral-300 hover:border-neutral-500'
         }`}
       >
         <p
-          className={`text-[10px] font-bold tracking-[0.05em] uppercase ${isAll ? activeValueColor : 'text-neutral-400'}`}
+          className={`text-[10px] font-bold tracking-[0.05em] uppercase ${isAll ? activeValueColor : 'text-neutral-500'}`}
         >
           Todo
         </p>
         <p className={`text-sm font-black mt-1 ${isAll ? activeValueColor : 'text-[#0a0a0a]'}`}>
           {formatCurrency(totalYear)}
         </p>
-        <p className="text-[9px] text-neutral-400 mt-0.5">{itemsYear.length} reg.</p>
+        <p className="text-[9px] text-neutral-500 mt-0.5">{itemsYear.length} reg.</p>
       </button>
       {monthData.map((b) => {
         const isActive = selectedMonth === b.key;
