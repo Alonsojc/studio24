@@ -213,7 +213,7 @@ export default function ProductosPage() {
               className={inputClass}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Categoria</label>
               <select
@@ -232,6 +232,7 @@ export default function ProductosPage() {
               <label className={labelClass}>Precio</label>
               <input
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 min="0"
                 value={form.precio || ''}

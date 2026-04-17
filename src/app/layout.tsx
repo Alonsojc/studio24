@@ -9,6 +9,9 @@ import './globals.css';
 
 export const viewport: Viewport = {
   themeColor: '#c72a09',
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
 export const metadata: Metadata = {
@@ -40,7 +43,7 @@ export default function RootLayout({
           <RoleProvider>
             <SeedData />
             <Sidebar />
-            <main className="lg:ml-[260px] min-h-screen px-4 py-16 lg:px-10 lg:py-8">{children}</main>
+            <main className="lg:ml-[260px] min-h-screen px-3 py-14 sm:px-4 sm:py-16 lg:px-10 lg:py-8">{children}</main>
             <MigrationBanner />
             <NotificationManager />
           </RoleProvider>

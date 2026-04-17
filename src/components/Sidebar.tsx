@@ -373,7 +373,8 @@ export default function Sidebar() {
       {/* Mobile hamburger */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed top-4 left-4 z-50 lg:hidden w-10 h-10 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center shadow-lg"
+        aria-label="Abrir menú"
+        className="fixed top-3 left-3 z-50 lg:hidden w-11 h-11 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center shadow-lg"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
@@ -387,9 +388,10 @@ export default function Sidebar() {
           <aside className="relative h-full w-[260px] bg-[#0a0a0a] text-white flex flex-col">
             <button
               onClick={() => setMobileOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-white/10 text-white/50 flex items-center justify-center hover:text-white"
+              aria-label="Cerrar menú"
+              className="absolute top-3 right-3 w-11 h-11 rounded-lg bg-white/10 text-white/60 flex items-center justify-center hover:text-white"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
               </svg>
             </button>

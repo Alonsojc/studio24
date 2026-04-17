@@ -159,6 +159,7 @@ export default function CalculadoraPage() {
                 <label className={labelClass}>Colores de hilo</label>
                 <input
                   type="number"
+                  inputMode="numeric"
                   min={1}
                   max={20}
                   value={colors}
@@ -191,6 +192,7 @@ export default function CalculadoraPage() {
                 <label className={labelClass}>Costo prenda</label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   min={0}
                   step={5}
                   value={garmentCost}
@@ -209,11 +211,12 @@ export default function CalculadoraPage() {
             <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-4">
               Cantidad y Margen
             </h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>Cantidad de piezas</label>
                 <input
                   type="number"
+                  inputMode="numeric"
                   min={1}
                   value={quantity}
                   onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}

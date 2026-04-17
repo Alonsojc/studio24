@@ -274,6 +274,7 @@ export default function InventarioPage() {
                         <div className="flex items-center justify-center gap-1">
                           <input
                             type="number"
+                            inputMode="decimal"
                             value={adjustQty}
                             onChange={(e) => setAdjustQty(Number(e.target.value))}
                             className="w-16 border border-neutral-200 rounded-lg px-2 py-1 text-xs text-center focus:outline-none focus:border-[#c72a09]"
@@ -339,7 +340,7 @@ export default function InventarioPage() {
               className={inputClass}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Categoría</label>
               <select
@@ -369,11 +370,12 @@ export default function InventarioPage() {
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className={labelClass}>Stock actual</label>
               <input
                 type="number"
+                inputMode="decimal"
                 min={0}
                 value={form.stock}
                 onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
@@ -384,6 +386,7 @@ export default function InventarioPage() {
               <label className={labelClass}>Stock mínimo</label>
               <input
                 type="number"
+                inputMode="decimal"
                 min={0}
                 value={form.stockMinimo}
                 onChange={(e) => setForm({ ...form, stockMinimo: Number(e.target.value) })}
@@ -394,6 +397,7 @@ export default function InventarioPage() {
               <label className={labelClass}>Costo unitario</label>
               <input
                 type="number"
+                inputMode="decimal"
                 min={0}
                 step={0.5}
                 value={form.costo}
@@ -402,7 +406,7 @@ export default function InventarioPage() {
               />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className={labelClass}>Color</label>
               <div className="flex gap-2">

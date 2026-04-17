@@ -25,9 +25,10 @@ export default function Pagination({ total, page, onPageChange, pageSize = PAGE_
         <button
           onClick={() => onPageChange(page - 1)}
           disabled={page === 0}
-          className="w-8 h-8 rounded-lg border border-neutral-200 flex items-center justify-center text-neutral-400 hover:border-neutral-400 hover:text-neutral-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          aria-label="Página anterior"
+          className="w-11 h-11 rounded-lg border border-neutral-200 flex items-center justify-center text-neutral-400 hover:border-neutral-400 hover:text-neutral-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
           </svg>
         </button>
@@ -38,7 +39,7 @@ export default function Pagination({ total, page, onPageChange, pageSize = PAGE_
               <button
                 key={i}
                 onClick={() => onPageChange(i)}
-                className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${
+                className={`hidden sm:inline-flex w-11 h-11 rounded-lg text-xs font-bold items-center justify-center transition-colors ${
                   i === page
                     ? 'bg-[#0a0a0a] text-white'
                     : 'border border-neutral-200 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600'
@@ -65,12 +66,16 @@ export default function Pagination({ total, page, onPageChange, pageSize = PAGE_
           }
           return null;
         })}
+        <span className="sm:hidden text-xs font-bold text-neutral-500 px-2">
+          {page + 1} / {totalPages}
+        </span>
         <button
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages - 1}
-          className="w-8 h-8 rounded-lg border border-neutral-200 flex items-center justify-center text-neutral-400 hover:border-neutral-400 hover:text-neutral-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          aria-label="Página siguiente"
+          className="w-11 h-11 rounded-lg border border-neutral-200 flex items-center justify-center text-neutral-400 hover:border-neutral-400 hover:text-neutral-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
           </svg>
         </button>

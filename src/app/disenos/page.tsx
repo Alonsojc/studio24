@@ -221,7 +221,7 @@ export default function DisenosPage() {
       <Modal open={detailOpen} onClose={() => setDetailOpen(false)} title={selectedDiseno?.nombre || 'Diseño'}>
         {selectedDiseno && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <span className={labelClass}>Archivo</span>
                 <p className="text-sm">{selectedDiseno.archivo || '—'}</p>
@@ -231,7 +231,7 @@ export default function DisenosPage() {
                 <p className="text-sm">{clienteName(selectedDiseno.clienteId) || 'Sin asignar'}</p>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div>
                 <span className={labelClass}>Puntadas</span>
                 <p className="text-sm font-bold">
@@ -291,7 +291,7 @@ export default function DisenosPage() {
               className={inputClass}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Archivo (.dst, .tbf)</label>
               <input
@@ -306,7 +306,13 @@ export default function DisenosPage() {
               <label className={labelClass}>Cliente</label>
               <select
                 value={form.clienteId}
-                onChange={(e) => { if (e.target.value === '__new__') { window.open('/studio24/clientes', '_blank'); return; } setForm({ ...form, clienteId: e.target.value }); }}
+                onChange={(e) => {
+                  if (e.target.value === '__new__') {
+                    window.open('/studio24/clientes', '_blank');
+                    return;
+                  }
+                  setForm({ ...form, clienteId: e.target.value });
+                }}
                 className={inputClass}
               >
                 <option value="">Sin asignar</option>
@@ -319,11 +325,12 @@ export default function DisenosPage() {
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className={labelClass}>Puntadas</label>
               <input
                 type="number"
+                inputMode="numeric"
                 min={0}
                 value={form.puntadas}
                 onChange={(e) => setForm({ ...form, puntadas: Number(e.target.value) })}
@@ -334,6 +341,7 @@ export default function DisenosPage() {
               <label className={labelClass}>Colores</label>
               <input
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={20}
                 value={form.colores}
@@ -346,6 +354,7 @@ export default function DisenosPage() {
               <div className="flex gap-1">
                 <input
                   type="number"
+                  inputMode="decimal"
                   min={0}
                   step={0.5}
                   value={form.ancho}
@@ -356,6 +365,7 @@ export default function DisenosPage() {
                 <span className="self-center text-neutral-400">x</span>
                 <input
                   type="number"
+                  inputMode="decimal"
                   min={0}
                   step={0.5}
                   value={form.alto}

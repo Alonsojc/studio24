@@ -467,8 +467,8 @@ export default function EgresosPage() {
           }
         />
       ) : (
-        <div className="bg-white rounded-2xl border border-neutral-100">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-2xl border border-neutral-100 overflow-x-auto">
+          <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="border-b border-neutral-100">
                 <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">
@@ -571,7 +571,7 @@ export default function EgresosPage() {
         dirty={JSON.stringify(form) !== formSnapshot}
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Fecha</label>
               <input
@@ -645,11 +645,12 @@ export default function EgresosPage() {
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Monto (sin IVA)</label>
               <input
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 min="0"
                 value={form.monto || ''}
@@ -762,7 +763,7 @@ export default function EgresosPage() {
               className={inputClass}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Categoria</label>
               <select
@@ -833,11 +834,12 @@ export default function EgresosPage() {
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Monto mensual (sin IVA)</label>
               <input
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 min="0"
                 value={recForm.monto || ''}
