@@ -114,8 +114,11 @@ export default function EgresosPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [recFormError, setRecFormError] = useState<string | null>(null);
   const [filterCat, setFilterCat] = useState<string>('all');
-  const [filterMonth, setFilterMonth] = useState<string>('all');
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+  const now = new Date();
+  const [filterMonth, setFilterMonth] = useState<string>(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+  );
+  const [filterYear, setFilterYear] = useState(now.getFullYear());
   const [page, setPage] = useState(0);
 
   if (egresosRaw.length === 0 && typeof window === 'undefined')
