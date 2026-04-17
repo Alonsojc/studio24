@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, getClientes } from '@/lib/store';
-import { addIngreso, updateIngreso, deleteIngreso } from '@/lib/store-sync';
-import { Ingreso, Cliente, ConceptoIngreso, FormaPago } from '@/lib/types';
+import { cloudGetIngresos, cloudGetClientes } from '@/lib/store-cloud';
+import { addIngreso, updateIngreso, deleteIngreso, getNextFolio } from '@/lib/store-sync';
+import { useCloudStore } from '@/lib/useCloudStore';
+import { Ingreso, ConceptoIngreso, FormaPago } from '@/lib/types';
 import {
   formatCurrency,
   formatDate,
@@ -42,40 +44,33 @@ function emptyIngreso(): Omit<Ingreso, 'id' | 'createdAt'> {
 }
 
 export default function IngresosPage() {
-  const isClient = typeof window !== 'undefined';
-  const [ingresos, setIngresos] = useState<Ingreso[]>(() =>
-    isClient ? getIngresos().sort((a, b) => b.fecha.localeCompare(a.fecha)) : [],
-  );
-  const [clientes] = useState<Cliente[]>(() => (isClient ? getClientes() : []));
+  const { data: ingresosRaw, reload } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const { data: clientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
+  const ingresos = [...ingresosRaw].sort((a, b) => b.fecha.localeCompare(a.fecha));
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyIngreso());
+  const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [filterConcepto, setFilterConcepto] = useState<string>('all');
-  const [filterMonth, setFilterMonth] = useState<string>('all');
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
-  const [mounted] = useState(() => isClient);
-
-  const reload = useCallback(() => {
-    setIngresos(getIngresos().sort((a, b) => b.fecha.localeCompare(a.fecha)));
-  }, []);
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+  const now = new Date();
+  const [filterMonth, setFilterMonth] = useState<string>(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+  );
+  const [filterYear, setFilterYear] = useState(now.getFullYear());
 
   const openNew = () => {
     setEditingId(null);
-    setForm(emptyIngreso());
+    const initial = emptyIngreso();
+    setForm(initial);
+    setFormSnapshot(JSON.stringify(initial));
     setFormError(null);
     setModalOpen(true);
   };
   const openEdit = (i: Ingreso) => {
     setEditingId(i.id);
     setForm({ ...i });
+    setFormSnapshot(JSON.stringify(i));
     setFormError(null);
     setModalOpen(true);
   };
@@ -328,6 +323,7 @@ export default function IngresosPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editingId ? 'Editar Ingreso' : 'Nuevo Ingreso'}
+        dirty={JSON.stringify(form) !== formSnapshot}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -419,7 +415,15 @@ export default function IngresosPage() {
               <input
                 type="checkbox"
                 checked={form.factura}
-                onChange={(e) => setForm({ ...form, factura: e.target.checked })}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  const updates: Partial<typeof form> = { factura: checked };
+                  // Auto-generate folio when enabling factura on a new record
+                  if (checked && !form.numeroFactura && !editingId) {
+                    updates.numeroFactura = getNextFolio('ING');
+                  }
+                  setForm({ ...form, ...updates });
+                }}
                 className="w-4 h-4 accent-[#c72a09] rounded"
               />
               <span className="text-sm text-neutral-600">Factura (IVA 16%)</span>
@@ -438,6 +442,7 @@ export default function IngresosPage() {
                 type="text"
                 value={form.numeroFactura}
                 onChange={(e) => setForm({ ...form, numeroFactura: e.target.value })}
+                placeholder="Se genera automáticamente"
                 className={inputClass}
               />
             </div>

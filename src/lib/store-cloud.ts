@@ -1,6 +1,7 @@
 'use client';
 
 import { supabase } from './supabase';
+import { getMyTeamId } from './teams';
 import type {
   Cliente,
   Proveedor,
@@ -48,6 +49,7 @@ const SNAKE_OVERRIDES: Record<string, string> = {
   numeroCuenta: 'numero_cuenta',
   regimenFiscal: 'regimen_fiscal',
   codigoPostal: 'codigo_postal',
+  soloFiscal: 'solo_fiscal',
 };
 
 function toSnake(obj: Record<string, unknown>): Record<string, unknown> {
@@ -62,7 +64,7 @@ function toSnake(obj: Record<string, unknown>): Record<string, unknown> {
 function toCamel<T>(obj: Record<string, unknown>): T {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
-    if (key === 'user_id') continue; // Don't expose user_id to frontend
+    if (key === 'user_id' || key === 'team_id') continue; // scoping columns stay server-side
     const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
     result[camelKey] = value;
   }
@@ -79,7 +81,8 @@ async function getAll<T>(table: string): Promise<T[]> {
 
 async function upsertOne<T extends { id: string }>(table: string, item: T): Promise<T> {
   const row = toSnake(item as unknown as Record<string, unknown>);
-  delete row.user_id; // Let DB default handle it
+  delete row.user_id;
+  delete row.team_id; // Let DB default (current_user_team_id()) handle it
   const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' });
   if (error) throw error;
   return item;
@@ -183,27 +186,37 @@ export async function cloudGetConfig(): Promise<ConfigNegocio> {
 }
 
 export async function cloudSaveConfig(config: ConfigNegocio): Promise<void> {
-  const { error } = await supabase.from('config').upsert({
-    nombre_negocio: config.nombreNegocio,
-    titular: config.titular,
-    banco: config.banco,
-    numero_cuenta: config.numeroCuenta,
-    clabe: config.clabe,
-    telefono: config.telefono,
-    email: config.email,
-    direccion: config.direccion,
-    logo_url: config.logoUrl,
-  });
+  const teamId = await getMyTeamId();
+  if (!teamId) return;
+  const { error } = await supabase.from('config').upsert(
+    {
+      team_id: teamId,
+      nombre_negocio: config.nombreNegocio,
+      titular: config.titular,
+      rfc: config.rfc,
+      regimen_fiscal: config.regimenFiscal,
+      codigo_postal: config.codigoPostal,
+      banco: config.banco,
+      numero_cuenta: config.numeroCuenta,
+      clabe: config.clabe,
+      telefono: config.telefono,
+      email: config.email,
+      direccion: config.direccion,
+      logo_url: config.logoUrl,
+    },
+    { onConflict: 'team_id' },
+  );
   if (error) throw error;
 }
 
 // Folio counter
 export async function cloudGetNextFolio(prefix: string): Promise<string> {
-  // Try to get current counter
-  const { data } = await supabase.from('folio_counter').select('counter').single();
+  const teamId = await getMyTeamId();
+  if (!teamId) return `${prefix}-001`;
+  const { data } = await supabase.from('folio_counter').select('counter').eq('team_id', teamId).maybeSingle();
   const current = data?.counter || 0;
   const next = current + 1;
-  await supabase.from('folio_counter').upsert({ counter: next });
+  await supabase.from('folio_counter').upsert({ team_id: teamId, counter: next }, { onConflict: 'team_id' });
   return `${prefix}-${String(next).padStart(3, '0')}`;
 }
 
@@ -221,10 +234,7 @@ export async function cloudAddRecurrenteLog(key: string): Promise<void> {
 export async function migrateLocalToCloud(): Promise<number> {
   let count = 0;
 
-  const migrate = async <T extends { id: string }>(
-    localKey: string,
-    cloudUpsert: (item: T) => Promise<T>,
-  ) => {
+  const migrate = async <T extends { id: string }>(localKey: string, cloudUpsert: (item: T) => Promise<T>) => {
     const raw = localStorage.getItem(localKey);
     if (!raw) return;
     const items: T[] = JSON.parse(raw);
@@ -256,7 +266,9 @@ export async function migrateLocalToCloud(): Promise<number> {
     try {
       await cloudSaveConfig(JSON.parse(configRaw));
       count++;
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // Mark as migrated
@@ -290,10 +302,20 @@ export async function pullFromCloud(): Promise<number> {
   await pull<Diseno>('disenos', 'bordados_disenos');
   await pull<PlantillaWhatsApp>('plantillas', 'bordados_plantillas');
 
-  // Config
-  const config = await cloudGetConfig();
-  if (config.nombreNegocio || config.titular) {
-    localStorage.setItem('bordados_config', JSON.stringify(config));
+  // Config — merge cloud into local so we don't overwrite fields
+  // that may not exist in Supabase yet (e.g. rfc, regimenFiscal)
+  const cloudConfig = await cloudGetConfig();
+  if (cloudConfig.nombreNegocio || cloudConfig.titular) {
+    const localRaw = localStorage.getItem('bordados_config');
+    const localConfig = localRaw ? JSON.parse(localRaw) : {};
+    // Cloud wins for non-empty fields; local preserved for fields cloud doesn't have
+    const merged = { ...localConfig };
+    for (const [key, value] of Object.entries(cloudConfig)) {
+      if (value !== '' && value !== null && value !== undefined) {
+        merged[key] = value;
+      }
+    }
+    localStorage.setItem('bordados_config', JSON.stringify(merged));
     count++;
   }
 

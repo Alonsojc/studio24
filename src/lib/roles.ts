@@ -13,7 +13,9 @@ export interface UserProfile {
 
 // Get current user's profile/role
 export async function getMyProfile(): Promise<UserProfile | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return null;
 
   const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
@@ -26,7 +28,9 @@ export async function getMyProfile(): Promise<UserProfile | null> {
 
 // Update profile
 export async function updateProfile(profile: Partial<UserProfile>): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return;
   await supabase.from('profiles').upsert({ id: user.id, ...profile });
 }
@@ -52,6 +56,7 @@ const ROLE_ROUTES: Record<UserRole, string[]> = {
     '/reportes',
     '/fiscal',
     '/facturas',
+    '/conciliacion',
     '/clientes',
     '/proveedores',
   ],

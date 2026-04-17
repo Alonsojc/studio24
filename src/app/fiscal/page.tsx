@@ -1,128 +1,47 @@
 'use client';
 
-import { useState } from 'react';
-import { getIngresos, getEgresos } from '@/lib/store';
-import { Ingreso, Egreso } from '@/lib/types';
+import { useState, useEffect, useRef } from 'react';
+import { getIngresos, getEgresos, getConfig } from '@/lib/store';
+import { cloudGetIngresos, cloudGetEgresos } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
 import { downloadCSV } from '@/lib/csv';
+import { MESES, calcMonthData, getPerdidaArrastrable, savePerdida, getPerdidas } from '@/lib/fiscal';
+import { generateFiscalPDF } from '@/lib/fiscal-pdf';
 import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
 
-// Meses para pagos provisionales (Persona Física con Act. Empresarial)
-const MESES = [
-  'Enero',
-  'Febrero',
-  'Marzo',
-  'Abril',
-  'Mayo',
-  'Junio',
-  'Julio',
-  'Agosto',
-  'Septiembre',
-  'Octubre',
-  'Noviembre',
-  'Diciembre',
-];
-
-// Tabla ISR mensual 2024 — Persona Física (Art. 96 LISR)
-const TABLA_ISR_MENSUAL = [
-  { limInf: 0, limSup: 746.04, cuota: 0, tasa: 0.0192 },
-  { limInf: 746.05, limSup: 6332.05, cuota: 14.32, tasa: 0.064 },
-  { limInf: 6332.06, limSup: 11128.01, cuota: 371.83, tasa: 0.1088 },
-  { limInf: 11128.02, limSup: 12935.82, cuota: 893.63, tasa: 0.16 },
-  { limInf: 12935.83, limSup: 15487.71, cuota: 1182.88, tasa: 0.1792 },
-  { limInf: 15487.72, limSup: 31236.49, cuota: 1640.18, tasa: 0.2136 },
-  { limInf: 31236.5, limSup: 49233.0, cuota: 5004.12, tasa: 0.2352 },
-  { limInf: 49233.01, limSup: 93993.9, cuota: 9236.89, tasa: 0.3 },
-  { limInf: 93993.91, limSup: 125325.2, cuota: 22665.17, tasa: 0.32 },
-  { limInf: 125325.21, limSup: 375975.61, cuota: 32691.18, tasa: 0.34 },
-  { limInf: 375975.62, limSup: Infinity, cuota: 117912.32, tasa: 0.35 },
-];
-
-function calcISR(baseGravable: number): number {
-  if (baseGravable <= 0) return 0;
-  for (const rango of TABLA_ISR_MENSUAL) {
-    if (baseGravable >= rango.limInf && baseGravable <= rango.limSup) {
-      return rango.cuota + (baseGravable - rango.limInf) * rango.tasa;
-    }
-  }
-  const last = TABLA_ISR_MENSUAL[TABLA_ISR_MENSUAL.length - 1];
-  return last.cuota + (baseGravable - last.limInf) * last.tasa;
-}
-
-function calcMonthData(meses: string[], ingresosYear: Ingreso[], egresosYear: Egreso[]) {
-  let perdida = 0;
-  let ivaFavor = 0;
-
-  const months = meses.map((label, idx) => {
-    const monthStr = String(idx + 1).padStart(2, '0');
-    const ingMes = ingresosYear.filter((i) => i.fecha.substring(5, 7) === monthStr);
-    const egMes = egresosYear.filter((e) => e.fecha.substring(5, 7) === monthStr);
-
-    const ingresosBrutos = ingMes.reduce((s, i) => s + i.monto, 0);
-    const ingresosFacturados = ingMes.filter((i) => i.factura).reduce((s, i) => s + i.monto, 0);
-    const egresosBrutos = egMes.reduce((s, e) => s + e.monto, 0);
-    const egresosDeducibles = egMes.filter((e) => e.factura).reduce((s, e) => s + e.monto, 0);
-
-    // --- IVA (mensual con saldo a favor acumulado) ---
-    const ivaTrasladado = ingMes.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
-    const ivaAcreditable = egMes.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
-    const ivaDelMes = ivaTrasladado - ivaAcreditable;
-    const ivaFavorAnterior = ivaFavor;
-    const ivaNeto = ivaDelMes - ivaFavor;
-    const ivaPorPagar = Math.max(0, ivaNeto);
-    const ivaAFavor = Math.max(0, -ivaNeto);
-    ivaFavor = ivaAFavor;
-
-    // --- ISR (con pérdida acumulada de meses anteriores) ---
-    const utilidadMes = ingresosFacturados - egresosDeducibles;
-    const perdidaAnterior = perdida;
-    const baseConPerdida = utilidadMes - perdida;
-    const baseISR = Math.max(0, baseConPerdida);
-    const isrEstimado = calcISR(baseISR);
-    perdida = baseConPerdida < 0 ? Math.abs(baseConPerdida) : 0;
-
-    const totalImpuestos = ivaPorPagar + isrEstimado;
-
-    return {
-      idx,
-      label,
-      ingresosBrutos,
-      ingresosFacturados,
-      ingresosNoFacturados: ingresosBrutos - ingresosFacturados,
-      ivaTrasladado,
-      ivaAcreditable,
-      ivaDelMes,
-      ivaFavorAnterior,
-      ivaPorPagar,
-      ivaAFavor,
-      egresosBrutos,
-      egresosDeducibles,
-      egresosNoDeducibles: egresosBrutos - egresosDeducibles,
-      utilidadMes,
-      perdidaAnterior,
-      baseISR,
-      isrEstimado,
-      totalImpuestos,
-      numIngresos: ingMes.length,
-      numFacturas: ingMes.filter((i) => i.factura).length,
-      numEgresos: egMes.length,
-      numFacturasEgreso: egMes.filter((e) => e.factura).length,
-      ingresos: ingMes,
-      egresos: egMes,
-    };
-  });
-
-  return { months, perdidaFinal: perdida, ivaFavorFinal: ivaFavor };
-}
-
 export default function FiscalPage() {
   const isClient = typeof window !== 'undefined';
-  const [ingresos] = useState<Ingreso[]>(() => (isClient ? getIngresos() : []));
-  const [egresos] = useState<Egreso[]>(() => (isClient ? getEgresos() : []));
+  const { data: ingresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const { data: egresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
   const [mounted] = useState(() => isClient);
   const [year, setYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth());
+  const savedYearsRef = useRef<Set<number>>(new Set());
+
+  // Compute fiscal data unconditionally (pure math, no DOM)
+  const yearStr = String(year);
+  const ingresosYear = ingresos.filter((i) => i.fecha.startsWith(yearStr + '-'));
+  const egresosYear = egresos.filter((e) => e.fecha.startsWith(yearStr + '-'));
+  const perdidaArrastrable = getPerdidaArrastrable(year);
+  const {
+    months: monthData,
+    perdidaFinal: perdidaAcum,
+    ivaFavorFinal: ivaFavorAcum,
+  } = calcMonthData(ingresosYear, egresosYear, perdidaArrastrable);
+
+  // Auto-save year-end loss when viewing a completed year (side effect only, no state)
+  useEffect(() => {
+    if (!isClient) return;
+    if (year < new Date().getFullYear() && !savedYearsRef.current.has(year)) {
+      savePerdida(year, perdidaAcum);
+      savedYearsRef.current.add(year);
+    }
+  }, [year, perdidaAcum, isClient]);
+
+  // Read perdidas fresh (cheap localStorage read)
+  const perdidas = isClient ? getPerdidas() : [];
 
   if (!mounted) {
     return (
@@ -131,6 +50,8 @@ export default function FiscalPage() {
       </div>
     );
   }
+
+  const config = getConfig();
 
   const years = Array.from(
     new Set([
@@ -142,27 +63,19 @@ export default function FiscalPage() {
     .sort()
     .reverse();
 
-  // Filtros por año (string-based to avoid timezone issues)
-  const yearStr = String(year);
-  const ingresosYear = ingresos.filter((i) => i.fecha.startsWith(yearStr + '-'));
-  const egresosYear = egresos.filter((e) => e.fecha.startsWith(yearStr + '-'));
-
-  // Datos por mes (secuencial para acumular pérdidas ISR y saldo a favor IVA)
-  const {
-    months: monthData,
-    perdidaFinal: perdidaAcum,
-    ivaFavorFinal: ivaFavorAcum,
-  } = calcMonthData(MESES, ingresosYear, egresosYear);
-
   const sel = monthData[selectedMonth];
 
-  // Acumulado anual (perdidaAcum e ivaFavorAcum ya tienen el saldo final tras recorrer los 12 meses)
   const acumIngresosFacturados = monthData.reduce((s, b) => s + b.ingresosFacturados, 0);
   const acumIVAPorPagar = monthData.reduce((s, b) => s + b.ivaPorPagar, 0);
   const acumISR = monthData.reduce((s, b) => s + b.isrEstimado, 0);
   const acumTotalImpuestos = acumIVAPorPagar + acumISR;
 
-  // Export para contador
+  // Losses from previous years feeding into this year
+  const perdidasAnteriores = perdidas
+    .filter((p) => p.year >= year - 10 && p.year < year && p.monto > 0)
+    .sort((a, b) => a.year - b.year);
+
+  // Export CSV
   const exportarParaContador = () => {
     const headers = [
       'Mes',
@@ -177,6 +90,7 @@ export default function FiscalPage() {
       'Egresos No Deducibles',
       'Utilidad/Pérdida Mes',
       'Pérdida Anterior Acum.',
+      'Pérdida Ejercicios Ant.',
       'Base ISR',
       'ISR Estimado',
       'Total Impuestos',
@@ -194,6 +108,7 @@ export default function FiscalPage() {
       String(b.egresosNoDeducibles),
       String(b.utilidadMes),
       String(b.perdidaAnterior),
+      String(b.perdidaEjerciciosAnteriores),
       String(b.baseISR),
       String(b.isrEstimado),
       String(b.totalImpuestos),
@@ -211,6 +126,7 @@ export default function FiscalPage() {
       String(monthData.reduce((s, b) => s + b.egresosNoDeducibles, 0)),
       '',
       String(perdidaAcum),
+      String(perdidaArrastrable),
       '',
       String(acumISR),
       String(acumTotalImpuestos),
@@ -219,7 +135,6 @@ export default function FiscalPage() {
   };
 
   const exportarDetalle = () => {
-    // Exportar el detalle de ingresos y egresos del mes seleccionado
     const headers = [
       'Tipo',
       'Fecha',
@@ -258,6 +173,21 @@ export default function FiscalPage() {
     downloadCSV(`fiscal_${year}_${sel.label.replace(/\s/g, '')}_detalle`, headers, rows);
   };
 
+  const exportarPDF = () => {
+    generateFiscalPDF(year, monthData, {
+      nombreNegocio: config.nombreNegocio,
+      rfc: config.rfc,
+      regimenFiscal: config.regimenFiscal,
+      perdidaArrastrable,
+      perdidaAcum,
+      ivaFavorAcum,
+      acumIngresosFacturados,
+      acumIVAPorPagar,
+      acumISR,
+      acumTotalImpuestos,
+    });
+  };
+
   return (
     <div>
       <PageHeader
@@ -277,6 +207,19 @@ export default function FiscalPage() {
               ))}
             </select>
             <button
+              onClick={exportarPDF}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-[#c72a09] text-white hover:bg-[#a82207] transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+                />
+              </svg>
+              PDF
+            </button>
+            <button
               onClick={exportarParaContador}
               className="px-4 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-[#0a0a0a] text-white hover:bg-[#222] transition-colors flex items-center gap-2"
             >
@@ -287,7 +230,7 @@ export default function FiscalPage() {
                   d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
                 />
               </svg>
-              CSV Contador
+              CSV
             </button>
           </div>
         }
@@ -326,6 +269,29 @@ export default function FiscalPage() {
           </div>
         );
       })()}
+
+      {/* Multi-year loss carryforward */}
+      {perdidaArrastrable > 0 && (
+        <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <p className="text-xs font-bold text-purple-700">Pérdidas de ejercicios anteriores (Art. 57 LISR)</p>
+              <p className="text-[10px] text-purple-500 mt-0.5">
+                Se aplican contra la utilidad de enero {year}. Vigencia: hasta 10 años.
+              </p>
+            </div>
+            <p className="text-lg font-black text-purple-700">{formatCurrency(perdidaArrastrable)}</p>
+          </div>
+          <div className="flex gap-2 flex-wrap mt-2">
+            {perdidasAnteriores.map((p) => (
+              <span key={p.year} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-purple-100 text-purple-600">
+                {p.year}: {formatCurrency(p.monto)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
 
       {/* Acumulado Anual */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -377,9 +343,7 @@ export default function FiscalPage() {
           <button
             key={idx}
             onClick={() => setSelectedMonth(idx)}
-            className={`p-3 rounded-xl text-center border transition-all ${
-              selectedMonth === idx ? 'border-[#c72a09] bg-[#c72a09]/5' : 'border-neutral-200 hover:border-neutral-400'
-            }`}
+            className={`p-3 rounded-xl text-center border transition-all ${selectedMonth === idx ? 'border-[#c72a09] bg-[#c72a09]/5' : 'border-neutral-200 hover:border-neutral-400'}`}
           >
             <p
               className={`text-[10px] font-bold tracking-[0.05em] uppercase ${selectedMonth === idx ? 'text-[#c72a09]' : 'text-neutral-400'}`}
@@ -530,6 +494,14 @@ export default function FiscalPage() {
                   <span className="text-sm font-bold text-amber-400">{formatCurrency(sel.perdidaAnterior)}</span>
                 </div>
               )}
+              {sel.perdidaEjerciciosAnteriores > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-purple-400">(-) Pérdida ejercicios ant.</span>
+                  <span className="text-sm font-bold text-purple-400">
+                    {formatCurrency(sel.perdidaEjerciciosAnteriores)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-sm text-white/50">Base gravable</span>
                 <span className="text-sm font-bold text-white">{formatCurrency(sel.baseISR)}</span>
@@ -572,13 +544,25 @@ export default function FiscalPage() {
         </div>
       </div>
 
+      {/* Year-end loss saved notice */}
+      {perdidaAcum > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+          <p className="text-xs text-amber-700">
+            <span className="font-bold">Pérdida fiscal del ejercicio {year}:</span> {formatCurrency(perdidaAcum)}.
+            {year < new Date().getFullYear()
+              ? ' Se arrastrará automáticamente a ejercicios posteriores (hasta 10 años, Art. 57 LISR).'
+              : ' Al cierre del año se guardará para arrastrar al siguiente ejercicio.'}
+          </p>
+        </div>
+      )}
+
       {/* Disclaimer */}
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
         <p className="text-xs text-amber-700">
           <span className="font-bold">Nota:</span> Los cálculos de ISR usan la tabla del Art. 96 LISR para Persona
-          Física con Actividad Empresarial. Las pérdidas fiscales se acumulan y se aplican contra utilidades de meses
-          posteriores del mismo ejercicio. El IVA a favor se acumula por separado y se aplica contra IVA por pagar de
-          meses siguientes. Ambos saldos son independientes. Las cifras son estimaciones — consulta con tu contador.
+          Física con Actividad Empresarial. Las pérdidas fiscales se acumulan mensualmente y se arrastran entre
+          ejercicios por hasta 10 años (Art. 57 LISR). El IVA a favor se acumula por separado. Las cifras son
+          estimaciones — consulta con tu contador.
         </p>
       </div>
     </div>

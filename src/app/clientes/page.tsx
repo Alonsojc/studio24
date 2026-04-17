@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getClientes, getIngresos, getPedidos } from '@/lib/store';
+import { cloudGetClientes, cloudGetIngresos, cloudGetPedidos } from '@/lib/store-cloud';
 import { addCliente, updateCliente, deleteCliente } from '@/lib/store-sync';
-import { Cliente, Ingreso, Pedido } from '@/lib/types';
+import { useCloudStore } from '@/lib/useCloudStore';
+import { Cliente } from '@/lib/types';
 import { formatCurrency, formatDate, validateCliente, estadoPedidoLabel, estadoPedidoColor } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
@@ -17,43 +19,40 @@ function emptyCliente(): Omit<Cliente, 'id' | 'createdAt'> {
 }
 
 export default function ClientesPage() {
-  const isClient = typeof window !== 'undefined';
-  const [clientes, setClientes] = useState<Cliente[]>(() =>
-    isClient ? getClientes().sort((a, b) => a.nombre.localeCompare(b.nombre)) : [],
+  const { data: clientesRaw, reload: reloadClientes } = useCloudStore(
+    getClientes,
+    cloudGetClientes,
+    'bordados_clientes',
   );
-  const [ingresos, setIngresos] = useState<Ingreso[]>(() => (isClient ? getIngresos() : []));
-  const [pedidos, setPedidos] = useState<Pedido[]>(() => (isClient ? getPedidos() : []));
+  const { data: ingresos, reload: reloadIngresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const { data: pedidos, reload: reloadPedidos } = useCloudStore(getPedidos, cloudGetPedidos, 'bordados_pedidos');
+  const clientes = [...clientesRaw].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const reload = () => {
+    reloadClientes();
+    reloadIngresos();
+    reloadPedidos();
+  };
   const [modalOpen, setModalOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyCliente());
+  const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [mounted] = useState(() => isClient);
-
-  const reload = useCallback(() => {
-    setClientes(getClientes().sort((a, b) => a.nombre.localeCompare(b.nombre)));
-    setIngresos(getIngresos());
-    setPedidos(getPedidos());
-  }, []);
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   const openNew = () => {
     setEditingId(null);
-    setForm(emptyCliente());
+    const initial = emptyCliente();
+    setForm(initial);
+    setFormSnapshot(JSON.stringify(initial));
     setFormError(null);
     setModalOpen(true);
   };
   const openEdit = (c: Cliente) => {
     setEditingId(c.id);
     setForm({ ...c });
+    setFormSnapshot(JSON.stringify(c));
     setFormError(null);
     setModalOpen(true);
   };
@@ -308,6 +307,7 @@ export default function ClientesPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editingId ? 'Editar Cliente' : 'Nuevo Cliente'}
+        dirty={JSON.stringify(form) !== formSnapshot}
       >
         <div className="space-y-4">
           <div>

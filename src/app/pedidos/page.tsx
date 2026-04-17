@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getPedidos, getClientes } from '@/lib/store';
-import { addPedido, updatePedido, deletePedido, addIngreso } from '@/lib/store-sync';
-import { Pedido, Cliente, EstadoPedido, EstadoPago, ConceptoIngreso, Ingreso } from '@/lib/types';
+import { cloudGetPedidos, cloudGetClientes } from '@/lib/store-cloud';
+import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolio } from '@/lib/store-sync';
+import { useCloudStore } from '@/lib/useCloudStore';
+import { Pedido, EstadoPedido, EstadoPago, ConceptoIngreso, Ingreso } from '@/lib/types';
 import {
   formatCurrency,
   formatDate,
@@ -13,6 +15,7 @@ import {
   estadoPedidoColor,
   todayString,
   validatePedido,
+  calcIVA,
 } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
@@ -84,31 +87,27 @@ const statusMessages: Record<EstadoPedido, string> = {
 };
 
 export default function PedidosPage() {
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const { data: pedidosRaw, reload: reloadPedidos } = useCloudStore(getPedidos, cloudGetPedidos, 'bordados_pedidos');
+  const { data: clientes, reload: reloadClientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
+  const pedidos = [...pedidosRaw].sort((a, b) => {
+    if (a.urgente && !b.urgente) return -1;
+    if (!a.urgente && b.urgente) return 1;
+    return b.fechaPedido.localeCompare(a.fechaPedido);
+  });
+  const reload = () => {
+    reloadPedidos();
+    reloadClientes();
+  };
   const [modalOpen, setModalOpen] = useState(false);
   const [checklistOpen, setChecklistOpen] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyPedido());
+  const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
-  const [mounted, setMounted] = useState(false);
+  const isClient = typeof window !== 'undefined';
+  const [mounted] = useState(() => isClient);
 
-  const reload = useCallback(() => {
-    setPedidos(
-      getPedidos().sort((a, b) => {
-        if (a.urgente && !b.urgente) return -1;
-        if (!a.urgente && b.urgente) return 1;
-        return b.fechaPedido.localeCompare(a.fechaPedido);
-      }),
-    );
-    setClientes(getClientes());
-  }, []);
-
-  useEffect(() => {
-    reload();
-    setMounted(true);
-  }, [reload]);
   if (!mounted)
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -118,13 +117,16 @@ export default function PedidosPage() {
 
   const openNew = () => {
     setEditingId(null);
-    setForm(emptyPedido());
+    const initial = emptyPedido();
+    setForm(initial);
+    setFormSnapshot(JSON.stringify(initial));
     setFormError(null);
     setModalOpen(true);
   };
   const openEdit = (p: Pedido) => {
     setEditingId(p.id);
     setForm({ ...p });
+    setFormSnapshot(JSON.stringify(p));
     setFormError(null);
     setModalOpen(true);
   };
@@ -164,7 +166,8 @@ export default function PedidosPage() {
       // If fully paid, offer to create Ingreso
       if ((p.estadoPago === 'pagado' || p.montoPagado >= p.montoTotal) && p.montoTotal > 0) {
         if (confirm('Pedido entregado y pagado. ¿Crear ingreso automáticamente?')) {
-          crearIngresoDePedido(p);
+          const conFactura = confirm('¿Facturar este ingreso? (IVA 16%)');
+          crearIngresoDePedido(p, conFactura);
         }
       }
     }
@@ -172,7 +175,8 @@ export default function PedidosPage() {
     reload();
   };
 
-  const crearIngresoDePedido = (p: Pedido) => {
+  const crearIngresoDePedido = (p: Pedido, conFactura: boolean) => {
+    const iva = conFactura ? calcIVA(p.montoTotal) : 0;
     const ingreso: Ingreso = {
       id: uuid(),
       fecha: todayString(),
@@ -181,11 +185,11 @@ export default function PedidosPage() {
       descripcion: p.descripcion,
       concepto: p.concepto,
       monto: p.montoTotal,
-      iva: 0,
-      montoTotal: p.montoTotal,
+      iva,
+      montoTotal: p.montoTotal + iva,
       formaPago: 'transferencia',
-      factura: false,
-      numeroFactura: '',
+      factura: conFactura,
+      numeroFactura: conFactura ? getNextFolio('ING') : '',
       notas: `Generado desde pedido`,
       createdAt: new Date().toISOString(),
     };
@@ -767,7 +771,8 @@ export default function PedidosPage() {
                                       {
                                         label: 'Crear Ingreso',
                                         onClick: () => {
-                                          crearIngresoDePedido(p);
+                                          const conFactura = confirm('¿Facturar este ingreso? (IVA 16%)');
+                                          crearIngresoDePedido(p, conFactura);
                                           alert('Ingreso creado!');
                                         },
                                       },
@@ -787,7 +792,12 @@ export default function PedidosPage() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? 'Editar Pedido' : 'Nuevo Pedido'}>
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editingId ? 'Editar Pedido' : 'Nuevo Pedido'}
+        dirty={JSON.stringify(form) !== formSnapshot}
+      >
         <div className="space-y-4">
           <div>
             <label className={labelClass}>Descripción *</label>
@@ -804,7 +814,13 @@ export default function PedidosPage() {
               <label className={labelClass}>Cliente</label>
               <select
                 value={form.clienteId}
-                onChange={(e) => { if (e.target.value === '__new__') { window.open('/studio24/clientes', '_blank'); return; } setForm({ ...form, clienteId: e.target.value }); }}
+                onChange={(e) => {
+                  if (e.target.value === '__new__') {
+                    window.open('/studio24/clientes', '_blank');
+                    return;
+                  }
+                  setForm({ ...form, clienteId: e.target.value });
+                }}
                 className={inputClass}
               >
                 <option value="">Sin cliente</option>
