@@ -5,6 +5,7 @@ import { generarEgresosRecurrentes } from '@/lib/recurrentes';
 import { restoreFromIDB, syncAllToIDB } from '@/lib/db';
 import { getPedidos } from '@/lib/store';
 import { formatDate } from '@/lib/helpers';
+import { autoBackupIfDue } from '@/lib/auto-backup';
 
 const NOTIF_KEY = 'bordados_last_notif';
 
@@ -92,6 +93,9 @@ export default function SeedData() {
 
     // Notificaciones de pedidos por vencer
     checkPedidosNotification();
+
+    // Auto-backup semanal a Supabase Storage
+    autoBackupIfDue();
   }, []);
 
   return null;
