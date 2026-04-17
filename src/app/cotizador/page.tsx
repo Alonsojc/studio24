@@ -3,17 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { formatCurrency, calcIVA } from '@/lib/helpers';
 import { v4 as uuid } from 'uuid';
-import {
-  getClientes,
-  getConfig,
-  getCotizaciones,
-  getProductos,
-} from '@/lib/store';
-import {
-  addCotizacion,
-  updateCotizacion,
-  getNextFolio,
-} from '@/lib/store-sync';
+import { getClientes, getConfig, getCotizaciones, getProductos } from '@/lib/store';
+import { addCotizacion, updateCotizacion, getNextFolio } from '@/lib/store-sync';
 import { Cliente, ConfigNegocio, Cotizacion, Producto } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
 import { inputClass, labelClass } from '@/lib/styles';
@@ -412,7 +403,17 @@ export default function CotizadorPage() {
             <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-4">Cliente</h3>
             <div className="mb-4">
               <label className={labelClass}>Seleccionar cliente</label>
-              <select value={clienteId} onChange={(e) => { if (e.target.value === '__new__') { window.open('/studio24/clientes', '_blank'); return; } selectCliente(e.target.value); }} className={inputClass}>
+              <select
+                value={clienteId}
+                onChange={(e) => {
+                  if (e.target.value === '__new__') {
+                    window.open('/studio24/clientes', '_blank');
+                    return;
+                  }
+                  selectCliente(e.target.value);
+                }}
+                className={inputClass}
+              >
                 <option value="">-- Escribir manualmente --</option>
                 <option value="__new__">+ Nuevo cliente</option>
                 {clientes.map((c) => (
@@ -599,6 +600,7 @@ export default function CotizadorPage() {
                       <label className="text-[9px] text-neutral-400 font-medium">Cant.</label>
                       <input
                         type="number"
+                        inputMode="numeric"
                         min="1"
                         value={item.cantidad}
                         onChange={(e) => updateItem(item.id, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))}
@@ -609,6 +611,7 @@ export default function CotizadorPage() {
                       <label className="text-[9px] text-neutral-400 font-medium">Precio</label>
                       <input
                         type="number"
+                        inputMode="decimal"
                         step="0.01"
                         min="0"
                         value={item.precioUnitario || ''}
@@ -675,6 +678,7 @@ export default function CotizadorPage() {
                   <span className="text-xs text-neutral-400">TC:</span>
                   <input
                     type="number"
+                    inputMode="decimal"
                     step={0.1}
                     min={1}
                     value={tipoCambio}

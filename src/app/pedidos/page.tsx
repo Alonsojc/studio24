@@ -587,7 +587,7 @@ export default function PedidosPage() {
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-neutral-100 overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[760px]">
               <thead>
                 <tr className="border-b border-neutral-100">
                   <th className="px-5 py-4 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">
@@ -814,7 +814,7 @@ export default function PedidosPage() {
               className={inputClass}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Cliente</label>
               <select
@@ -852,11 +852,12 @@ export default function PedidosPage() {
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className={labelClass}>Piezas</label>
               <input
                 type="number"
+                inputMode="numeric"
                 min="1"
                 value={form.piezas}
                 onChange={(e) => setForm({ ...form, piezas: Math.max(1, parseInt(e.target.value) || 1) })}
@@ -867,6 +868,7 @@ export default function PedidosPage() {
               <label className={labelClass}>Precio unitario</label>
               <input
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 min="0"
                 value={form.precioUnitario || ''}
@@ -881,7 +883,7 @@ export default function PedidosPage() {
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Fecha de pedido</label>
               <input
@@ -901,7 +903,7 @@ export default function PedidosPage() {
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Estado</label>
               <select
@@ -946,11 +948,12 @@ export default function PedidosPage() {
           {/* Pago */}
           <div className="bg-neutral-50 rounded-xl p-4">
             <h4 className={labelClass}>Pago</h4>
-            <div className="grid grid-cols-2 gap-4 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
               <div>
                 <label className="text-[10px] text-neutral-400 font-medium">Monto pagado</label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min="0"
                   value={form.montoPagado || ''}
@@ -980,11 +983,12 @@ export default function PedidosPage() {
           {/* Costo de materiales */}
           <div className="bg-neutral-50 rounded-xl p-4">
             <h4 className={labelClass}>Costo de Materiales</h4>
-            <div className="grid grid-cols-3 gap-4 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-2">
               <div>
                 <label className="text-[10px] text-neutral-400 font-medium">Costo materiales</label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min="0"
                   value={form.costoMateriales || ''}
