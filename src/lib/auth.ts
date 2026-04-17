@@ -1,6 +1,7 @@
 'use client';
 
 import { supabase } from './supabase';
+import { clearTeamIdCache } from './teams';
 
 export async function signUp(email: string, password: string) {
   const { data, error } = await supabase.auth.signUp({ email, password });
@@ -17,6 +18,7 @@ export async function signIn(email: string, password: string) {
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) throw new Error(error.message);
+  clearTeamIdCache();
 }
 
 export async function resetPassword(email: string) {

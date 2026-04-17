@@ -1,9 +1,16 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRole } from '@/components/RoleProvider';
 import { roleLabel, roleColor, type UserRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
+import {
+  getTeamMembers,
+  getPendingInvitations,
+  cancelInvitation,
+  type TeamMember,
+  type PendingInvitation,
+} from '@/lib/teams';
 import {
   getConfig,
   exportAllData,
@@ -56,20 +63,24 @@ export default function AjustesPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<UserRole>('operador');
   const [inviteMsg, setInviteMsg] = useState('');
-  const [teamMembers, setTeamMembers] = useState<{ id: string; email: string; role: string; nombre: string }[]>([]);
+  const [inviteError, setInviteError] = useState('');
+  const [inviteSending, setInviteSending] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvitation[]>([]);
   const { role } = useRole();
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const reloadTeam = useCallback(async () => {
+    const [members, invites] = await Promise.all([getTeamMembers(), getPendingInvitations()]);
+    setTeamMembers(members);
+    setPendingInvites(invites);
+  }, []);
+
   useEffect(() => {
     if (role === 'admin') {
-      supabase
-        .from('profiles')
-        .select('*')
-        .then(({ data }) => {
-          if (data) setTeamMembers(data as { id: string; email: string; role: string; nombre: string }[]);
-        });
+      reloadTeam();
     }
-  }, [role]);
+  }, [role, reloadTeam]);
 
   if (!config)
     return (
@@ -454,7 +465,7 @@ export default function AjustesPage() {
               <div className="space-y-2 mb-5">
                 {teamMembers.map((m) => (
                   <div
-                    key={m.id}
+                    key={m.user_id}
                     className="flex items-center justify-between py-2 border-b border-neutral-50 last:border-0"
                   >
                     <div>
@@ -471,9 +482,44 @@ export default function AjustesPage() {
               </div>
             )}
 
+            {/* Pending invitations */}
+            {pendingInvites.length > 0 && (
+              <div className="space-y-2 mb-5">
+                <p className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Pendientes</p>
+                {pendingInvites.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex items-center justify-between py-2 border-b border-neutral-50 last:border-0"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-[#0a0a0a]">{inv.email}</p>
+                      <p className="text-xs text-neutral-400">Esperando que acepte la invitación</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase ${roleColor(inv.role as UserRole)}`}
+                      >
+                        {roleLabel(inv.role as UserRole)}
+                      </span>
+                      <button
+                        onClick={async () => {
+                          await cancelInvitation(inv.id);
+                          reloadTeam();
+                        }}
+                        className="text-xs text-neutral-400 hover:text-[#c72a09] transition-colors"
+                        aria-label="Cancelar invitación"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Invite form */}
             <p className="text-xs text-neutral-400 mb-3">
-              Invita a alguien a tu equipo. Debe registrarse con el email que indiques.
+              Invita a alguien a tu equipo. Le llegará un email con el enlace para unirse.
             </p>
             <div className="flex gap-2">
               <input
@@ -492,23 +538,41 @@ export default function AjustesPage() {
                 <option value="contador">Contador</option>
               </select>
               <button
+                disabled={inviteSending}
                 onClick={async () => {
-                  if (!inviteEmail) return;
+                  const email = inviteEmail.trim().toLowerCase();
+                  if (!email) return;
                   setInviteMsg('');
-                  const { error } = await supabase.from('invitations').insert({ email: inviteEmail, role: inviteRole });
-                  if (error) {
-                    setInviteMsg('Error: ' + error.message);
+                  setInviteError('');
+                  setInviteSending(true);
+                  const { error: dbError } = await supabase.from('invitations').insert({ email, role: inviteRole });
+                  if (dbError) {
+                    setInviteError(dbError.message);
+                    setInviteSending(false);
                     return;
                   }
-                  setInviteMsg(`Invitación guardada. ${inviteEmail} debe registrarse con ese email.`);
-                  setInviteEmail('');
+                  const { error: otpError } = await supabase.auth.signInWithOtp({
+                    email,
+                    options: {
+                      emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/studio24` : undefined,
+                    },
+                  });
+                  if (otpError) {
+                    setInviteError(`Invitación guardada, pero no se pudo enviar el email: ${otpError.message}`);
+                  } else {
+                    setInviteMsg(`Invitación enviada a ${email}.`);
+                    setInviteEmail('');
+                    reloadTeam();
+                  }
+                  setInviteSending(false);
                 }}
-                className="bg-[#0a0a0a] text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-[0.05em] hover:bg-[#222] transition-colors shrink-0"
+                className="bg-[#0a0a0a] text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-[0.05em] hover:bg-[#222] transition-colors shrink-0 disabled:opacity-50"
               >
-                Invitar
+                {inviteSending ? 'Enviando…' : 'Invitar'}
               </button>
             </div>
             {inviteMsg && <p className="text-xs text-green-600 mt-2">{inviteMsg}</p>}
+            {inviteError && <p className="text-xs text-red-500 mt-2">{inviteError}</p>}
           </div>
         )}
       </div>
