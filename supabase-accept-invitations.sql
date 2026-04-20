@@ -55,9 +55,10 @@ $$;
 grant execute on function public.accept_pending_invitations() to authenticated;
 
 -- ============================================================
--- 2. current_user_team_id(): preferir equipos donde el usuario
---    NO es dueño. Así los invitados (contador, operador) caen en
---    el equipo del que los invitó aunque tengan su propio equipo viejo.
+-- 2. current_user_team_id(): regresa la membresía MÁS RECIENTE.
+--    Si un usuario fue invitado después de crear su propio equipo,
+--    su membresía del equipo invitado es más reciente → la verá.
+--    Simple y sin joins.
 -- ============================================================
 
 create or replace function public.current_user_team_id()
@@ -67,11 +68,9 @@ stable
 security definer
 set search_path = public
 as $$
-  select tm.team_id
-  from team_members tm
-  left join teams t on t.id = tm.team_id
-  where tm.user_id = auth.uid()
-  order by (t.owner_id = auth.uid())::int asc,  -- equipos invitados primero (false < true)
-           tm.joined_at asc
+  select team_id
+  from team_members
+  where user_id = auth.uid()
+  order by joined_at desc
   limit 1;
 $$;
