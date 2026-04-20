@@ -17,6 +17,7 @@ import {
   type ResultadoDeducibilidad,
 } from '@/lib/deducibilidad';
 import PageHeader from '@/components/PageHeader';
+import MonthBar from '@/components/MonthBar';
 import { btnPrimary } from '@/lib/styles';
 
 interface FacturaPendiente {
@@ -40,6 +41,10 @@ export default function FacturasPage() {
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
   const [processing, setProcessing] = useState(false);
   const [duplicadas, setDuplicadas] = useState(0);
+  const now = new Date();
+  const [filterYear, setFilterYear] = useState(now.getFullYear());
+  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [filterTipo, setFilterTipo] = useState<'all' | 'ingreso' | 'egreso'>('all');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(() => {
@@ -419,6 +424,7 @@ export default function FacturasPage() {
         total: i.montoTotal,
         uuid: i.uuidCFDI!,
         fecha: i.fecha,
+        montoTotal: i.montoTotal,
         xmlUrl: i.xmlUrl || '',
         pdfUrl: i.pdfUrl || '',
       })),
@@ -430,10 +436,33 @@ export default function FacturasPage() {
         total: e.montoTotal,
         uuid: e.uuidCFDI!,
         fecha: e.fecha,
+        montoTotal: e.montoTotal,
         xmlUrl: e.xmlUrl || '',
         pdfUrl: e.pdfUrl || '',
       })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
+
+  // Available years across all facturas (plus current year)
+  const facturaYears = Array.from(
+    new Set([...facturasVinculadas.map((f) => parseInt(f.fecha.substring(0, 4), 10)), now.getFullYear()]),
+  )
+    .sort()
+    .reverse();
+
+  // Apply tipo + month/year filter
+  const facturasVisible = facturasVinculadas.filter((f) => {
+    if (filterTipo !== 'all' && f.tipo !== filterTipo) return false;
+    if (filterMonth === 'all') {
+      if (!f.fecha.startsWith(String(filterYear) + '-')) return false;
+    } else {
+      if (!f.fecha.startsWith(filterMonth)) return false;
+    }
+    return true;
+  });
+
+  // MonthBar items reflect the tipo filter but ignore the month filter
+  const monthBarItems = facturasVinculadas.filter((f) => filterTipo === 'all' || f.tipo === filterTipo);
+  const monthBarColor: 'green' | 'red' = filterTipo === 'egreso' ? 'red' : 'green';
 
   return (
     <div>
@@ -583,9 +612,56 @@ export default function FacturasPage() {
       {/* Facturas vinculadas (persisten) */}
       {facturasVinculadas.length > 0 && (
         <div>
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-3">
-            {facturasVinculadas.length} factura{facturasVinculadas.length > 1 ? 's' : ''} en el sistema
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">
+              {facturasVisible.length} de {facturasVinculadas.length} factura
+              {facturasVinculadas.length === 1 ? '' : 's'}
+            </h3>
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-xl border border-neutral-200 overflow-hidden">
+                {(['all', 'ingreso', 'egreso'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setFilterTipo(t)}
+                    className={`px-3 py-2 text-[10px] font-bold tracking-[0.05em] uppercase transition-colors ${
+                      filterTipo === t
+                        ? t === 'ingreso'
+                          ? 'bg-green-600 text-white'
+                          : t === 'egreso'
+                            ? 'bg-[#c72a09] text-white'
+                            : 'bg-[#0a0a0a] text-white'
+                        : 'bg-white text-neutral-500 hover:text-[#0a0a0a]'
+                    }`}
+                  >
+                    {t === 'all' ? 'Todas' : t === 'ingreso' ? 'Emitidas' : 'Recibidas'}
+                  </button>
+                ))}
+              </div>
+              <select
+                value={filterYear}
+                onChange={(e) => {
+                  setFilterYear(Number(e.target.value));
+                  setFilterMonth('all');
+                }}
+                className="border border-neutral-200 rounded-xl px-3 py-2 text-xs font-bold bg-white focus:outline-none focus:border-[#c72a09]"
+              >
+                {facturaYears.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <MonthBar
+            items={monthBarItems}
+            year={filterYear}
+            selectedMonth={filterMonth}
+            onSelect={setFilterMonth}
+            color={monthBarColor}
+          />
+
           <div className="bg-white rounded-2xl border border-neutral-100 overflow-x-auto">
             <table className="w-full text-sm min-w-[720px]">
               <thead>
@@ -611,42 +687,50 @@ export default function FacturasPage() {
                 </tr>
               </thead>
               <tbody>
-                {facturasVinculadas.map((f) => (
-                  <tr key={f.uuid} className="border-b border-neutral-50 hover:bg-neutral-50/50">
-                    <td className="px-4 py-3 text-xs text-neutral-400">{formatDate(f.fecha)}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase ${f.tipo === 'ingreso' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}
-                      >
-                        {f.tipo === 'ingreso' ? 'Emitida' : 'Recibida'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-[#0a0a0a]">{f.desc}</td>
-                    <td className="px-4 py-3 text-right font-bold">{formatCurrency(f.total)}</td>
-                    <td className="px-4 py-3 text-[10px] text-neutral-300 font-mono">{f.uuid.substring(0, 8)}...</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex gap-2 justify-end">
-                        {f.pdfUrl ? (
-                          <button
-                            onClick={() => openFacturaFile({ pdfUrl: f.pdfUrl })}
-                            className="text-[10px] font-bold uppercase tracking-wide text-[#c72a09] hover:underline"
-                          >
-                            PDF
-                          </button>
-                        ) : null}
-                        {f.xmlUrl ? (
-                          <button
-                            onClick={() => openFacturaFile({ xmlUrl: f.xmlUrl })}
-                            className="text-[10px] font-bold uppercase tracking-wide text-neutral-500 hover:underline"
-                          >
-                            XML
-                          </button>
-                        ) : null}
-                        {!f.pdfUrl && !f.xmlUrl && <span className="text-[10px] text-neutral-300">—</span>}
-                      </div>
+                {facturasVisible.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-xs text-neutral-400">
+                      No hay facturas para este filtro.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  facturasVisible.map((f) => (
+                    <tr key={f.uuid} className="border-b border-neutral-50 hover:bg-neutral-50/50">
+                      <td className="px-4 py-3 text-xs text-neutral-400">{formatDate(f.fecha)}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase ${f.tipo === 'ingreso' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}
+                        >
+                          {f.tipo === 'ingreso' ? 'Emitida' : 'Recibida'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-[#0a0a0a]">{f.desc}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatCurrency(f.total)}</td>
+                      <td className="px-4 py-3 text-[10px] text-neutral-300 font-mono">{f.uuid.substring(0, 8)}...</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex gap-2 justify-end">
+                          {f.pdfUrl ? (
+                            <button
+                              onClick={() => openFacturaFile({ pdfUrl: f.pdfUrl })}
+                              className="text-[10px] font-bold uppercase tracking-wide text-[#c72a09] hover:underline"
+                            >
+                              PDF
+                            </button>
+                          ) : null}
+                          {f.xmlUrl ? (
+                            <button
+                              onClick={() => openFacturaFile({ xmlUrl: f.xmlUrl })}
+                              className="text-[10px] font-bold uppercase tracking-wide text-neutral-500 hover:underline"
+                            >
+                              XML
+                            </button>
+                          ) : null}
+                          {!f.pdfUrl && !f.xmlUrl && <span className="text-[10px] text-neutral-300">—</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
