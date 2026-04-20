@@ -29,6 +29,7 @@ export interface Cliente {
 export interface Proveedor {
   id: string;
   nombre: string;
+  rfc?: string;
   contacto: string;
   telefono: string;
   email: string;
