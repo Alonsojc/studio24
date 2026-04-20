@@ -43,7 +43,9 @@ export default function FacturasPage() {
   const [duplicadas, setDuplicadas] = useState(0);
   const now = new Date();
   const [filterYear, setFilterYear] = useState(now.getFullYear());
-  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [filterMonth, setFilterMonth] = useState<string>(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+  );
   const [filterTipo, setFilterTipo] = useState<'all' | 'ingreso' | 'egreso'>('all');
   const fileRef = useRef<HTMLInputElement>(null);
 
