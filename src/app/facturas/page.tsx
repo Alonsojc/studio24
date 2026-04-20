@@ -274,6 +274,9 @@ export default function FacturasPage() {
             if (existing) {
               updateIngreso({
                 ...existing,
+                factura: true,
+                numeroFactura: existing.numeroFactura || current2.cfdi.uuid,
+                uuidCFDI: existing.uuidCFDI || current2.cfdi.uuid,
                 xmlUrl: existing.xmlUrl || attachXml,
                 pdfUrl: existing.pdfUrl || attachPdf,
               });
@@ -283,6 +286,9 @@ export default function FacturasPage() {
             if (existing) {
               updateEgreso({
                 ...existing,
+                factura: true,
+                numeroFactura: existing.numeroFactura || current2.cfdi.uuid,
+                uuidCFDI: existing.uuidCFDI || current2.cfdi.uuid,
                 xmlUrl: existing.xmlUrl || attachXml,
                 pdfUrl: existing.pdfUrl || attachPdf,
               });

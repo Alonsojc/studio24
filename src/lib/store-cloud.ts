@@ -52,6 +52,13 @@ const SNAKE_OVERRIDES: Record<string, string> = {
   soloFiscal: 'solo_fiscal',
 };
 
+// Reverse overrides for keys whose camelCase form doesn't follow the
+// simple snake_case → camelCase rule (acronyms, etc.)
+const CAMEL_OVERRIDES: Record<string, string> = {
+  uuid_cfdi: 'uuidCFDI',
+  con_iva: 'conIVA',
+};
+
 function toSnake(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -65,7 +72,7 @@ function toCamel<T>(obj: Record<string, unknown>): T {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (key === 'user_id' || key === 'team_id') continue; // scoping columns stay server-side
-    const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    const camelKey = CAMEL_OVERRIDES[key] || key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
     result[camelKey] = value;
   }
   return result as T;
