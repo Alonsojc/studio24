@@ -16,7 +16,7 @@ export default function StatCard({ label, value, subtitle, accent, color }: Stat
 
   return (
     <div
-      className={`rounded-2xl p-6 transition-all ${
+      className={`rounded-2xl p-4 sm:p-6 transition-all ${
         accent && !valueColor ? 'bg-[#c72a09] text-white' : 'bg-white border border-neutral-100'
       }`}
     >
@@ -28,7 +28,7 @@ export default function StatCard({ label, value, subtitle, accent, color }: Stat
         {label}
       </p>
       <p
-        className={`text-[28px] font-black tracking-[-0.03em] mt-2 ${
+        className={`text-2xl sm:text-[28px] font-black tracking-[-0.03em] mt-2 ${
           valueColor || (accent ? 'text-white' : 'text-[#0a0a0a]')
         }`}
       >

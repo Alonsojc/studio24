@@ -292,9 +292,8 @@ export default function FiscalPage() {
         </div>
       )}
 
-
       {/* Acumulado Anual */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
         <StatCard
           label="Facturado Anual"
           value={formatCurrency(acumIngresosFacturados)}

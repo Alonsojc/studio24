@@ -42,7 +42,7 @@ export default function ActionMenu({ items }: ActionMenuProps) {
     if (!open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      setDropUp(spaceBelow < 200);
+      setDropUp(spaceBelow < 140);
     }
     setOpen(!open);
   };
@@ -52,7 +52,8 @@ export default function ActionMenu({ items }: ActionMenuProps) {
       <button
         ref={btnRef}
         onClick={handleToggle}
-        className="w-8 h-8 rounded-lg flex items-center justify-center text-neutral-300 hover:text-neutral-600 hover:bg-neutral-100 transition-all"
+        aria-label="Más acciones"
+        className="w-11 h-11 rounded-lg flex items-center justify-center text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-all"
       >
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
           <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
@@ -60,7 +61,9 @@ export default function ActionMenu({ items }: ActionMenuProps) {
       </button>
 
       {open && (
-        <div className={`absolute right-0 ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} z-[100] bg-white rounded-xl border border-neutral-100 shadow-xl py-1.5 min-w-[160px]`}>
+        <div
+          className={`absolute right-0 ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'} z-[100] bg-white rounded-xl border border-neutral-100 shadow-xl py-1.5 min-w-[160px]`}
+        >
           {items.map((item, idx) => (
             <button
               key={idx}
@@ -69,10 +72,8 @@ export default function ActionMenu({ items }: ActionMenuProps) {
                 setOpen(false);
                 item.onClick();
               }}
-              className={`w-full text-left px-4 py-2.5 text-xs font-medium transition-colors ${
-                item.danger
-                  ? 'text-red-500 hover:bg-red-50'
-                  : 'text-neutral-600 hover:bg-neutral-50'
+              className={`w-full text-left px-4 py-3 text-xs font-medium transition-colors ${
+                item.danger ? 'text-red-500 hover:bg-red-50' : 'text-neutral-600 hover:bg-neutral-50'
               }`}
             >
               {item.label}

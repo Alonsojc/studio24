@@ -101,7 +101,7 @@ export default function PhotoGallery({ pedidoId, readOnly = false }: PhotoGaller
       {photos.length === 0 ? (
         <p className="text-xs text-neutral-300 py-2">Sin fotos</p>
       ) : (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
           {photos.map((photo) => (
             <div key={photo.id} className="relative group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -114,9 +114,10 @@ export default function PhotoGallery({ pedidoId, readOnly = false }: PhotoGaller
               {!readOnly && (
                 <button
                   onClick={() => handleDelete(photo.id)}
-                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label="Eliminar foto"
+                  className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-red-500 text-white text-sm font-bold flex items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow"
                 >
-                  x
+                  ×
                 </button>
               )}
             </div>
@@ -134,9 +135,10 @@ export default function PhotoGallery({ pedidoId, readOnly = false }: PhotoGaller
           <img src={viewPhoto} alt="Foto ampliada" className="max-w-full max-h-full object-contain rounded-xl" />
           <button
             onClick={() => setViewPhoto(null)}
-            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 text-white text-lg font-bold flex items-center justify-center hover:bg-white/40 transition-colors"
+            aria-label="Cerrar foto"
+            className="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/20 text-white text-xl font-bold flex items-center justify-center hover:bg-white/40 transition-colors"
           >
-            x
+            ×
           </button>
         </div>
       )}
