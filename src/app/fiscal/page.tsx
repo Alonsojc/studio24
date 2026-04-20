@@ -8,6 +8,7 @@ import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
 import { downloadCSV } from '@/lib/csv';
 import { MESES, calcMonthData, getPerdidaArrastrable, savePerdida, getPerdidas } from '@/lib/fiscal';
 import { generateFiscalPDF } from '@/lib/fiscal-pdf';
+import Link from 'next/link';
 import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
 
@@ -206,6 +207,12 @@ export default function FiscalPage() {
                 </option>
               ))}
             </select>
+            <Link
+              href="/fiscal/diot"
+              className="px-4 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase border border-neutral-200 text-[#0a0a0a] hover:border-[#c72a09] hover:text-[#c72a09] transition-colors"
+            >
+              DIOT
+            </Link>
             <button
               onClick={exportarPDF}
               className="px-4 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-[#c72a09] text-white hover:bg-[#a82207] transition-colors flex items-center gap-2"

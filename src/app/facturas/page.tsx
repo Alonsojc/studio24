@@ -2,10 +2,10 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getIngresos, getEgresos, getConfig } from '@/lib/store';
+import { getIngresos, getEgresos, getConfig, getProveedores } from '@/lib/store';
 import { cloudGetIngresos, cloudGetEgresos } from '@/lib/store-cloud';
 import { useCloudStore } from '@/lib/useCloudStore';
-import { addIngreso, updateIngreso, addEgreso, updateEgreso } from '@/lib/store-sync';
+import { addIngreso, updateIngreso, addEgreso, updateEgreso, updateProveedor } from '@/lib/store-sync';
 import { Ingreso, Egreso } from '@/lib/types';
 import { formatCurrency, formatDate, todayString, calcIVA } from '@/lib/helpers';
 import { parseXMLFile, mapFormaPago, type DatosCFDI } from '@/lib/cfdi';
@@ -224,8 +224,20 @@ export default function FacturasPage() {
     // Re-read fresh data to avoid overwriting UUIDs set in a previous session
     const freshIngresos = getIngresos();
     const freshEgresos = getEgresos();
+    const freshProveedores = getProveedores();
     // Track IDs already processed in this batch to prevent double-linking
     const processedMatchIds = new Set<string>();
+
+    // Helper: when an egreso gets linked to a CFDI, backfill the proveedor's
+    // RFC from the emisor if the proveedor still has no RFC. This is what
+    // makes DIOT work later without manual data entry.
+    const syncProveedorRfc = (egreso: Egreso | undefined, rfcEmisor: string) => {
+      if (!egreso || !egreso.proveedorId || !rfcEmisor) return;
+      const prov = freshProveedores.find((p) => p.id === egreso.proveedorId);
+      if (prov && !prov.rfc) {
+        updateProveedor({ ...prov, rfc: rfcEmisor.toUpperCase() });
+      }
+    };
 
     for (let i = 0; i < updated.length; i++) {
       const f = updated[i];
@@ -294,6 +306,7 @@ export default function FacturasPage() {
                 xmlUrl: existing.xmlUrl || attachXml,
                 pdfUrl: existing.pdfUrl || attachPdf,
               });
+              syncProveedorRfc(existing, current2.cfdi.rfcEmisor);
             }
           }
           updated[i] = { ...current2, status: 'done' };
@@ -343,6 +356,7 @@ export default function FacturasPage() {
                 xmlUrl: xmlUrl || existing.xmlUrl,
                 pdfUrl: pdfUrl || existing.pdfUrl,
               });
+              syncProveedorRfc(existing, afterCheck.cfdi.rfcEmisor);
             }
           }
         } else {

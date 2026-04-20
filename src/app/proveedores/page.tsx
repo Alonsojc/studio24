@@ -25,7 +25,7 @@ const tiposProveedor = [
 ];
 
 function emptyProveedor(): Omit<Proveedor, 'id' | 'createdAt'> {
-  return { nombre: '', contacto: '', telefono: '', email: '', tipo: '', logo: '', notas: '' };
+  return { nombre: '', rfc: '', contacto: '', telefono: '', email: '', tipo: '', logo: '', notas: '' };
 }
 
 export default function ProveedoresPage() {
@@ -202,20 +202,33 @@ export default function ProveedoresPage() {
               className={inputClass}
             />
           </div>
-          <div>
-            <label className={labelClass}>Tipo</label>
-            <select
-              value={form.tipo}
-              onChange={(e) => setForm({ ...form, tipo: e.target.value })}
-              className={inputClass}
-            >
-              <option value="">Seleccionar...</option>
-              {tiposProveedor.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>RFC</label>
+              <input
+                type="text"
+                value={form.rfc || ''}
+                onChange={(e) => setForm({ ...form, rfc: e.target.value.toUpperCase() })}
+                placeholder="RFC para DIOT"
+                className={inputClass}
+                maxLength={13}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Tipo</label>
+              <select
+                value={form.tipo}
+                onChange={(e) => setForm({ ...form, tipo: e.target.value })}
+                className={inputClass}
+              >
+                <option value="">Seleccionar...</option>
+                {tiposProveedor.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
