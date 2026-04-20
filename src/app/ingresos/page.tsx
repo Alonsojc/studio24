@@ -24,6 +24,7 @@ import { downloadCSV } from '@/lib/csv';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 import MonthBar from '@/components/MonthBar';
 import Pagination, { PAGE_SIZE } from '@/components/Pagination';
+import { openFacturaFile } from '@/lib/cfdi-storage';
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
 const formasPago: FormaPago[] = ['efectivo', 'tarjeta', 'transferencia', 'otro'];
@@ -305,9 +306,16 @@ export default function IngresosPage() {
                   </td>
                   <td className="px-5 py-4 text-center">
                     {i.factura ? (
-                      <span className="w-5 h-5 rounded-full bg-[#c72a09] text-white text-[9px] font-bold inline-flex items-center justify-center">
+                      <button
+                        onClick={async () => {
+                          const ok = await openFacturaFile({ pdfUrl: i.pdfUrl, xmlUrl: i.xmlUrl });
+                          if (!ok) alert('Esta factura no tiene archivo guardado. Súbela desde /facturas.');
+                        }}
+                        title={i.pdfUrl || i.xmlUrl ? 'Ver factura' : 'Sin archivo guardado'}
+                        className={`w-7 h-7 rounded-full bg-[#c72a09] text-white text-[9px] font-bold inline-flex items-center justify-center transition-opacity ${i.pdfUrl || i.xmlUrl ? 'hover:bg-[#a82207]' : 'opacity-60 hover:opacity-100'}`}
+                      >
                         F
-                      </span>
+                      </button>
                     ) : (
                       <span className="text-neutral-200">—</span>
                     )}
