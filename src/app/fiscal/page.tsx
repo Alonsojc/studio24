@@ -208,6 +208,12 @@ export default function FiscalPage() {
               ))}
             </select>
             <Link
+              href="/fiscal/inpc"
+              className="px-4 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase border border-neutral-200 text-[#0a0a0a] hover:border-[#c72a09] hover:text-[#c72a09] transition-colors"
+            >
+              INPC
+            </Link>
+            <Link
               href="/fiscal/diot"
               className="px-4 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase border border-neutral-200 text-[#0a0a0a] hover:border-[#c72a09] hover:text-[#c72a09] transition-colors"
             >
