@@ -28,7 +28,7 @@ interface FacturaPendiente {
   matchId?: string;
   matchDesc?: string;
   deducibilidad?: ResultadoDeducibilidad;
-  status: 'pending' | 'matched' | 'new' | 'done' | 'error';
+  status: 'pending' | 'matched' | 'new' | 'attach' | 'done' | 'error';
 }
 
 export default function FacturasPage() {
@@ -69,26 +69,73 @@ export default function FacturasPage() {
       const cfdi = await parseXMLFile(xmlFile);
       if (!cfdi) continue;
 
-      // Skip if UUID already exists in system or in current batch
-      // Check duplicates by UUID or by exact amount + date
-      const yaExistePorUUID =
-        cfdi.uuid &&
-        (ingresos.some((i) => i.uuidCFDI === cfdi.uuid) ||
-          egresos.some((e) => e.uuidCFDI === cfdi.uuid) ||
-          nuevas.some((n) => n.cfdi.uuid === cfdi.uuid) ||
-          facturas.some((f) => f.cfdi.uuid === cfdi.uuid));
-      const yaExistePorMonto =
-        cfdi.total > 0 &&
-        (ingresos.some((i) => i.factura && Math.abs(i.montoTotal - cfdi.total) < 0.01 && i.fecha === cfdi.fecha) ||
-          egresos.some((e) => e.factura && Math.abs(e.montoTotal - cfdi.total) < 0.01 && e.fecha === cfdi.fecha));
-      if (yaExistePorUUID || yaExistePorMonto) {
+      // Find matching PDF by similar name (used in all flows)
+      const baseName = xmlFile.name.replace('.xml', '');
+      const pdfFile = pdfFiles.find((p) => p.name.replace('.pdf', '') === baseName);
+
+      // Skip if this same CFDI is already queued in the current session
+      const alreadyInBatch =
+        cfdi.uuid && (nuevas.some((n) => n.cfdi.uuid === cfdi.uuid) || facturas.some((f) => f.cfdi.uuid === cfdi.uuid));
+      if (alreadyInBatch) {
         skipped++;
         continue;
       }
 
-      // Find matching PDF by similar name
-      const baseName = xmlFile.name.replace('.xml', '');
-      const pdfFile = pdfFiles.find((p) => p.name.replace('.pdf', '') === baseName);
+      // Look up an existing record in ingresos/egresos, first by UUID, then by amount+date.
+      let existing: { id: string; descripcion: string; xmlUrl?: string; pdfUrl?: string } | null = null;
+      let existingTipo: 'ingreso' | 'egreso' | null = null;
+      if (cfdi.uuid) {
+        const ing = ingresos.find((i) => i.uuidCFDI === cfdi.uuid);
+        if (ing) {
+          existing = ing;
+          existingTipo = 'ingreso';
+        } else {
+          const eg = egresos.find((e) => e.uuidCFDI === cfdi.uuid);
+          if (eg) {
+            existing = eg;
+            existingTipo = 'egreso';
+          }
+        }
+      }
+      if (!existing && cfdi.total > 0) {
+        const ing = ingresos.find(
+          (i) => i.factura && Math.abs(i.montoTotal - cfdi.total) < 0.01 && i.fecha === cfdi.fecha,
+        );
+        if (ing) {
+          existing = ing;
+          existingTipo = 'ingreso';
+        } else {
+          const eg = egresos.find(
+            (e) => e.factura && Math.abs(e.montoTotal - cfdi.total) < 0.01 && e.fecha === cfdi.fecha,
+          );
+          if (eg) {
+            existing = eg;
+            existingTipo = 'egreso';
+          }
+        }
+      }
+
+      if (existing && existingTipo) {
+        // If the record already has both files we want, it's a true duplicate.
+        const canUploadXml = !existing.xmlUrl;
+        const canUploadPdf = Boolean(pdfFile && !existing.pdfUrl);
+        if (!canUploadXml && !canUploadPdf) {
+          skipped++;
+          continue;
+        }
+        // Otherwise queue it as attach-only: upload files, don't rewrite the record.
+        nuevas.push({
+          id: uuid(),
+          cfdi,
+          xmlFile,
+          pdfFile,
+          tipo: existingTipo,
+          matchId: existing.id,
+          matchDesc: existing.descripcion,
+          status: 'attach',
+        });
+        continue;
+      }
 
       // Determine if it's an ingreso (Isabel emitted) or egreso (Isabel received)
       // Compare RFC first (most reliable), then name
@@ -196,6 +243,48 @@ export default function FacturasPage() {
           } else {
             processedMatchIds.add(current.matchId);
           }
+        }
+
+        // Attach-only: factura already exists in the system, we just want
+        // to upload its files and persist the paths on the existing record.
+        const current2 = updated[i];
+        if (current2.status === 'attach' && current2.matchId) {
+          let attachXml = '';
+          let attachPdf = '';
+          try {
+            const uploaded = await uploadFacturaFiles(
+              current2.cfdi.uuid || current2.id,
+              current2.xmlFile,
+              current2.pdfFile,
+            );
+            attachXml = uploaded.xmlPath;
+            attachPdf = uploaded.pdfPath;
+          } catch (err) {
+            console.warn('No se pudo subir el archivo de factura', err);
+            updated[i] = { ...current2, status: 'error' };
+            continue;
+          }
+          if (current2.tipo === 'ingreso') {
+            const existing = freshIngresos.find((r) => r.id === current2.matchId);
+            if (existing) {
+              updateIngreso({
+                ...existing,
+                xmlUrl: existing.xmlUrl || attachXml,
+                pdfUrl: existing.pdfUrl || attachPdf,
+              });
+            }
+          } else {
+            const existing = freshEgresos.find((r) => r.id === current2.matchId);
+            if (existing) {
+              updateEgreso({
+                ...existing,
+                xmlUrl: existing.xmlUrl || attachXml,
+                pdfUrl: existing.pdfUrl || attachPdf,
+              });
+            }
+          }
+          updated[i] = { ...current2, status: 'done' };
+          continue;
         }
 
         // Upload XML (and PDF if present) to Supabase Storage so we can
@@ -409,7 +498,7 @@ export default function FacturasPage() {
           {pendientes.map((f) => (
             <div
               key={f.id}
-              className={`bg-white rounded-2xl border p-5 ${f.status === 'matched' ? 'border-green-200' : f.status === 'error' ? 'border-red-200' : 'border-neutral-100'}`}
+              className={`bg-white rounded-2xl border p-5 ${f.status === 'matched' ? 'border-green-200' : f.status === 'attach' ? 'border-purple-200' : f.status === 'error' ? 'border-red-200' : 'border-neutral-100'}`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
@@ -451,6 +540,14 @@ export default function FacturasPage() {
                   <p className="text-xs text-blue-700">
                     <span className="font-bold">Sin match:</span> Se creará un nuevo {f.tipo} automáticamente
                   </p>
+                </div>
+              )}
+              {f.status === 'attach' && f.matchDesc && (
+                <div className="mt-3 bg-purple-50 rounded-xl p-3">
+                  <p className="text-xs text-purple-700">
+                    <span className="font-bold">Ya existe:</span> {f.matchDesc}
+                  </p>
+                  <p className="text-[10px] text-purple-600 mt-0.5">Sólo se subirá el archivo al registro existente</p>
                 </div>
               )}
 
