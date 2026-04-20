@@ -9,6 +9,7 @@ import { addIngreso, updateIngreso, addEgreso, updateEgreso } from '@/lib/store-
 import { Ingreso, Egreso } from '@/lib/types';
 import { formatCurrency, formatDate, todayString, calcIVA } from '@/lib/helpers';
 import { parseXMLFile, mapFormaPago, type DatosCFDI } from '@/lib/cfdi';
+import { uploadFacturaFiles, openFacturaFile } from '@/lib/cfdi-storage';
 import {
   clasificarDeducibilidad,
   tipoDeduccionLabel,
@@ -197,6 +198,19 @@ export default function FacturasPage() {
           }
         }
 
+        // Upload XML (and PDF if present) to Supabase Storage so we can
+        // view them later from the ingreso/egreso row or this page.
+        let xmlUrl = '';
+        let pdfUrl = '';
+        try {
+          const uploaded = await uploadFacturaFiles(f.cfdi.uuid || f.id, f.xmlFile, f.pdfFile);
+          xmlUrl = uploaded.xmlPath;
+          pdfUrl = uploaded.pdfPath;
+        } catch (err) {
+          // Non-fatal: the factura still gets linked; files just aren't stored.
+          console.warn('No se pudo subir el archivo de factura', err);
+        }
+
         const afterCheck = updated[i];
         if (afterCheck.status === 'matched' && afterCheck.matchId) {
           // Link to existing record
@@ -210,6 +224,8 @@ export default function FacturasPage() {
                 uuidCFDI: afterCheck.cfdi.uuid,
                 iva: afterCheck.cfdi.iva,
                 montoTotal: afterCheck.cfdi.total,
+                xmlUrl: xmlUrl || existing.xmlUrl,
+                pdfUrl: pdfUrl || existing.pdfUrl,
               });
             }
           } else {
@@ -222,6 +238,8 @@ export default function FacturasPage() {
                 uuidCFDI: afterCheck.cfdi.uuid,
                 iva: afterCheck.cfdi.iva,
                 montoTotal: afterCheck.cfdi.total,
+                xmlUrl: xmlUrl || existing.xmlUrl,
+                pdfUrl: pdfUrl || existing.pdfUrl,
               });
             }
           }
@@ -243,6 +261,8 @@ export default function FacturasPage() {
               factura: true,
               numeroFactura: f.cfdi.uuid,
               uuidCFDI: f.cfdi.uuid,
+              xmlUrl,
+              pdfUrl,
               notas: `Importado desde XML. Emisor: ${f.cfdi.nombreEmisor}`,
               createdAt: new Date().toISOString(),
             };
@@ -262,6 +282,8 @@ export default function FacturasPage() {
               factura: true,
               numeroFactura: f.cfdi.uuid,
               uuidCFDI: f.cfdi.uuid,
+              xmlUrl,
+              pdfUrl,
               notas: `Importado desde XML. Emisor: ${f.cfdi.nombreEmisor}`,
               createdAt: new Date().toISOString(),
             };
@@ -308,6 +330,8 @@ export default function FacturasPage() {
         total: i.montoTotal,
         uuid: i.uuidCFDI!,
         fecha: i.fecha,
+        xmlUrl: i.xmlUrl || '',
+        pdfUrl: i.pdfUrl || '',
       })),
     ...egresos
       .filter((e) => e.uuidCFDI)
@@ -317,6 +341,8 @@ export default function FacturasPage() {
         total: e.montoTotal,
         uuid: e.uuidCFDI!,
         fecha: e.fecha,
+        xmlUrl: e.xmlUrl || '',
+        pdfUrl: e.pdfUrl || '',
       })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
@@ -464,7 +490,7 @@ export default function FacturasPage() {
             {facturasVinculadas.length} factura{facturasVinculadas.length > 1 ? 's' : ''} en el sistema
           </h3>
           <div className="bg-white rounded-2xl border border-neutral-100 overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[720px]">
               <thead>
                 <tr className="border-b border-neutral-100">
                   <th className="px-4 py-3 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">
@@ -482,6 +508,9 @@ export default function FacturasPage() {
                   <th className="px-4 py-3 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">
                     UUID
                   </th>
+                  <th className="px-4 py-3 text-right text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">
+                    Archivos
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -498,6 +527,27 @@ export default function FacturasPage() {
                     <td className="px-4 py-3 font-semibold text-[#0a0a0a]">{f.desc}</td>
                     <td className="px-4 py-3 text-right font-bold">{formatCurrency(f.total)}</td>
                     <td className="px-4 py-3 text-[10px] text-neutral-300 font-mono">{f.uuid.substring(0, 8)}...</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex gap-2 justify-end">
+                        {f.pdfUrl ? (
+                          <button
+                            onClick={() => openFacturaFile({ pdfUrl: f.pdfUrl })}
+                            className="text-[10px] font-bold uppercase tracking-wide text-[#c72a09] hover:underline"
+                          >
+                            PDF
+                          </button>
+                        ) : null}
+                        {f.xmlUrl ? (
+                          <button
+                            onClick={() => openFacturaFile({ xmlUrl: f.xmlUrl })}
+                            className="text-[10px] font-bold uppercase tracking-wide text-neutral-500 hover:underline"
+                          >
+                            XML
+                          </button>
+                        ) : null}
+                        {!f.pdfUrl && !f.xmlUrl && <span className="text-[10px] text-neutral-300">—</span>}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
