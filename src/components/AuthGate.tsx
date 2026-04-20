@@ -5,19 +5,6 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { signIn, signUp, resetPassword } from '@/lib/auth';
 import { pullFromCloud } from '@/lib/store-cloud';
-import { clearTeamIdCache } from '@/lib/teams';
-
-async function acceptPendingInvitations(): Promise<number> {
-  try {
-    const { data, error } = await supabase.rpc('accept_pending_invitations');
-    if (error) return 0;
-    const count = typeof data === 'number' ? data : 0;
-    if (count > 0) clearTeamIdCache();
-    return count;
-  } catch {
-    return 0;
-  }
-}
 
 type View = 'login' | 'register' | 'reset' | 'check-email';
 
@@ -32,43 +19,20 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
       setLoading(false);
-      if (user) {
-        // Accept any pending team invitations, then pull data.
-        const accepted = await acceptPendingInvitations();
-        if (accepted > 0) {
-          // We just joined a new team — wipe local cache so we don't
-          // mix old workspace data with the newly joined one.
-          try {
-            Object.keys(localStorage)
-              .filter((k) => k.startsWith('bordados_'))
-              .forEach((k) => localStorage.removeItem(k));
-          } catch {
-            // ignore storage errors
-          }
-        }
-        pullFromCloud().catch(() => {});
-      }
+      // Sync in background — never blocks UI
+      if (user) pullFromCloud().catch(() => {});
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       setLoading(false);
+      // Sync in background after sign in
       if (session?.user && _event === 'SIGNED_IN') {
-        const accepted = await acceptPendingInvitations();
-        if (accepted > 0) {
-          try {
-            Object.keys(localStorage)
-              .filter((k) => k.startsWith('bordados_'))
-              .forEach((k) => localStorage.removeItem(k));
-          } catch {
-            // ignore storage errors
-          }
-        }
         pullFromCloud().catch(() => {});
       }
     });
