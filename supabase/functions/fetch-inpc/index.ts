@@ -41,7 +41,7 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 interface IneghiObservation {
-  TIME_PERIOD: string; // "202401" formato YYYYMM
+  TIME_PERIOD: string; // formato YYYY/MM
   OBS_VALUE: string; // valor como string
 }
 
@@ -59,31 +59,54 @@ serve(async (req: Request) => {
   // @ts-expect-error Deno env
   const token = Deno.env.get('INEGI_TOKEN');
   if (!token) {
+    console.error('[fetch-inpc] INEGI_TOKEN missing from env');
     return jsonResponse(500, { error: 'Falta INEGI_TOKEN en secrets' });
   }
+  console.log('[fetch-inpc] token present, length', token.length);
 
   try {
-    const resp = await fetch(INEGI_URL(token));
+    const url = INEGI_URL(token);
+    console.log('[fetch-inpc] calling INEGI…');
+    const resp = await fetch(url);
+    console.log('[fetch-inpc] INEGI status', resp.status);
+
     if (!resp.ok) {
-      return jsonResponse(502, { error: `INEGI respondió ${resp.status}` });
+      const body = await resp.text();
+      console.error('[fetch-inpc] INEGI error body:', body.slice(0, 500));
+      return jsonResponse(502, { error: `INEGI respondió ${resp.status}`, body: body.slice(0, 500) });
     }
+
     const data = (await resp.json()) as IneghiResponse;
-    const obs = data.Series?.[0]?.OBSERVATIONS || [];
+    const series = data.Series?.[0];
+    const obs = series?.OBSERVATIONS || [];
+    console.log('[fetch-inpc] got', obs.length, 'observations');
+
     if (obs.length === 0) {
+      console.error('[fetch-inpc] 0 observaciones, response shape:', JSON.stringify(data).slice(0, 500));
       return jsonResponse(502, { error: 'INEGI devolvió 0 observaciones' });
     }
 
+    // INEGI puede regresar TIME_PERIOD como "YYYY/MM" o "YYYYMM" dependiendo
+    // del endpoint; tolerar ambos formatos.
     const rows = obs
       .map((o) => {
-        const period = o.TIME_PERIOD; // YYYYMM
-        if (!period || period.length !== 6) return null;
+        const period = (o.TIME_PERIOD || '').replace(/[^0-9]/g, '');
+        if (period.length !== 6) {
+          console.warn('[fetch-inpc] bad period:', o.TIME_PERIOD);
+          return null;
+        }
         const year = parseInt(period.substring(0, 4), 10);
         const month = parseInt(period.substring(4, 6), 10);
         const valor = parseFloat(o.OBS_VALUE);
-        if (isNaN(year) || isNaN(month) || isNaN(valor)) return null;
+        if (isNaN(year) || isNaN(month) || isNaN(valor)) {
+          console.warn('[fetch-inpc] bad row:', o);
+          return null;
+        }
         return { year, month, valor, source: 'inegi', updated_at: new Date().toISOString() };
       })
       .filter((r): r is { year: number; month: number; valor: number; source: string; updated_at: string } => r !== null);
+
+    console.log('[fetch-inpc] parsed', rows.length, 'valid rows');
 
     if (rows.length === 0) {
       return jsonResponse(502, { error: 'No se pudo parsear ninguna observación' });
@@ -93,22 +116,29 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     // @ts-expect-error Deno env
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    if (!supabaseUrl || !serviceKey) {
+      console.error('[fetch-inpc] missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+      return jsonResponse(500, { error: 'Faltan credenciales internas de Supabase' });
+    }
+
     const supabase = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
     });
 
-    // Upsert: si el valor del mes ya existe con otro source, INEGI gana.
     const { error } = await supabase.from('inpc').upsert(rows, { onConflict: 'year,month' });
     if (error) {
+      console.error('[fetch-inpc] supabase upsert error:', error.message);
       return jsonResponse(500, { error: error.message });
     }
 
+    console.log('[fetch-inpc] upsert OK,', rows.length, 'rows');
     return jsonResponse(200, {
       updated: rows.length,
       latest: rows[rows.length - 1],
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'error desconocido';
+    console.error('[fetch-inpc] exception:', message);
     return jsonResponse(500, { error: message });
   }
 });
