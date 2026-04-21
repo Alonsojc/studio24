@@ -44,6 +44,6 @@ Error (ejemplos):
 
 ## Serie usada
 
-- **SP74665** — INPC General Mensual (Base 2018=100).
+- **SP1** — IPC Por objeto del gasto Nacional — Índice General (INPC General Mensual, base 2018=100).
 
-Si el contador necesita otra serie (quincenal, subyacente, no subyacente, etc.) cambia la constante `BANXICO_SERIE` en `index.ts`.
+Si el contador necesita otra serie (subyacente, no subyacente, etc.) cambia la constante `BANXICO_SERIE` en `index.ts`. Ojo: **NO usar** `SP74625` (es el subyacente, excluye alimentos y energía) ni `SP74665` (es la inflación anual en %, no el índice raw).

@@ -20,8 +20,10 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 // @ts-expect-error — Supabase client for Deno edge runtime.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Serie de Banxico SIE: INPC General Mensual (Base 2018=100).
-const BANXICO_SERIE = 'SP74665';
+// Serie de Banxico SIE: INPC General Mensual (Índice General, base 2018=100).
+// SP1 = "IPC Por objeto del gasto Nacional — Índice General" (cuadro CP151).
+// NO usar SP74625 (Subyacente) ni SP74665 (inflación anual %).
+const BANXICO_SERIE = 'SP1';
 const BANXICO_URL = `https://www.banxico.org.mx/SieAPIRest/service/v1/series/${BANXICO_SERIE}/datos`;
 
 const corsHeaders: Record<string, string> = {
