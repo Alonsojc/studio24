@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { savePhoto, getPhoto, deletePhoto, getPhotoKeys } from '@/lib/db';
-import { compressImage, blobToDataURL } from '@/lib/image';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { uploadPhoto, deletePhoto, listPhotos, type StoredPhoto } from '@/lib/photos';
+import { compressImage } from '@/lib/image';
+import { reportError } from '@/lib/sentry';
 import { v4 as uuid } from 'uuid';
 
 interface PhotoGalleryProps {
@@ -10,42 +11,26 @@ interface PhotoGalleryProps {
   readOnly?: boolean;
 }
 
-interface PhotoItem {
-  id: string;
-  dataUrl: string;
-}
-
 export default function PhotoGallery({ pedidoId, readOnly = false }: PhotoGalleryProps) {
-  const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [photos, setPhotos] = useState<StoredPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [viewPhoto, setViewPhoto] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    loadPhotos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pedidoId]);
-
-  const loadPhotos = async () => {
+  const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const keys = await getPhotoKeys(pedidoId);
-      const items: PhotoItem[] = [];
-      for (const key of keys) {
-        const photoId = key.replace(`${pedidoId}/`, '');
-        const blob = await getPhoto(pedidoId, photoId);
-        if (blob) {
-          const dataUrl = await blobToDataURL(blob);
-          items.push({ id: photoId, dataUrl });
-        }
-      }
-      setPhotos(items);
-    } catch {
-      // IDB not available
+      setPhotos(await listPhotos(pedidoId));
+    } catch (e) {
+      reportError(e, { kind: 'listPhotos', pedidoId });
     }
     setLoading(false);
-  };
+  }, [pedidoId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = Array.from(e.target.files || []);
@@ -55,12 +40,12 @@ export default function PhotoGallery({ pedidoId, readOnly = false }: PhotoGaller
       for (const file of fileList) {
         if (!file.type.startsWith('image/')) continue;
         const compressed = await compressImage(file);
-        const photoId = uuid();
-        await savePhoto(pedidoId, photoId, compressed);
-        const dataUrl = await blobToDataURL(compressed);
-        setPhotos((prev) => [...prev, { id: photoId, dataUrl }]);
+        const photoId = `${uuid()}.jpg`;
+        await uploadPhoto(pedidoId, photoId, compressed);
       }
-    } catch {
+      await reload();
+    } catch (err) {
+      reportError(err, { kind: 'uploadPhoto', pedidoId });
       alert('Error al subir imagen');
     }
     setUploading(false);
@@ -68,8 +53,12 @@ export default function PhotoGallery({ pedidoId, readOnly = false }: PhotoGaller
   };
 
   const handleDelete = async (photoId: string) => {
-    await deletePhoto(pedidoId, photoId);
-    setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    try {
+      await deletePhoto(pedidoId, photoId);
+      setPhotos((prev) => prev.filter((p) => p.photoId !== photoId));
+    } catch (err) {
+      reportError(err, { kind: 'deletePhoto', pedidoId, photoId });
+    }
   };
 
   if (loading) {
@@ -103,17 +92,17 @@ export default function PhotoGallery({ pedidoId, readOnly = false }: PhotoGaller
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
           {photos.map((photo) => (
-            <div key={photo.id} className="relative group">
+            <div key={photo.photoId} className="relative group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={photo.dataUrl}
+                src={photo.url}
                 alt="Foto del pedido"
                 className="w-full aspect-square object-cover rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
-                onClick={() => setViewPhoto(photo.dataUrl)}
+                onClick={() => setViewPhoto(photo.url)}
               />
               {!readOnly && (
                 <button
-                  onClick={() => handleDelete(photo.id)}
+                  onClick={() => handleDelete(photo.photoId)}
                   aria-label="Eliminar foto"
                   className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-red-500 text-white text-sm font-bold flex items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow"
                 >
