@@ -1,40 +1,49 @@
 # fetch-inpc — Edge Function
 
-Trae los valores del INPC (Índice Nacional de Precios al Consumidor) directamente del Banco de Información Económica de INEGI y los deja en la tabla `inpc`.
+Trae los valores del INPC (Índice Nacional de Precios al Consumidor) desde la API SIE de Banxico y los deja en la tabla `inpc`.
+
+Usa Banxico en lugar de INEGI porque su API es más simple y estable (sin áreas geográficas, fuentes BIE/BISE, etc.). El INPC que publica Banxico es el mismo dato oficial que INEGI.
 
 ## Setup inicial (una sola vez)
 
-1. **Registrarse en INEGI** y obtener un token gratuito:
-   https://www.inegi.org.mx/app/api/ → "Consulta de datos"
+1. **Registrarse en Banxico** y obtener un token gratuito:
+   https://www.banxico.org.mx/SieAPIRest/service/v1/token
 
-2. **Guardar el token como secreto** en Supabase (necesitas la CLI de Supabase instalada):
+2. **Guardar el token como secreto** en Supabase (vía CLI):
    ```bash
-   supabase secrets set INEGI_TOKEN=<tu_token>
+   supabase secrets set BANXICO_TOKEN=<tu_token>
    ```
 
 3. **Desplegar la función**:
    ```bash
-   supabase functions deploy fetch-inpc
+   supabase functions deploy fetch-inpc --no-verify-jwt
    ```
 
-4. **Programar el cron** corriendo `supabase-inpc-cron.sql` en el SQL Editor (ver ese archivo para los pasos).
+4. **Programar el cron** (opcional) corriendo `supabase-inpc-cron.sql` en el SQL Editor.
 
 ## Uso manual
 
-Desde el cliente, botón "Sincronizar con INEGI" en `/fiscal/inpc`, o desde la CLI:
+Desde el cliente, botón "Sincronizar" en `/fiscal/inpc`. O vía CLI:
 
 ```bash
-supabase functions invoke fetch-inpc --no-verify-jwt
+supabase functions invoke fetch-inpc
 ```
 
 ## Respuesta
 
+Éxito:
 ```json
 { "updated": 48, "latest": { "year": 2025, "month": 12, "valor": 143.77 } }
 ```
 
-o error:
-
+Error (ejemplos):
 ```json
-{ "error": "Falta INEGI_TOKEN en secrets" }
+{ "error": "Falta BANXICO_TOKEN en secrets" }
+{ "error": "Banxico respondió 401", "body": "..." }
 ```
+
+## Serie usada
+
+- **SP74665** — INPC General Mensual (Base 2018=100).
+
+Si el contador necesita otra serie (quincenal, subyacente, no subyacente, etc.) cambia la constante `BANXICO_SERIE` en `index.ts`.
