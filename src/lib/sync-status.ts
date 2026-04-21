@@ -1,5 +1,7 @@
 'use client';
 
+import { reportError } from './sentry';
+
 /**
  * Tracks cloud sync status and failed operations.
  * Provides retry logic with exponential backoff and a
@@ -104,6 +106,7 @@ export function trackSync(cloudFn: () => Promise<unknown>): void {
             timestamp: Date.now(),
           });
           state = 'error';
+          reportError(err, { kind: 'cloudSyncFailed', retries });
           notify();
         }
       });
