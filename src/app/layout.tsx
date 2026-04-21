@@ -5,6 +5,7 @@ import AuthGate from '@/components/AuthGate';
 import RoleProvider from '@/components/RoleProvider';
 import MigrationBanner from '@/components/MigrationBanner';
 import NotificationManager from '@/components/NotificationManager';
+import SentryBoot from '@/components/SentryBoot';
 import './globals.css';
 
 export const viewport: Viewport = {
@@ -39,6 +40,7 @@ export default function RootLayout({
   return (
     <html lang="es" className="h-full antialiased">
       <body className="min-h-full font-sans">
+        <SentryBoot />
         <AuthGate>
           <RoleProvider>
             <SeedData />
