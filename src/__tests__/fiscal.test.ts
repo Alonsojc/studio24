@@ -197,6 +197,69 @@ describe('calcMonthData — multi-year loss carryforward', () => {
   });
 });
 
+describe('calcMonthData — IVA origin tracking + INPC', () => {
+  it('tracks the origin month of each saldo a favor', () => {
+    // Jan: favor of 160. Feb: another favor of 100. Mar: consume some.
+    const ingresos = [
+      ing({ fecha: '2024-01-15', monto: 1000, iva: 160, factura: true }),
+      ing({ fecha: '2024-02-15', monto: 500, iva: 80, factura: true }),
+      ing({ fecha: '2024-03-15', monto: 2000, iva: 320, factura: true }),
+    ];
+    const egresos = [
+      eg({ fecha: '2024-01-10', monto: 2000, iva: 320, factura: true }), // Jan favor = 160
+      eg({ fecha: '2024-02-10', monto: 1000, iva: 180, factura: true }), // Feb favor = 100
+      // Mar: trasladado 320, acreditable 0 → consumes Jan's 160 then Feb's 100
+    ];
+
+    const { months } = calcMonthData(ingresos, egresos);
+
+    // Jan: queue has one entry (Jan)
+    expect(months[0].ivaFavorDesglose).toHaveLength(1);
+    expect(months[0].ivaFavorDesglose[0]).toMatchObject({ year: 2024, month: 1, monto: 160 });
+
+    // Feb: queue has two entries (Jan + Feb)
+    expect(months[1].ivaFavorDesglose).toHaveLength(2);
+    expect(months[1].ivaFavorDesglose[1]).toMatchObject({ year: 2024, month: 2, monto: 100 });
+
+    // Mar: both get consumed; remaining to pay = 320 - 160 - 100 = 60
+    expect(months[2].ivaPorPagar).toBe(60);
+    expect(months[2].ivaFavorAplicaciones).toHaveLength(2);
+    expect(months[2].ivaFavorAplicaciones[0]).toMatchObject({
+      originMonth: 1,
+      montoNominal: 160,
+    });
+    expect(months[2].ivaFavorAplicaciones[1]).toMatchObject({
+      originMonth: 2,
+      montoNominal: 100,
+    });
+    // Queue should be empty after consumption
+    expect(months[2].ivaFavorDesglose).toHaveLength(0);
+  });
+
+  it('includes INPC factor on applications when inpcMap is provided', () => {
+    const ingresos = [
+      ing({ fecha: '2024-01-15', monto: 1000, iva: 160, factura: true }),
+      ing({ fecha: '2024-03-15', monto: 2000, iva: 320, factura: true }),
+    ];
+    const egresos = [
+      eg({ fecha: '2024-01-10', monto: 2000, iva: 320, factura: true }), // Jan favor = 160
+    ];
+
+    const inpc = new Map<string, number>([
+      ['2024-01', 132.37],
+      ['2024-03', 134.14],
+    ]);
+
+    const { months } = calcMonthData(ingresos, egresos, 0, inpc);
+
+    const app = months[2].ivaFavorAplicaciones[0];
+    expect(app.factorInpc).toBeCloseTo(134.14 / 132.37, 4);
+    expect(app.montoActualizado).toBeCloseTo(160 * (134.14 / 132.37), 2);
+    // Acreditación sigue al valor nominal (Art. 6 LIVA), no al actualizado
+    expect(months[2].ivaPorPagar).toBe(320 - 160);
+  });
+});
+
 describe('calcMonthData — only factura records count for ISR', () => {
   it('excludes non-factura ingresos from ISR base', () => {
     const ingresos = [

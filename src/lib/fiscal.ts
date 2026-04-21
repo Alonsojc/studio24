@@ -41,6 +41,24 @@ export function calcISR(baseGravable: number): number {
   return last.cuota + (baseGravable - last.limInf) * last.tasa;
 }
 
+/** Un saldo a favor de IVA con su mes de origen para rastreo FIFO. */
+export interface IvaFavorOrigen {
+  year: number;
+  month: number; // 1-12
+  monto: number; // valor nominal (face value) restante
+}
+
+/** Una aplicación de saldo a favor contra el IVA del mes, con su factor INPC. */
+export interface IvaFavorAplicacion {
+  originYear: number;
+  originMonth: number;
+  appliedYear: number;
+  appliedMonth: number;
+  montoNominal: number; // lo que se aplicó al valor nominal (acreditación)
+  factorInpc: number; // INPC(aplicado) / INPC(origen); 1 si no hay datos
+  montoActualizado: number; // valor actualizado (referencia, Art. 17-A CFF)
+}
+
 export interface MonthFiscalData {
   idx: number;
   label: string;
@@ -53,6 +71,10 @@ export interface MonthFiscalData {
   ivaFavorAnterior: number;
   ivaPorPagar: number;
   ivaAFavor: number;
+  /** Saldos a favor pendientes al FINAL de este mes, con mes de origen. */
+  ivaFavorDesglose: IvaFavorOrigen[];
+  /** Detalle de aplicaciones de saldos a favor durante este mes. */
+  ivaFavorAplicaciones: IvaFavorAplicacion[];
   egresosBrutos: number;
   egresosDeducibles: number;
   egresosNoDeducibles: number;
@@ -76,18 +98,38 @@ export interface YearFiscalResult {
   ivaFavorFinal: number;
 }
 
+function inpcFactor(inpcMap: Map<string, number> | undefined, from: string, to: string): number {
+  if (!inpcMap) return 1;
+  const f = inpcMap.get(from);
+  const t = inpcMap.get(to);
+  if (!f || !t || f <= 0) return 1;
+  return t / f;
+}
+
 /**
- * Calculate monthly fiscal data for a year.
- * @param perdidaEjerciciosAnteriores — loss carried forward from previous years (LISR Art. 57)
+ * Calcula datos fiscales mensuales de un año.
+ *
+ * Saldos a favor de IVA: se trackean por mes de origen (FIFO). Cuando el IVA
+ * del mes resulta por pagar, se consume primero el saldo a favor más antiguo.
+ * La acreditación se hace al valor nominal (Art. 6 LIVA); el factor INPC se
+ * calcula y expone aparte para cuando el contador necesite solicitar devolución
+ * (Art. 17-A CFF) o hacer compensaciones que sí requieren actualización.
+ *
+ * @param perdidaEjerciciosAnteriores — pérdida acarreada de ejercicios previos
+ *   (LISR Art. 57). Se aplica en enero.
+ * @param inpcMap — opcional. Map YYYY-MM → valor INPC. Si se provee, se expone
+ *   el monto actualizado junto al nominal en cada aplicación.
  */
 export function calcMonthData(
   ingresosYear: Ingreso[],
   egresosYear: Egreso[],
   perdidaEjerciciosAnteriores = 0,
+  inpcMap?: Map<string, number>,
 ): YearFiscalResult {
   let perdida = 0;
-  let ivaFavor = 0;
   let perdidaMultiAnio = perdidaEjerciciosAnteriores;
+  // Cola FIFO de saldos a favor pendientes (más antiguos primero).
+  const favorQueue: IvaFavorOrigen[] = [];
 
   const months = MESES.map((label, idx) => {
     const monthStr = String(idx + 1).padStart(2, '0');
@@ -99,21 +141,57 @@ export function calcMonthData(
     const egresosBrutos = egMes.reduce((s, e) => s + e.monto, 0);
     const egresosDeducibles = egMes.filter((e) => e.factura).reduce((s, e) => s + e.monto, 0);
 
-    // --- IVA (mensual con saldo a favor acumulado) ---
+    // --- IVA ---
     const ivaTrasladado = ingMes.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
     const ivaAcreditable = egMes.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
     const ivaDelMes = ivaTrasladado - ivaAcreditable;
-    const ivaFavorAnterior = ivaFavor;
-    const ivaNeto = ivaDelMes - ivaFavor;
-    const ivaPorPagar = Math.max(0, ivaNeto);
-    const ivaAFavor = Math.max(0, -ivaNeto);
-    ivaFavor = ivaAFavor;
+    const ivaFavorAnterior = favorQueue.reduce((s, f) => s + f.monto, 0);
+    const targetKey = `${ingresosYear[0]?.fecha.substring(0, 4) || egresosYear[0]?.fecha.substring(0, 4) || new Date().getFullYear()}-${monthStr}`;
 
-    // --- ISR (con pérdida acumulada de meses anteriores + ejercicios anteriores) ---
+    const aplicaciones: IvaFavorAplicacion[] = [];
+    let ivaPorPagar = 0;
+    let ivaAFavor = 0;
+
+    if (ivaDelMes >= 0) {
+      // Mes con IVA positivo: consumir saldos a favor FIFO
+      let pendiente = ivaDelMes;
+      while (pendiente > 0 && favorQueue.length > 0) {
+        const oldest = favorQueue[0];
+        const aplicar = Math.min(oldest.monto, pendiente);
+        const originKey = `${oldest.year}-${String(oldest.month).padStart(2, '0')}`;
+        const factor = inpcFactor(inpcMap, originKey, targetKey);
+        aplicaciones.push({
+          originYear: oldest.year,
+          originMonth: oldest.month,
+          appliedYear: parseInt(targetKey.substring(0, 4), 10),
+          appliedMonth: idx + 1,
+          montoNominal: aplicar,
+          factorInpc: factor,
+          montoActualizado: aplicar * factor,
+        });
+        oldest.monto -= aplicar;
+        pendiente -= aplicar;
+        if (oldest.monto <= 0.000001) favorQueue.shift();
+      }
+      ivaPorPagar = pendiente;
+    } else {
+      // Mes con IVA a favor: encolar como nuevo saldo
+      const nuevoMonto = -ivaDelMes;
+      ivaAFavor = nuevoMonto;
+      favorQueue.push({
+        year: parseInt(targetKey.substring(0, 4), 10),
+        month: idx + 1,
+        monto: nuevoMonto,
+      });
+    }
+
+    // Copia defensiva de la cola para que cada mes tenga su propio snapshot
+    const ivaFavorDesglose = favorQueue.map((f) => ({ ...f }));
+
+    // --- ISR (con pérdida acumulada + ejercicios anteriores) ---
     const utilidadMes = ingresosFacturados - egresosDeducibles;
     const perdidaAnterior = perdida;
 
-    // Apply multi-year loss only in January (at start of exercise)
     const perdidaEjAnt = idx === 0 ? perdidaMultiAnio : 0;
     if (idx === 0) perdidaMultiAnio = 0; // consumed
 
@@ -136,6 +214,8 @@ export function calcMonthData(
       ivaFavorAnterior,
       ivaPorPagar,
       ivaAFavor,
+      ivaFavorDesglose,
+      ivaFavorAplicaciones: aplicaciones,
       egresosBrutos,
       egresosDeducibles,
       egresosNoDeducibles: egresosBrutos - egresosDeducibles,
@@ -154,7 +234,8 @@ export function calcMonthData(
     };
   });
 
-  return { months, perdidaFinal: perdida, ivaFavorFinal: ivaFavor };
+  const ivaFavorFinal = favorQueue.reduce((s, f) => s + f.monto, 0);
+  return { months, perdidaFinal: perdida, ivaFavorFinal };
 }
 
 // --- Multi-year loss persistence (LISR Art. 57: up to 10 years) ---
