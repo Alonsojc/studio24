@@ -14,7 +14,7 @@
  *   https://www.inegi.org.mx/app/api/ → "Consulta de datos"
  *
  * Despliegue:
- *   supabase functions deploy fetch-inpc
+ *   supabase functions deploy fetch-inpc --no-verify-jwt
  */
 
 // @ts-expect-error — Deno runtime globals not typed in Node tsconfig.
@@ -23,9 +23,13 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // Indicador INEGI: INPC general mensual, base 2Q jul 2018 = 100.
+// Parámetros según la documentación oficial del Método Indicadores:
+//   - Área geográfica: 00 (Nacional)
+//   - Fuente:          BISE
+// Fuente: https://www.inegi.org.mx/servicios/api_indicadores.html
 const INPC_INDICATOR = '628194';
 const INEGI_URL = (token: string) =>
-  `https://www.inegi.org.mx/app/api/indicadores/desarrolladores/jsonxml/INDICATOR/${INPC_INDICATOR}/es/0700/false/BIE/2.0/${token}?type=json`;
+  `https://www.inegi.org.mx/app/api/indicadores/desarrolladores/jsonxml/INDICATOR/${INPC_INDICATOR}/es/00/false/BISE/2.0/${token}?type=json`;
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -41,8 +45,8 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 interface IneghiObservation {
-  TIME_PERIOD: string; // "202401" formato YYYYMM
-  OBS_VALUE: string; // valor como string
+  TIME_PERIOD: string; // INEGI regresa "YYYY/MM" o "YYYYMM" según endpoint
+  OBS_VALUE: string;
 }
 
 interface IneghiResponse {
@@ -59,24 +63,44 @@ serve(async (req: Request) => {
   // @ts-expect-error Deno env
   const token = Deno.env.get('INEGI_TOKEN');
   if (!token) {
+    console.error('[fetch-inpc] INEGI_TOKEN missing');
     return jsonResponse(500, { error: 'Falta INEGI_TOKEN en secrets' });
   }
+  console.log('[fetch-inpc] token length', token.length);
 
   try {
+    console.log('[fetch-inpc] calling INEGI…');
     const resp = await fetch(INEGI_URL(token));
+    console.log('[fetch-inpc] INEGI status', resp.status);
+
     if (!resp.ok) {
-      return jsonResponse(502, { error: `INEGI respondió ${resp.status}` });
+      const body = await resp.text();
+      console.error('[fetch-inpc] INEGI error body:', body.slice(0, 500));
+      return jsonResponse(502, { error: `INEGI respondió ${resp.status}`, body: body.slice(0, 500) });
     }
-    const data = (await resp.json()) as IneghiResponse;
+
+    const raw = await resp.text();
+    // La respuesta a veces viene con whitespace, parsearla después de trim
+    let data: IneghiResponse;
+    try {
+      data = JSON.parse(raw.trim());
+    } catch {
+      console.error('[fetch-inpc] INEGI devolvió algo que no es JSON:', raw.slice(0, 300));
+      return jsonResponse(502, { error: 'Respuesta de INEGI no es JSON válido', body: raw.slice(0, 300) });
+    }
+
     const obs = data.Series?.[0]?.OBSERVATIONS || [];
+    console.log('[fetch-inpc] got', obs.length, 'observations');
+
     if (obs.length === 0) {
-      return jsonResponse(502, { error: 'INEGI devolvió 0 observaciones' });
+      console.error('[fetch-inpc] 0 observaciones — raw:', raw.slice(0, 300));
+      return jsonResponse(502, { error: 'INEGI devolvió 0 observaciones', body: raw.slice(0, 300) });
     }
 
     const rows = obs
       .map((o) => {
-        const period = o.TIME_PERIOD; // YYYYMM
-        if (!period || period.length !== 6) return null;
+        const period = (o.TIME_PERIOD || '').replace(/[^0-9]/g, '');
+        if (period.length !== 6) return null;
         const year = parseInt(period.substring(0, 4), 10);
         const month = parseInt(period.substring(4, 6), 10);
         const valor = parseFloat(o.OBS_VALUE);
@@ -84,6 +108,8 @@ serve(async (req: Request) => {
         return { year, month, valor, source: 'inegi', updated_at: new Date().toISOString() };
       })
       .filter((r): r is { year: number; month: number; valor: number; source: string; updated_at: string } => r !== null);
+
+    console.log('[fetch-inpc] parsed', rows.length, 'valid rows');
 
     if (rows.length === 0) {
       return jsonResponse(502, { error: 'No se pudo parsear ninguna observación' });
@@ -93,22 +119,28 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     // @ts-expect-error Deno env
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    if (!supabaseUrl || !serviceKey) {
+      return jsonResponse(500, { error: 'Faltan credenciales internas de Supabase' });
+    }
+
     const supabase = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
     });
 
-    // Upsert: si el valor del mes ya existe con otro source, INEGI gana.
     const { error } = await supabase.from('inpc').upsert(rows, { onConflict: 'year,month' });
     if (error) {
+      console.error('[fetch-inpc] supabase upsert error:', error.message);
       return jsonResponse(500, { error: error.message });
     }
 
+    console.log('[fetch-inpc] upsert OK,', rows.length, 'rows');
     return jsonResponse(200, {
       updated: rows.length,
       latest: rows[rows.length - 1],
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'error desconocido';
+    console.error('[fetch-inpc] exception:', message);
     return jsonResponse(500, { error: message });
   }
 });
