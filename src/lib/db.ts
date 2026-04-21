@@ -3,6 +3,9 @@
 const DB_NAME = 'studio24_db';
 const DB_VERSION = 1;
 const STORE_NAME = 'keyval';
+// PHOTOS_STORE legacy — se mantiene el objectStore para no romper la
+// migración de IndexedDB en navegadores existentes, pero las fotos
+// nuevas viven en Supabase Storage (ver src/lib/photos.ts).
 const PHOTOS_STORE = 'photos';
 
 function openDB(): Promise<IDBDatabase> {
@@ -143,24 +146,9 @@ export async function syncAllToIDB(): Promise<void> {
   }
 }
 
-// --- Photos (binary, stored only in IDB) ---
-
-export async function savePhoto(pedidoId: string, photoId: string, blob: Blob): Promise<void> {
-  const key = `${pedidoId}/${photoId}`;
-  await idbPut(PHOTOS_STORE, key, blob);
-}
-
-export async function getPhoto(pedidoId: string, photoId: string): Promise<Blob | undefined> {
-  const key = `${pedidoId}/${photoId}`;
-  return idbGet<Blob>(PHOTOS_STORE, key);
-}
-
-export async function deletePhoto(pedidoId: string, photoId: string): Promise<void> {
-  const key = `${pedidoId}/${photoId}`;
-  await idbDelete(PHOTOS_STORE, key);
-}
-
-export async function getPhotoKeys(pedidoId: string): Promise<string[]> {
-  const allKeys = await idbGetAllKeys(PHOTOS_STORE);
-  return allKeys.filter((k) => k.startsWith(`${pedidoId}/`));
-}
+// --- Photos: ya no viven aquí ---
+//
+// Antes de que el sistema de equipos existiera, las fotos se guardaban
+// solo en IndexedDB del navegador. Eso significaba que el operador subía
+// una foto y ni el admin ni el contador la veían. Ahora viven en Supabase
+// Storage team-scoped (ver src/lib/photos.ts).
