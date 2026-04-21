@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getIngresos, getEgresos, getConfig } from '@/lib/store';
 import { cloudGetIngresos, cloudGetEgresos } from '@/lib/store-cloud';
 import { useCloudStore } from '@/lib/useCloudStore';
 import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
 import { downloadCSV } from '@/lib/csv';
 import { MESES, calcMonthData, getPerdidaArrastrable, savePerdida, getPerdidas } from '@/lib/fiscal';
+import { getInpc, inpcMap, type InpcEntry } from '@/lib/inpc';
 import { generateFiscalPDF } from '@/lib/fiscal-pdf';
 import Link from 'next/link';
 import PageHeader from '@/components/PageHeader';
@@ -19,7 +20,25 @@ export default function FiscalPage() {
   const [mounted] = useState(() => isClient);
   const [year, setYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth());
+  const [inpc, setInpc] = useState<InpcEntry[]>([]);
   const savedYearsRef = useRef<Set<number>>(new Set());
+
+  // Load INPC once so we can show INPC-adjusted saldos in the IVA detail.
+  useEffect(() => {
+    let cancelled = false;
+    getInpc()
+      .then((rows) => {
+        if (!cancelled) setInpc(rows);
+      })
+      .catch(() => {
+        // Sin INPC: la UI simplemente no muestra montos actualizados
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const inpcByMonth = useMemo(() => inpcMap(inpc), [inpc]);
 
   // Compute fiscal data unconditionally (pure math, no DOM)
   const yearStr = String(year);
@@ -30,7 +49,7 @@ export default function FiscalPage() {
     months: monthData,
     perdidaFinal: perdidaAcum,
     ivaFavorFinal: ivaFavorAcum,
-  } = calcMonthData(ingresosYear, egresosYear, perdidaArrastrable);
+  } = calcMonthData(ingresosYear, egresosYear, perdidaArrastrable, inpcByMonth);
 
   // Auto-save year-end loss when viewing a completed year (side effect only, no state)
   useEffect(() => {
@@ -463,10 +482,24 @@ export default function FiscalPage() {
                 <span className="text-sm text-white/50">(-) Acreditable</span>
                 <span className="text-sm font-bold text-red-400">{formatCurrency(sel.ivaAcreditable)}</span>
               </div>
-              {sel.ivaFavorAnterior > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-sm text-blue-400">(-) Saldo a favor anterior</span>
-                  <span className="text-sm font-bold text-blue-400">{formatCurrency(sel.ivaFavorAnterior)}</span>
+              {sel.ivaFavorAplicaciones.length > 0 && (
+                <div className="space-y-1 border-l-2 border-blue-400/40 pl-3">
+                  <p className="text-[10px] font-bold tracking-[0.1em] text-blue-400/80 uppercase">
+                    Saldos a favor aplicados
+                  </p>
+                  {sel.ivaFavorAplicaciones.map((a, k) => (
+                    <div key={k} className="flex justify-between text-[11px]">
+                      <span className="text-blue-400">
+                        {MESES[a.originMonth - 1]} {a.originYear}
+                      </span>
+                      <span className="font-mono text-white/70">
+                        {formatCurrency(a.montoNominal)}
+                        {Math.abs(a.factorInpc - 1) > 0.0001 && (
+                          <span className="text-white/40 ml-1">(INPC → {formatCurrency(a.montoActualizado)})</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
               <div className="border-t border-white/10 pt-2 flex justify-between">
@@ -477,6 +510,34 @@ export default function FiscalPage() {
                   {formatCurrency(sel.ivaPorPagar > 0 ? sel.ivaPorPagar : sel.ivaAFavor)}
                 </span>
               </div>
+              {sel.ivaFavorDesglose.length > 0 && (
+                <div className="border-t border-white/10 pt-2 space-y-1">
+                  <p className="text-[10px] font-bold tracking-[0.1em] text-white/50 uppercase">
+                    Saldos a favor pendientes
+                  </p>
+                  {sel.ivaFavorDesglose.map((f) => {
+                    const originKey = `${f.year}-${String(f.month).padStart(2, '0')}`;
+                    const targetKey = `${year}-${String(sel.idx + 1).padStart(2, '0')}`;
+                    const fromInpc = inpcByMonth.get(originKey);
+                    const toInpc = inpcByMonth.get(targetKey);
+                    const factor = fromInpc && toInpc ? toInpc / fromInpc : 1;
+                    const actualizado = f.monto * factor;
+                    return (
+                      <div key={originKey} className="flex justify-between text-[11px]">
+                        <span className="text-white/60">
+                          {MESES[f.month - 1]} {f.year}
+                        </span>
+                        <span className="font-mono text-blue-300">
+                          {formatCurrency(f.monto)}
+                          {Math.abs(factor - 1) > 0.0001 && (
+                            <span className="text-white/40 ml-1">(INPC → {formatCurrency(actualizado)})</span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
