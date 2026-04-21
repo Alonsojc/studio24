@@ -39,9 +39,9 @@ export default function InpcPage() {
     setMessage(null);
     const result = await syncInpcFromInegi();
     if (result.error) {
-      setMessage({ type: 'error', text: `No se pudo sincronizar con INEGI: ${result.error}` });
+      setMessage({ type: 'error', text: `No se pudo sincronizar con Banxico: ${result.error}` });
     } else {
-      setMessage({ type: 'ok', text: `${result.updated} valores actualizados desde INEGI.` });
+      setMessage({ type: 'ok', text: `${result.updated} valores actualizados desde Banxico.` });
       reload();
     }
     setSyncing(false);
@@ -101,7 +101,7 @@ export default function InpcPage() {
               disabled={syncing}
               className="px-4 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-[#c72a09] text-white hover:bg-[#a82207] transition-colors disabled:opacity-50"
             >
-              {syncing ? 'Sincronizando…' : 'Sincronizar con INEGI'}
+              {syncing ? 'Sincronizando…' : 'Sincronizar con Banxico'}
             </button>
             <Link
               href="/fiscal"
@@ -198,7 +198,7 @@ export default function InpcPage() {
         </div>
       ) : byYear.length === 0 ? (
         <div className="bg-white rounded-2xl border border-neutral-100 p-10 text-center">
-          <p className="text-sm text-neutral-400">Sin datos INPC. Carga el seed o sincroniza con INEGI.</p>
+          <p className="text-sm text-neutral-400">Sin datos INPC. Carga el seed o sincroniza con Banxico.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -252,8 +252,8 @@ export default function InpcPage() {
       )}
 
       <p className="text-[10px] text-neutral-400 mt-6 leading-relaxed">
-        Fuente: INEGI, Banco de Información Económica (indicador 628194). El cron corre el día 11 de cada mes — si algún
-        valor no aparece, usa <strong>Sincronizar con INEGI</strong> o captúralo a mano.
+        Fuente: Banco de México (SIE), serie <code>SP74665</code> — INPC General Mensual base 2018=100. El cron corre el día 11
+        de cada mes; si algún valor no aparece, usa <strong>Sincronizar con Banxico</strong> o captúralo a mano.
       </p>
     </div>
   );
