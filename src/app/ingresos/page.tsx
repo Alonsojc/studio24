@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, getClientes } from '@/lib/store';
 import { cloudGetIngresos, cloudGetClientes } from '@/lib/store-cloud';
-import { addIngreso, updateIngreso, deleteIngreso, getNextFolio } from '@/lib/store-sync';
+import { addIngreso, updateIngreso, deleteIngreso, getNextFolioAsync } from '@/lib/store-sync';
 import { useCloudStore } from '@/lib/useCloudStore';
 import { Ingreso, ConceptoIngreso, FormaPago } from '@/lib/types';
 import {
@@ -77,19 +77,23 @@ export default function IngresosPage() {
     setFormError(null);
     setModalOpen(true);
   };
-  const handleSave = () => {
-    const error = validateIngreso(form);
+  const handleSave = async () => {
+    const nextForm = {
+      ...form,
+      numeroFactura: form.factura && !form.numeroFactura ? await getNextFolioAsync('ING') : form.numeroFactura,
+    };
+    const error = validateIngreso(nextForm);
     if (error) {
       setFormError(error);
       return;
     }
     setFormError(null);
-    const iva = form.factura ? calcIVA(form.monto) : 0;
+    const iva = nextForm.factura ? calcIVA(nextForm.monto) : 0;
     const data: Ingreso = {
-      ...(form as Ingreso),
+      ...(nextForm as Ingreso),
       id: editingId || uuid(),
       iva,
-      montoTotal: form.monto + iva,
+      montoTotal: nextForm.monto + iva,
       createdAt: editingId ? (form as Ingreso).createdAt : new Date().toISOString(),
     };
     editingId ? updateIngreso(data) : addIngreso(data);
@@ -437,13 +441,7 @@ export default function IngresosPage() {
                 type="checkbox"
                 checked={form.factura}
                 onChange={(e) => {
-                  const checked = e.target.checked;
-                  const updates: Partial<typeof form> = { factura: checked };
-                  // Auto-generate folio when enabling factura on a new record
-                  if (checked && !form.numeroFactura && !editingId) {
-                    updates.numeroFactura = getNextFolio('ING');
-                  }
-                  setForm({ ...form, ...updates });
+                  setForm({ ...form, factura: e.target.checked });
                 }}
                 className="w-4 h-4 accent-[#c72a09] rounded"
               />
@@ -463,7 +461,7 @@ export default function IngresosPage() {
                 type="text"
                 value={form.numeroFactura}
                 onChange={(e) => setForm({ ...form, numeroFactura: e.target.value })}
-                placeholder="Se genera automáticamente"
+                placeholder="Se genera al guardar"
                 className={inputClass}
               />
             </div>

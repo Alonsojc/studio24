@@ -18,12 +18,25 @@ export async function getMyProfile(): Promise<UserProfile | null> {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-  if (!data) {
-    // Profile doesn't exist yet (table not created or trigger didn't fire)
-    return { id: user.id, email: user.email || '', role: 'admin', nombre: '' };
+  const [{ data: profile }, { data: member }] = await Promise.all([
+    supabase.from('profiles').select('id, email, role, nombre').eq('id', user.id).maybeSingle(),
+    supabase
+      .from('team_members')
+      .select('role')
+      .eq('user_id', user.id)
+      .order('joined_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (!profile && !member) {
+    return null;
   }
-  return data as UserProfile;
+  return {
+    id: user.id,
+    email: (profile?.email as string) || user.email || '',
+    role: (member?.role as UserRole | undefined) || (profile?.role as UserRole | undefined) || 'operador',
+    nombre: (profile?.nombre as string) || '',
+  };
 }
 
 // Update profile
@@ -32,7 +45,10 @@ export async function updateProfile(profile: Partial<UserProfile>): Promise<void
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return;
-  await supabase.from('profiles').upsert({ id: user.id, ...profile });
+  const safeProfile: Partial<UserProfile> = { ...profile };
+  delete safeProfile.id;
+  delete safeProfile.role;
+  await supabase.from('profiles').upsert({ id: user.id, email: user.email || '', ...safeProfile });
 }
 
 // Route permissions per role

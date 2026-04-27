@@ -214,8 +214,9 @@ export default function DiotPage() {
       )}
 
       <p className="text-[10px] text-neutral-400 mt-4 leading-relaxed">
-        El TXT sigue el formato "DIOT masivo" (campos separados por pipe). El SAT actualiza este formato ocasionalmente,
-        así que valida con tu contador antes de subirlo al portal. El CSV es una vista limpia para revisión.
+        El TXT sigue el formato &quot;DIOT masivo&quot; (campos separados por pipe). El SAT actualiza este formato
+        ocasionalmente, así que valida con tu contador antes de subirlo al portal. El CSV es una vista limpia para
+        revisión.
       </p>
     </div>
   );

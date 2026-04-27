@@ -14,7 +14,7 @@ import {
   Diseno,
   PlantillaWhatsApp,
 } from './types';
-import { mirrorToIDB, removeFromIDB } from './db';
+import { clearStudioDB, mirrorToIDB, removeFromIDB } from './db';
 
 const KEYS = {
   clientes: 'bordados_clientes',
@@ -31,6 +31,15 @@ const KEYS = {
   disenos: 'bordados_disenos',
   plantillas: 'bordados_plantillas',
 } as const;
+
+const KEEP_AFTER_CLEAR = new Set(['bordados_seeded']);
+
+export const ACTIVE_USER_KEY = 'bordados_active_user_id';
+
+export function hasLocalBusinessData(): boolean {
+  if (typeof window === 'undefined') return false;
+  return Object.values(KEYS).some((key) => localStorage.getItem(key) !== null);
+}
 
 function getItems<T>(key: string): T[] {
   if (typeof window === 'undefined') return [];
@@ -211,6 +220,32 @@ export function clearAllData(): void {
   });
   // Keep seeded flag so demo data doesn't reload
   localStorage.setItem('bordados_seeded', '1');
+}
+
+export function clearSensitiveLocalData(): void {
+  if (typeof window === 'undefined') return;
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith('bordados_') && !KEEP_AFTER_CLEAR.has(key)) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
+  clearStudioDB();
+  localStorage.setItem('bordados_seeded', '1');
+}
+
+export function bindLocalDataToUser(userId: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const activeUserId = localStorage.getItem(ACTIVE_USER_KEY);
+  let cleared = false;
+  if (activeUserId && activeUserId !== userId) {
+    clearSensitiveLocalData();
+    cleared = true;
+  }
+  localStorage.setItem(ACTIVE_USER_KEY, userId);
+  return cleared;
 }
 
 // Next folio — usa un contador incremental persistente para que nunca se repita

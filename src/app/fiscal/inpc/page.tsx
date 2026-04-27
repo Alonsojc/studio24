@@ -31,7 +31,7 @@ export default function InpcPage() {
   }, []);
 
   useEffect(() => {
-    reload();
+    void Promise.resolve().then(reload);
   }, [reload]);
 
   const handleSync = async () => {
@@ -252,8 +252,8 @@ export default function InpcPage() {
       )}
 
       <p className="text-[10px] text-neutral-400 mt-6 leading-relaxed">
-        Fuente: Banco de México (SIE), serie <code>SP74665</code> — INPC General Mensual base 2018=100. El cron corre el día 11
-        de cada mes; si algún valor no aparece, usa <strong>Sincronizar con Banxico</strong> o captúralo a mano.
+        Fuente: Banco de México (SIE), serie <code>SP74665</code> — INPC General Mensual base 2018=100. El cron corre el
+        día 11 de cada mes; si algún valor no aparece, usa <strong>Sincronizar con Banxico</strong> o captúralo a mano.
       </p>
     </div>
   );
