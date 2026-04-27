@@ -220,10 +220,22 @@ export async function cloudSaveConfig(config: ConfigNegocio): Promise<void> {
 export async function cloudGetNextFolio(prefix: string): Promise<string> {
   const teamId = await getMyTeamId();
   if (!teamId) return `${prefix}-001`;
-  const { data } = await supabase.from('folio_counter').select('counter').eq('team_id', teamId).maybeSingle();
-  const current = data?.counter || 0;
+  const { data, error } = await supabase.rpc('next_folio', { p_prefix: prefix });
+  if (!error && typeof data === 'string') return data;
+
+  // Fallback for databases that have not run supabase-hardening.sql yet.
+  const { data: counterRow, error: readError } = await supabase
+    .from('folio_counter')
+    .select('counter')
+    .eq('team_id', teamId)
+    .maybeSingle();
+  if (readError) throw readError;
+  const current = counterRow?.counter || 0;
   const next = current + 1;
-  await supabase.from('folio_counter').upsert({ team_id: teamId, counter: next }, { onConflict: 'team_id' });
+  const { error: writeError } = await supabase
+    .from('folio_counter')
+    .upsert({ team_id: teamId, counter: next }, { onConflict: 'team_id' });
+  if (writeError) throw writeError;
   return `${prefix}-${String(next).padStart(3, '0')}`;
 }
 
@@ -286,15 +298,15 @@ export async function migrateLocalToCloud(): Promise<number> {
 
 // Pull from cloud: download all Supabase data into localStorage
 // Used when logging in on a new device
-export async function pullFromCloud(): Promise<number> {
+export async function pullFromCloud(opts: { replaceEmpty?: boolean } = {}): Promise<number> {
   let count = 0;
 
   const pull = async <T>(table: string, localKey: string) => {
     const items = await getAll<T>(table);
-    if (items.length > 0) {
+    if (items.length > 0 || opts.replaceEmpty) {
       localStorage.setItem(localKey, JSON.stringify(items));
-      count += items.length;
     }
+    count += items.length;
   };
 
   await pull<Cliente>('clientes', 'bordados_clientes');
@@ -328,7 +340,7 @@ export async function pullFromCloud(): Promise<number> {
 
   // Recurrentes log
   const log = await cloudGetRecurrentesLog();
-  if (log.length > 0) {
+  if (log.length > 0 || opts.replaceEmpty) {
     localStorage.setItem('bordados_recurrentes_log', JSON.stringify(log));
   }
 

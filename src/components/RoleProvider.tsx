@@ -9,7 +9,7 @@ interface RoleContextType {
   loading: boolean;
 }
 
-const RoleContext = createContext<RoleContextType>({ profile: null, role: 'admin', loading: true });
+const RoleContext = createContext<RoleContextType>({ profile: null, role: 'operador', loading: true });
 
 export function useRole() {
   return useContext(RoleContext);
@@ -20,17 +20,15 @@ export default function RoleProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getMyProfile().then((p) => {
-      setProfile(p);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    getMyProfile()
+      .then((p) => {
+        setProfile(p);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, []);
 
-  const role = profile?.role || 'admin';
+  const role = profile?.role || 'operador';
 
-  return (
-    <RoleContext.Provider value={{ profile, role, loading }}>
-      {children}
-    </RoleContext.Provider>
-  );
+  return <RoleContext.Provider value={{ profile, role, loading }}>{children}</RoleContext.Provider>;
 }

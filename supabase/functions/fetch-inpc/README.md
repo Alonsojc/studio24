@@ -11,7 +11,7 @@ Usa Banxico en lugar de INEGI porque su API es más simple y estable (sin áreas
 
 2. **Guardar el token como secreto** en Supabase (vía CLI):
    ```bash
-   supabase secrets set BANXICO_TOKEN=<tu_token>
+   supabase secrets set BANXICO_TOKEN=<tu_token> FETCH_INPC_SECRET=<secreto_largo>
    ```
 
 3. **Desplegar la función**:
@@ -23,10 +23,12 @@ Usa Banxico en lugar de INEGI porque su API es más simple y estable (sin áreas
 
 ## Uso manual
 
-Desde el cliente, botón "Sincronizar" en `/fiscal/inpc`. O vía CLI:
+Desde el cliente, botón "Sincronizar" en `/fiscal/inpc` como admin/contador. O vía HTTP/cron enviando el secreto:
 
 ```bash
-supabase functions invoke fetch-inpc
+curl -X POST \
+  -H "x-cron-secret: <FETCH_INPC_SECRET>" \
+  https://<PROJECT_REF>.functions.supabase.co/fetch-inpc
 ```
 
 ## Respuesta
@@ -39,6 +41,7 @@ supabase functions invoke fetch-inpc
 Error (ejemplos):
 ```json
 { "error": "Falta BANXICO_TOKEN en secrets" }
+{ "error": "No autorizado" }
 { "error": "Banxico respondió 401", "body": "..." }
 ```
 

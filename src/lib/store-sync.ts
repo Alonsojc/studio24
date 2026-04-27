@@ -290,8 +290,13 @@ export function addRecurrenteLog(key: string) {
 
 // Folio — uses cloud if available, falls back to local
 export function getNextFolio(prefix: string): string {
-  const local = localGetNextFolio(prefix);
-  // Also update cloud in background
-  cloudGetNextFolio(prefix).catch(() => {});
-  return local;
+  return localGetNextFolio(prefix);
+}
+
+export async function getNextFolioAsync(prefix: string): Promise<string> {
+  try {
+    return await cloudGetNextFolio(prefix);
+  } catch {
+    return localGetNextFolio(prefix);
+  }
 }

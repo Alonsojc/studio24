@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { formatCurrency, calcIVA } from '@/lib/helpers';
 import { v4 as uuid } from 'uuid';
 import { getClientes, getConfig, getCotizaciones, getProductos } from '@/lib/store';
-import { addCotizacion, updateCotizacion, getNextFolio } from '@/lib/store-sync';
+import { addCotizacion, updateCotizacion, getNextFolioAsync } from '@/lib/store-sync';
 import { Cliente, ConfigNegocio, Cotizacion, Producto } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
 import { inputClass, labelClass } from '@/lib/styles';
@@ -128,7 +128,7 @@ export default function CotizadorPage() {
 
   const today = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  const guardarCotizacion = () => {
+  const guardarCotizacion = async () => {
     if (items.filter((i) => i.descripcion && i.precioUnitario > 0).length === 0) return;
     const validItems = items
       .filter((i) => i.descripcion && i.precioUnitario > 0)
@@ -153,7 +153,7 @@ export default function CotizadorPage() {
     } else {
       const cot: Cotizacion = {
         id: uuid(),
-        folio: getNextFolio('COT'),
+        folio: await getNextFolioAsync('COT'),
         clienteNombre,
         clienteEmpresa,
         items: validItems,

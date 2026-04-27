@@ -2,6 +2,7 @@
 
 import { supabase } from './supabase';
 import { clearTeamIdCache } from './teams';
+import { clearSensitiveLocalData } from './store';
 
 export async function signUp(email: string, password: string) {
   const { data, error } = await supabase.auth.signUp({ email, password });
@@ -17,8 +18,9 @@ export async function signIn(email: string, password: string) {
 
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
-  if (error) throw new Error(error.message);
   clearTeamIdCache();
+  clearSensitiveLocalData();
+  if (error) throw new Error(error.message);
 }
 
 export async function resetPassword(email: string) {

@@ -91,6 +91,16 @@ export function removeFromIDB(key: string): void {
 }
 
 /**
+ * Drop all local IndexedDB data owned by the app. This is used on logout or
+ * account switch so cached customer/financial records cannot leak users.
+ */
+export function clearStudioDB(): void {
+  if (typeof indexedDB === 'undefined') return;
+  const req = indexedDB.deleteDatabase(DB_NAME);
+  req.onerror = () => {};
+}
+
+/**
  * Restore localStorage from IndexedDB if localStorage is empty.
  * Called once at app startup.
  */

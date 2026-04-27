@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   output: "export",
   basePath: isProd ? "/studio24" : "",
   assetPrefix: isProd ? "/studio24/" : "",
+  turbopack: {
+    root: process.cwd(),
+  },
   images: {
     unoptimized: true,
   },

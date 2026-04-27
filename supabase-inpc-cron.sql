@@ -11,8 +11,8 @@
 --     (Database → Extensions → habilitar si no lo están).
 --
 -- IMPORTANTE: antes de ejecutar, reemplaza <PROJECT_REF> por tu ref de Supabase
--- (lo encuentras en Project Settings → General → Reference ID) y <ANON_KEY>
--- por tu anon key (Project Settings → API).
+-- (Project Settings → General → Reference ID) y <FETCH_INPC_SECRET> por el
+-- mismo secreto que configuraste en la Edge Function.
 
 -- ============================================================
 -- 1. Habilitar extensiones (idempotente)
@@ -45,7 +45,7 @@ select cron.schedule(
     url := 'https://<PROJECT_REF>.functions.supabase.co/fetch-inpc',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer <ANON_KEY>'
+      'x-cron-secret', '<FETCH_INPC_SECRET>'
     ),
     body := '{}'::jsonb
   );

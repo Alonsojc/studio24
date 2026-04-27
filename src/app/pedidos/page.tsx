@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getPedidos, getClientes } from '@/lib/store';
 import { cloudGetPedidos, cloudGetClientes } from '@/lib/store-cloud';
-import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolio } from '@/lib/store-sync';
+import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolioAsync } from '@/lib/store-sync';
 import { useCloudStore } from '@/lib/useCloudStore';
 import Pagination, { PAGE_SIZE } from '@/components/Pagination';
 import { Pedido, EstadoPedido, EstadoPago, ConceptoIngreso, Ingreso } from '@/lib/types';
@@ -22,6 +22,7 @@ import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import ActionMenu from '@/components/ActionMenu';
 import PhotoGallery from '@/components/PhotoGallery';
+import { useRole } from '@/components/RoleProvider';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
@@ -107,6 +108,8 @@ export default function PedidosPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
   const [page, setPage] = useState(0);
+  const { role } = useRole();
+  const canCreateIngreso = role === 'admin' || role === 'contador';
   const pagedPedidos = pedidos.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const isClient = typeof window !== 'undefined';
   const [mounted] = useState(() => isClient);
@@ -162,15 +165,15 @@ export default function PedidosPage() {
       reload();
     }
   };
-  const moveEstado = (p: Pedido, estado: EstadoPedido) => {
+  const moveEstado = async (p: Pedido, estado: EstadoPedido) => {
     const updated = { ...p, estado };
     if (estado === 'entregado') {
       updated.fechaEntregaReal = todayString();
       // If fully paid, offer to create Ingreso
-      if ((p.estadoPago === 'pagado' || p.montoPagado >= p.montoTotal) && p.montoTotal > 0) {
+      if (canCreateIngreso && (p.estadoPago === 'pagado' || p.montoPagado >= p.montoTotal) && p.montoTotal > 0) {
         if (confirm('Pedido entregado y pagado. ¿Crear ingreso automáticamente?')) {
           const conFactura = confirm('¿Facturar este ingreso? (IVA 16%)');
-          crearIngresoDePedido(p, conFactura);
+          await crearIngresoDePedido(p, conFactura);
         }
       }
     }
@@ -178,7 +181,7 @@ export default function PedidosPage() {
     reload();
   };
 
-  const crearIngresoDePedido = (p: Pedido, conFactura: boolean) => {
+  const crearIngresoDePedido = async (p: Pedido, conFactura: boolean) => {
     const iva = conFactura ? calcIVA(p.montoTotal) : 0;
     const ingreso: Ingreso = {
       id: uuid(),
@@ -192,7 +195,7 @@ export default function PedidosPage() {
       montoTotal: p.montoTotal + iva,
       formaPago: 'transferencia',
       factura: conFactura,
-      numeroFactura: conFactura ? getNextFolio('ING') : '',
+      numeroFactura: conFactura ? await getNextFolioAsync('ING') : '',
       notas: `Generado desde pedido`,
       createdAt: new Date().toISOString(),
     };
@@ -771,13 +774,13 @@ export default function PedidosPage() {
                               items={[
                                 { label: 'Editar', onClick: () => openEdit(p) },
                                 { label: 'Imprimir orden', onClick: () => imprimirOrdenTrabajo(p) },
-                                ...(p.estadoPago === 'pagado' || p.montoPagado > 0
+                                ...((p.estadoPago === 'pagado' || p.montoPagado > 0) && canCreateIngreso
                                   ? [
                                       {
                                         label: 'Crear Ingreso',
-                                        onClick: () => {
+                                        onClick: async () => {
                                           const conFactura = confirm('¿Facturar este ingreso? (IVA 16%)');
-                                          crearIngresoDePedido(p, conFactura);
+                                          await crearIngresoDePedido(p, conFactura);
                                           alert('Ingreso creado!');
                                         },
                                       },

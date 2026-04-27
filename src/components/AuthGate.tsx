@@ -5,6 +5,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { signIn, signUp, resetPassword } from '@/lib/auth';
 import { pullFromCloud } from '@/lib/store-cloud';
+import { bindLocalDataToUser, clearSensitiveLocalData } from '@/lib/store';
 
 type View = 'login' | 'register' | 'reset' | 'check-email';
 
@@ -19,26 +20,54 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-      setLoading(false);
-      // Sync in background — never blocks UI
-      if (user) pullFromCloud().catch(() => {});
+    let cancelled = false;
+
+    const prepareUserSession = async (nextUser: User) => {
+      const cacheWasCleared = bindLocalDataToUser(nextUser.id);
+      await pullFromCloud({ replaceEmpty: cacheWasCleared });
+    };
+
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (cancelled) return;
+      if (user) {
+        try {
+          await prepareUserSession(user);
+        } catch {
+          // Offline or Supabase unavailable: keep the user in the app with local cache.
+        }
+      }
+      if (!cancelled) {
+        setUser(user);
+        setLoading(false);
+      }
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-      // Sync in background after sign in
-      if (session?.user && _event === 'SIGNED_IN') {
-        pullFromCloud().catch(() => {});
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const nextUser = session?.user ?? null;
+      if (!nextUser) {
+        clearSensitiveLocalData();
+        setUser(null);
+        setLoading(false);
+        return;
       }
+      if (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED' || _event === 'INITIAL_SESSION') {
+        setLoading(true);
+        try {
+          await prepareUserSession(nextUser);
+        } catch {
+          // Offline or Supabase unavailable: keep the user in the app with local cache.
+        }
+      }
+      setUser(nextUser);
+      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   if (loading) {

@@ -79,7 +79,7 @@ export default function AjustesPage() {
 
   useEffect(() => {
     if (role === 'admin') {
-      reloadTeam();
+      void Promise.resolve().then(reloadTeam);
     }
   }, [role, reloadTeam]);
 

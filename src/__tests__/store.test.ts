@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   getClientes,
   addCliente,
@@ -21,12 +21,37 @@ import {
   exportAllData,
   importAllData,
   clearAllData,
+  clearSensitiveLocalData,
+  bindLocalDataToUser,
+  ACTIVE_USER_KEY,
   getNextFolio,
 } from '@/lib/store';
 import type { Cliente, Ingreso, Egreso, Producto, Cotizacion, ConfigNegocio } from '@/lib/types';
 
+function createMemoryStorage(): Storage {
+  let data: Record<string, string> = {};
+  return {
+    get length() {
+      return Object.keys(data).length;
+    },
+    clear: () => {
+      data = {};
+    },
+    getItem: (key: string) => data[key] ?? null,
+    key: (index: number) => Object.keys(data)[index] ?? null,
+    removeItem: (key: string) => {
+      delete data[key];
+    },
+    setItem: (key: string, value: string) => {
+      data[key] = String(value);
+    },
+  };
+}
+
 beforeEach(() => {
-  localStorage.clear();
+  const storage = createMemoryStorage();
+  vi.stubGlobal('localStorage', storage);
+  Object.defineProperty(window, 'localStorage', { value: storage, configurable: true });
 });
 
 // --- CRUD Clientes ---
@@ -147,6 +172,9 @@ describe('Config', () => {
     const custom: ConfigNegocio = {
       nombreNegocio: 'Mi Negocio',
       titular: 'Juan',
+      rfc: 'XAXX010101000',
+      regimenFiscal: '626',
+      codigoPostal: '64000',
       banco: 'BBVA',
       numeroCuenta: '123',
       clabe: '456',
@@ -237,6 +265,42 @@ describe('Backup y Restore', () => {
     clearAllData();
     expect(getClientes()).toHaveLength(0);
     expect(getProductos()).toHaveLength(0);
+  });
+
+  it('clearSensitiveLocalData limpia datos sensibles y conserva bandera seeded', () => {
+    addCliente({
+      id: 'c1',
+      nombre: 'Test',
+      telefono: '',
+      email: '',
+      direccion: '',
+      logo: '',
+      notas: '',
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    localStorage.setItem('bordados_pin_hash', 'secret');
+    clearSensitiveLocalData();
+    expect(getClientes()).toHaveLength(0);
+    expect(localStorage.getItem('bordados_pin_hash')).toBeNull();
+    expect(localStorage.getItem('bordados_seeded')).toBe('1');
+  });
+
+  it('bindLocalDataToUser limpia cache al cambiar de usuario', () => {
+    bindLocalDataToUser('u1');
+    addCliente({
+      id: 'c1',
+      nombre: 'Usuario 1',
+      telefono: '',
+      email: '',
+      direccion: '',
+      logo: '',
+      notas: '',
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    const cleared = bindLocalDataToUser('u2');
+    expect(cleared).toBe(true);
+    expect(getClientes()).toHaveLength(0);
+    expect(localStorage.getItem(ACTIVE_USER_KEY)).toBe('u2');
   });
 
   it('importAllData rechaza JSON inválido', () => {

@@ -12,7 +12,7 @@ import {
   addEgresoRecurrente,
   updateEgresoRecurrente,
   deleteEgresoRecurrente,
-  getNextFolio,
+  getNextFolioAsync,
 } from '@/lib/store-sync';
 import { Egreso, EgresoRecurrente, CategoriaEgreso, FormaPago } from '@/lib/types';
 import {
@@ -144,19 +144,23 @@ export default function EgresosPage() {
     setFormError(null);
     setModalOpen(true);
   };
-  const handleSave = () => {
-    const error = validateEgreso(form);
+  const handleSave = async () => {
+    const nextForm = {
+      ...form,
+      numeroFactura: form.factura && !form.numeroFactura ? await getNextFolioAsync('EGR') : form.numeroFactura,
+    };
+    const error = validateEgreso(nextForm);
     if (error) {
       setFormError(error);
       return;
     }
     setFormError(null);
-    const iva = form.factura ? calcIVA(form.monto) : 0;
+    const iva = nextForm.factura ? calcIVA(nextForm.monto) : 0;
     const data: Egreso = {
-      ...(form as Egreso),
+      ...(nextForm as Egreso),
       id: editingId || uuid(),
       iva,
-      montoTotal: form.monto + iva,
+      montoTotal: nextForm.monto + iva,
       createdAt: editingId ? (form as Egreso).createdAt : new Date().toISOString(),
     };
     editingId ? updateEgreso(data) : addEgreso(data);
@@ -687,12 +691,7 @@ export default function EgresosPage() {
                 type="checkbox"
                 checked={form.factura}
                 onChange={(e) => {
-                  const checked = e.target.checked;
-                  const updates: Partial<typeof form> = { factura: checked };
-                  if (checked && !form.numeroFactura && !editingId) {
-                    updates.numeroFactura = getNextFolio('EGR');
-                  }
-                  setForm({ ...form, ...updates });
+                  setForm({ ...form, factura: e.target.checked });
                 }}
                 className="w-4 h-4 accent-[#c72a09] rounded"
               />
@@ -712,7 +711,7 @@ export default function EgresosPage() {
                 type="text"
                 value={form.numeroFactura}
                 onChange={(e) => setForm({ ...form, numeroFactura: e.target.value })}
-                placeholder="Se genera automáticamente"
+                placeholder="Se genera al guardar"
                 className={inputClass}
               />
             </div>
