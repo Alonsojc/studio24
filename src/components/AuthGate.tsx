@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { signIn, signUp, resetPassword } from '@/lib/auth';
@@ -26,6 +26,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const userRef = useRef<User | null>(null);
   const [view, setView] = useState<View>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,54 +35,52 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [sessionError, setSessionError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const setCurrentUser = (nextUser: User | null) => {
+    userRef.current = nextUser;
+    setUser(nextUser);
+  };
+
   useEffect(() => {
     let cancelled = false;
-    const bootWatchdog = window.setTimeout(() => {
-      if (cancelled) return;
-      setSessionError(BOOT_ERROR_MESSAGE);
-      setUser(null);
-      setLoading(false);
-    }, BOOT_TIMEOUT_MS);
-
-    const finishBoot = () => {
-      window.clearTimeout(bootWatchdog);
-    };
+    let syncInFlight: Promise<void> | null = null;
 
     const prepareUserSession = async (nextUser: User) => {
       const cacheWasCleared = bindLocalDataToUser(nextUser.id);
       await withTimeout(pullFromCloud({ replaceEmpty: cacheWasCleared }), BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE);
     };
 
+    const syncUserSession = (nextUser: User, kind: string) => {
+      if (syncInFlight) return syncInFlight;
+      syncInFlight = prepareUserSession(nextUser)
+        .catch((e) => {
+          reportError(e, { kind });
+          if (!cancelled && !userRef.current) setSessionError(BOOT_ERROR_MESSAGE);
+        })
+        .finally(() => {
+          syncInFlight = null;
+        });
+      return syncInFlight;
+    };
+
     const boot = async () => {
       try {
         const {
-          data: { user },
-        } = await withTimeout(supabase.auth.getUser(), BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE);
+          data: { session },
+        } = await withTimeout(supabase.auth.getSession(), BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE);
         if (cancelled) return;
-        let hasSessionWarning = false;
-        if (user) {
-          try {
-            await prepareUserSession(user);
-          } catch (e) {
-            reportError(e, { kind: 'authBootstrapPullFromCloud' });
-            hasSessionWarning = true;
-            if (!cancelled) setSessionError(BOOT_ERROR_MESSAGE);
-            // Offline or Supabase unavailable: keep the user in the app with local cache.
-          }
-        }
-        if (!cancelled) {
-          setUser(user);
-          if (!hasSessionWarning) setSessionError('');
-          setLoading(false);
-          finishBoot();
+        const nextUser = session?.user ?? null;
+        setCurrentUser(nextUser);
+        setLoading(false);
+        setSessionError('');
+        if (nextUser) {
+          void syncUserSession(nextUser, 'authBootstrapPullFromCloud');
         }
       } catch (e) {
         reportError(e, { kind: 'authBootstrapGetUser' });
         if (!cancelled) {
-          setUser(null);
+          setCurrentUser(null);
           setSessionError(BOOT_ERROR_MESSAGE);
           setLoading(false);
-          finishBoot();
         }
       }
     };
@@ -95,30 +94,20 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       setSessionError('');
       if (!nextUser) {
         clearSensitiveLocalData();
-        setUser(null);
+        setCurrentUser(null);
         setLoading(false);
-        finishBoot();
         return;
       }
-      if (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED' || _event === 'INITIAL_SESSION') {
-        setLoading(true);
-        try {
-          await prepareUserSession(nextUser);
-        } catch (e) {
-          reportError(e, { kind: 'authStatePullFromCloud', event: _event });
-          setSessionError(BOOT_ERROR_MESSAGE);
-          // Offline or Supabase unavailable: keep the user in the app with local cache.
-        }
-      }
       if (cancelled) return;
-      setUser(nextUser);
+      setCurrentUser(nextUser);
       setLoading(false);
-      finishBoot();
+      if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION') {
+        void syncUserSession(nextUser, 'authStatePullFromCloud');
+      }
     });
 
     return () => {
       cancelled = true;
-      finishBoot();
       subscription.unsubscribe();
     };
   }, []);
