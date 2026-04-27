@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getPedidos, getClientes, getConfig } from '@/lib/store';
-import { Pedido, Cliente, ConfigNegocio, EstadoPedido } from '@/lib/types';
-import { formatCurrency, formatDate, estadoPedidoLabel, conceptoLabel } from '@/lib/helpers';
+import { EstadoPedido } from '@/lib/types';
+import { formatCurrency, formatDate, conceptoLabel } from '@/lib/helpers';
 
 const STEPS: { estado: EstadoPedido; label: string; icon: string }[] = [
   { estado: 'pendiente', label: 'Recibido', icon: '📋' },

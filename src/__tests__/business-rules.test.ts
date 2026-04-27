@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyInventoryConsumption,
+  applyPedidoPayment,
   buildIngresoFromPedido,
+  buildPedidoPayment,
   calculateEstadoPago,
+  calculatePedidoPaidAmount,
   calculatePedidoTotal,
   canCreateIngresoForPedido,
   hasIngresoForPedido,
@@ -20,9 +24,11 @@ const pedido: Pedido = {
   estado: 'entregado',
   estadoPago: 'pagado',
   montoPagado: 1500,
+  pagos: [],
   maquina: '',
   archivoDiseno: '',
   fotos: [],
+  inventarioUsado: [],
   checklist: {
     archivoListo: true,
     hilosCargados: true,
@@ -58,9 +64,56 @@ const ingreso: Ingreso = {
 describe('reglas de negocio de pedidos e ingresos', () => {
   it('calcula total y estado de pago del pedido', () => {
     expect(calculatePedidoTotal({ piezas: 3, precioUnitario: 99.99 })).toBe(299.97);
+    expect(calculatePedidoPaidAmount({ montoPagado: 200, pagos: [] })).toBe(200);
+    expect(
+      calculatePedidoPaidAmount({
+        montoPagado: 0,
+        pagos: [
+          { id: 'p1', fecha: '2026-04-01', formaPago: 'efectivo', monto: 100, referencia: '', createdAt: '' },
+          { id: 'p2', fecha: '2026-04-02', formaPago: 'transferencia', monto: 250, referencia: 'ABC', createdAt: '' },
+        ],
+      }),
+    ).toBe(350);
     expect(calculateEstadoPago(1000, 0)).toBe('pendiente');
     expect(calculateEstadoPago(1000, 250)).toBe('parcial');
     expect(calculateEstadoPago(1000, 1000)).toBe('pagado');
+  });
+
+  it('registra pagos parciales con historial', () => {
+    const pago = buildPedidoPayment({
+      id: 'pago-1',
+      monto: 500,
+      formaPago: 'transferencia',
+      referencia: 'SPEI-1',
+      now: new Date('2026-04-02T09:00:00.000Z'),
+    });
+    const updated = applyPedidoPayment({ ...pedido, montoPagado: 0, pagos: [], estadoPago: 'pendiente' }, pago);
+    expect(updated.montoPagado).toBe(500);
+    expect(updated.estadoPago).toBe('parcial');
+    expect(updated.pagos?.[0]).toMatchObject({ referencia: 'SPEI-1', fecha: '2026-04-02' });
+  });
+
+  it('descuenta inventario consumido por pedido sin dejar stock negativo', () => {
+    const updated = applyInventoryConsumption(
+      [
+        {
+          id: 'hilo-1',
+          nombre: 'Hilo rojo',
+          categoria: 'hilo',
+          unidad: 'conos',
+          stock: 2,
+          stockMinimo: 1,
+          costo: 80,
+          color: 'rojo',
+          marca: '',
+          ubicacion: '',
+          notas: '',
+          createdAt: '',
+        },
+      ],
+      [{ itemId: 'hilo-1', cantidad: 3 }],
+    );
+    expect(updated[0].stock).toBe(0);
   });
 
   it('detecta ingresos existentes por pedido', () => {

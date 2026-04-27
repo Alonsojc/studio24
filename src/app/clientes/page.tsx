@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getClientes, getIngresos, getPedidos } from '@/lib/store';
@@ -72,7 +74,8 @@ export default function ClientesPage() {
       id: editingId || uuid(),
       createdAt: editingId ? (form as Cliente).createdAt : new Date().toISOString(),
     };
-    editingId ? updateCliente(data) : addCliente(data);
+    if (editingId) updateCliente(data);
+    else addCliente(data);
     setModalOpen(false);
     reload();
   };

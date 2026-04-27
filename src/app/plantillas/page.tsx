@@ -2,17 +2,8 @@
 
 import { useState, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import {
-  getPlantillas,
-  getPedidos,
-  getClientes,
-  getConfig,
-} from '@/lib/store';
-import {
-  addPlantilla,
-  updatePlantilla,
-  deletePlantilla,
-} from '@/lib/store-sync';
+import { getPlantillas, getPedidos, getClientes, getConfig } from '@/lib/store';
+import { addPlantilla, updatePlantilla, deletePlantilla } from '@/lib/store-sync';
 import { PlantillaWhatsApp, Pedido, Cliente } from '@/lib/types';
 import { formatCurrency, formatDate, estadoPedidoLabel } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
@@ -155,7 +146,8 @@ export default function PlantillasPage() {
         ? plantillas.find((p) => p.id === editingId)?.createdAt || new Date().toISOString()
         : new Date().toISOString(),
     };
-    editingId ? updatePlantilla(data) : addPlantilla(data);
+    if (editingId) updatePlantilla(data);
+    else addPlantilla(data);
     setModalOpen(false);
     reload();
   };

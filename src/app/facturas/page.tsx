@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, getEgresos, getConfig, getProveedores } from '@/lib/store';
 import { cloudGetIngresos, cloudGetEgresos } from '@/lib/store-cloud';
 import { useCloudStore } from '@/lib/useCloudStore';
 import { addIngreso, updateIngreso, addEgreso, updateEgreso, updateProveedor } from '@/lib/store-sync';
 import { Ingreso, Egreso } from '@/lib/types';
-import { formatCurrency, formatDate, todayString, calcIVA } from '@/lib/helpers';
+import { formatCurrency, formatDate, todayString } from '@/lib/helpers';
 import { parseXMLFile, mapFormaPago, type DatosCFDI } from '@/lib/cfdi';
 import { uploadFacturaFiles, openFacturaFile } from '@/lib/cfdi-storage';
 import {
@@ -48,10 +48,6 @@ export default function FacturasPage() {
   );
   const [filterTipo, setFilterTipo] = useState<'all' | 'ingreso' | 'egreso'>('all');
   const fileRef = useRef<HTMLInputElement>(null);
-
-  const reload = useCallback(() => {
-    // Re-read from store for matching
-  }, []);
 
   if (!mounted)
     return (
@@ -434,8 +430,6 @@ export default function FacturasPage() {
   };
 
   const pendientes = facturas.filter((f) => f.status !== 'done');
-  const sesionProcesadas = facturas.filter((f) => f.status === 'done');
-
   // Facturas ya vinculadas (persisten entre navegaciones)
   const facturasVinculadas = [
     ...ingresos

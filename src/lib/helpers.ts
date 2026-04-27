@@ -130,9 +130,13 @@ export function validatePedido(form: Omit<Pedido, 'id' | 'createdAt'>): string |
   if (form.precioUnitario <= 0) return 'El precio unitario debe ser mayor a 0';
   if (!form.fechaPedido || !isValidDate(form.fechaPedido)) return 'La fecha de pedido no es válida';
   if (form.fechaEntrega && !isValidDate(form.fechaEntrega)) return 'La fecha de entrega no es válida';
-  if (form.montoPagado < 0) return 'El monto pagado no puede ser negativo';
+  const montoPagado =
+    form.pagos && form.pagos.length > 0
+      ? Math.round(form.pagos.reduce((sum, pago) => sum + Math.max(0, pago.monto || 0), 0) * 100) / 100
+      : form.montoPagado;
+  if (montoPagado < 0) return 'El monto pagado no puede ser negativo';
   const montoTotal = Math.round(form.piezas * form.precioUnitario * 100) / 100;
-  if (form.montoPagado > montoTotal) return 'El monto pagado no puede exceder el total del pedido';
+  if (montoPagado > montoTotal) return 'El monto pagado no puede exceder el total del pedido';
   return null;
 }
 

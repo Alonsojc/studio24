@@ -191,26 +191,52 @@ export function exportAllData(): string {
   return JSON.stringify(data, null, 2);
 }
 
-export function importAllData(json: string): void {
+export interface BackupPreview {
+  totalRecords: number;
+  sections: { key: string; count: number }[];
+  hasConfig: boolean;
+}
+
+function parseAndValidateBackup(json: string): { data: Record<string, unknown>; preview: BackupPreview } {
   const data = JSON.parse(json);
   if (typeof data !== 'object' || data === null || Array.isArray(data)) {
     throw new Error('El respaldo debe ser un objeto JSON válido');
   }
   // Validar que las claves conocidas contengan arrays (excepto config)
   const validKeys = Object.keys(KEYS);
+  const sections: BackupPreview['sections'] = [];
   for (const key of validKeys) {
     if (key === 'config') continue;
     if (data[key] !== undefined && !Array.isArray(data[key])) {
       throw new Error(`La sección "${key}" debe ser una lista`);
     }
+    if (Array.isArray(data[key])) {
+      sections.push({ key, count: data[key].length });
+    }
   }
   if (data.config !== undefined && (typeof data.config !== 'object' || Array.isArray(data.config))) {
     throw new Error('La sección "config" debe ser un objeto');
   }
+  return {
+    data: data as Record<string, unknown>,
+    preview: {
+      sections,
+      totalRecords: sections.reduce((sum, section) => sum + section.count, 0),
+      hasConfig: data.config !== undefined,
+    },
+  };
+}
+
+export function previewImportData(json: string): BackupPreview {
+  return parseAndValidateBackup(json).preview;
+}
+
+export function importAllData(json: string): void {
+  const { data } = parseAndValidateBackup(json);
   Object.entries(KEYS).forEach(([key, storageKey]) => {
-    if (data[key]) safeSetItem(storageKey, JSON.stringify(data[key]));
+    if (data[key] !== undefined) safeSetItem(storageKey, JSON.stringify(data[key]));
   });
-  if (data.config) saveConfig(data.config);
+  if (data.config) saveConfig(data.config as ConfigNegocio);
 }
 
 export function clearAllData(): void {

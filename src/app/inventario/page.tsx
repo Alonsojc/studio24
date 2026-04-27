@@ -98,7 +98,8 @@ export default function InventarioPage() {
       id: editingId || uuid(),
       createdAt: editingId ? (form as ItemInventario).createdAt : new Date().toISOString(),
     };
-    editingId ? updateItemInventario(data) : addItemInventario(data);
+    if (editingId) updateItemInventario(data);
+    else addItemInventario(data);
     setModalOpen(false);
     reload();
   };

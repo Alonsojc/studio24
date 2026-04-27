@@ -78,6 +78,21 @@ export type EstadoPedido = 'pendiente' | 'diseno' | 'aprobado' | 'en_maquina' | 
 
 export type EstadoPago = 'pendiente' | 'parcial' | 'pagado';
 
+export interface PagoPedido {
+  id: string;
+  fecha: string;
+  formaPago: FormaPago;
+  monto: number;
+  referencia: string;
+  createdAt: string;
+}
+
+export interface ConsumoInventarioPedido {
+  itemId: string;
+  cantidad: number;
+  descripcion?: string;
+}
+
 export interface Pedido {
   id: string;
   clienteId: string;
@@ -90,9 +105,11 @@ export interface Pedido {
   estado: EstadoPedido;
   estadoPago: EstadoPago;
   montoPagado: number;
+  pagos?: PagoPedido[];
   maquina: string;
   archivoDiseno: string;
   fotos: string[];
+  inventarioUsado?: ConsumoInventarioPedido[];
   checklist: {
     archivoListo: boolean;
     hilosCargados: boolean;

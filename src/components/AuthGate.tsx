@@ -6,8 +6,22 @@ import { supabase } from '@/lib/supabase';
 import { signIn, signUp, resetPassword } from '@/lib/auth';
 import { pullFromCloud } from '@/lib/store-cloud';
 import { bindLocalDataToUser, clearSensitiveLocalData } from '@/lib/store';
+import { reportError } from '@/lib/sentry';
 
 type View = 'login' | 'register' | 'reset' | 'check-email';
+
+const BOOT_TIMEOUT_MS = 8000;
+const BOOT_ERROR_MESSAGE = 'No se pudo conectar, intenta recargar.';
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -17,63 +31,105 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [sessionError, setSessionError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    const bootWatchdog = window.setTimeout(() => {
+      if (cancelled) return;
+      setSessionError(BOOT_ERROR_MESSAGE);
+      setUser(null);
+      setLoading(false);
+    }, BOOT_TIMEOUT_MS);
+
+    const finishBoot = () => {
+      window.clearTimeout(bootWatchdog);
+    };
 
     const prepareUserSession = async (nextUser: User) => {
       const cacheWasCleared = bindLocalDataToUser(nextUser.id);
-      await pullFromCloud({ replaceEmpty: cacheWasCleared });
+      await withTimeout(pullFromCloud({ replaceEmpty: cacheWasCleared }), BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE);
     };
 
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (cancelled) return;
-      if (user) {
-        try {
-          await prepareUserSession(user);
-        } catch {
-          // Offline or Supabase unavailable: keep the user in the app with local cache.
+    const boot = async () => {
+      try {
+        const {
+          data: { user },
+        } = await withTimeout(supabase.auth.getUser(), BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE);
+        if (cancelled) return;
+        let hasSessionWarning = false;
+        if (user) {
+          try {
+            await prepareUserSession(user);
+          } catch (e) {
+            reportError(e, { kind: 'authBootstrapPullFromCloud' });
+            hasSessionWarning = true;
+            if (!cancelled) setSessionError(BOOT_ERROR_MESSAGE);
+            // Offline or Supabase unavailable: keep the user in the app with local cache.
+          }
+        }
+        if (!cancelled) {
+          setUser(user);
+          if (!hasSessionWarning) setSessionError('');
+          setLoading(false);
+          finishBoot();
+        }
+      } catch (e) {
+        reportError(e, { kind: 'authBootstrapGetUser' });
+        if (!cancelled) {
+          setUser(null);
+          setSessionError(BOOT_ERROR_MESSAGE);
+          setLoading(false);
+          finishBoot();
         }
       }
-      if (!cancelled) {
-        setUser(user);
-        setLoading(false);
-      }
-    });
+    };
+
+    void boot();
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const nextUser = session?.user ?? null;
+      setSessionError('');
       if (!nextUser) {
         clearSensitiveLocalData();
         setUser(null);
         setLoading(false);
+        finishBoot();
         return;
       }
       if (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED' || _event === 'INITIAL_SESSION') {
         setLoading(true);
         try {
           await prepareUserSession(nextUser);
-        } catch {
+        } catch (e) {
+          reportError(e, { kind: 'authStatePullFromCloud', event: _event });
+          setSessionError(BOOT_ERROR_MESSAGE);
           // Offline or Supabase unavailable: keep the user in the app with local cache.
         }
       }
+      if (cancelled) return;
       setUser(nextUser);
       setLoading(false);
+      finishBoot();
     });
 
     return () => {
       cancelled = true;
+      finishBoot();
       subscription.unsubscribe();
     };
   }, []);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#fafafa]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
+      <div className="flex min-h-screen items-center justify-center bg-[#fafafa] px-4">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-semibold text-neutral-400">Conectando con Studio 24...</p>
+        </div>
       </div>
     );
   }
@@ -163,6 +219,18 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
             {view === 'check-email' && 'Revisa tu correo'}
           </p>
         </div>
+
+        {sessionError && (
+          <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3 text-xs font-semibold text-red-600">
+            <p>{sessionError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-2 text-[10px] font-bold uppercase tracking-[0.08em] text-red-700 hover:underline"
+            >
+              Recargar
+            </button>
+          </div>
+        )}
 
         {view === 'check-email' ? (
           <div className="text-center">

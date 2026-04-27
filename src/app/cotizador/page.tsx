@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { formatCurrency, calcIVA } from '@/lib/helpers';
 import { v4 as uuid } from 'uuid';
 import { getClientes, getConfig, getCotizaciones, getProductos } from '@/lib/store';
-import { addCotizacion, updateCotizacion, getNextFolioAsync } from '@/lib/store-sync';
-import { Cliente, ConfigNegocio, Cotizacion, Producto } from '@/lib/types';
+import { addCotizacion, updateCotizacion, getNextFolioAsync, addPedido } from '@/lib/store-sync';
+import { Cliente, ConfigNegocio, Cotizacion, Pedido, Producto } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
 import { inputClass, labelClass } from '@/lib/styles';
 
@@ -36,6 +36,7 @@ export default function CotizadorPage() {
   const [notas, setNotas] = useState('');
   const [copied, setCopied] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
+  const [createdPedidoMsg, setCreatedPedidoMsg] = useState('');
   const [editingCotId, setEditingCotId] = useState<string | null>(null);
   const [showHistorial, setShowHistorial] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -180,6 +181,48 @@ export default function CotizadorPage() {
     setConIVA(c.conIVA);
     setNotas(c.notas);
     setShowHistorial(false);
+  };
+
+  const crearPedidoDesdeCotizacion = (c: Cotizacion) => {
+    const matchedCliente = clientes.find((cliente) => cliente.nombre === c.clienteNombre);
+    const descripcion =
+      c.items.length === 1
+        ? c.items[0].descripcion
+        : `Cotización ${c.folio}: ${c.items.map((item) => item.descripcion).join(', ')}`;
+    const pedido: Pedido = {
+      id: uuid(),
+      clienteId: clienteId || matchedCliente?.id || '',
+      descripcion,
+      concepto: 'bordado_y_prenda',
+      piezas: 1,
+      precioUnitario: c.total,
+      montoTotal: c.total,
+      costoMateriales: 0,
+      estado: 'pendiente',
+      estadoPago: 'pendiente',
+      montoPagado: 0,
+      pagos: [],
+      maquina: '',
+      archivoDiseno: '',
+      fotos: [],
+      inventarioUsado: [],
+      checklist: {
+        archivoListo: false,
+        hilosCargados: false,
+        aroColocado: false,
+        estabilizador: false,
+        pruebaHecha: false,
+      },
+      fechaPedido: new Date().toISOString().split('T')[0],
+      fechaEntrega: '',
+      fechaEntregaReal: '',
+      urgente: false,
+      notas: `Creado desde ${c.folio}${c.notas ? `\n\nNotas de cotización: ${c.notas}` : ''}`,
+      createdAt: new Date().toISOString(),
+    };
+    addPedido(pedido);
+    setCreatedPedidoMsg(`Pedido creado desde ${c.folio}.`);
+    setTimeout(() => setCreatedPedidoMsg(''), 2500);
   };
 
   const generarTexto = () => {
@@ -761,6 +804,11 @@ export default function CotizadorPage() {
             >
               {savedMsg ? '¡Guardada!' : editingCotId ? 'Actualizar Cotización' : 'Guardar Cotización'}
             </button>
+            {createdPedidoMsg && (
+              <p className="rounded-xl bg-green-50 px-3.5 py-2.5 text-xs font-semibold text-green-600">
+                {createdPedidoMsg}
+              </p>
+            )}
 
             <button
               onClick={() => setShowHistorial(!showHistorial)}
@@ -772,18 +820,26 @@ export default function CotizadorPage() {
             {showHistorial && cotizaciones.length > 0 && (
               <div className="bg-white rounded-xl border border-neutral-100 max-h-60 overflow-y-auto">
                 {cotizaciones.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => loadCotizacion(c)}
-                    className="w-full text-left px-4 py-3 border-b border-neutral-50 hover:bg-neutral-50 transition-colors"
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold text-[#c72a09]">{c.folio}</span>
-                      <span className="text-xs font-bold">{formatCurrency(c.total)}</span>
+                  <div key={c.id} className="border-b border-neutral-50 last:border-0 px-4 py-3">
+                    <button onClick={() => loadCotizacion(c)} className="w-full text-left hover:opacity-80">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-[#c72a09]">{c.folio}</span>
+                        <span className="text-xs font-bold">{formatCurrency(c.total)}</span>
+                      </div>
+                      <p className="text-xs text-neutral-600 mt-0.5">{c.clienteNombre || 'Sin cliente'}</p>
+                      <p className="text-[10px] text-neutral-300">
+                        {new Date(c.createdAt).toLocaleDateString('es-MX')}
+                      </p>
+                    </button>
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        onClick={() => crearPedidoDesdeCotizacion(c)}
+                        className="text-[10px] font-bold uppercase tracking-wide text-neutral-400 hover:text-[#c72a09]"
+                      >
+                        Crear pedido
+                      </button>
                     </div>
-                    <p className="text-xs text-neutral-600 mt-0.5">{c.clienteNombre || 'Sin cliente'}</p>
-                    <p className="text-[10px] text-neutral-300">{new Date(c.createdAt).toLocaleDateString('es-MX')}</p>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}

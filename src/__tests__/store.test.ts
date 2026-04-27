@@ -15,6 +15,7 @@ import {
   getConfig,
   saveConfig,
   exportAllData,
+  previewImportData,
   importAllData,
   clearAllData,
   clearSensitiveLocalData,
@@ -327,5 +328,33 @@ describe('Backup y Restore', () => {
 
   it('importAllData rechaza config no-objeto', () => {
     expect(() => importAllData(JSON.stringify({ config: [1, 2, 3] }))).toThrow('config');
+  });
+
+  it('previewImportData valida respaldo sin escribir datos', () => {
+    const json = JSON.stringify({
+      clientes: [
+        {
+          id: 'c1',
+          nombre: 'Preview',
+          telefono: '',
+          email: '',
+          direccion: '',
+          logo: '',
+          notas: '',
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+      pedidos: [],
+      config: { nombreNegocio: 'Studio 24' },
+    });
+
+    const preview = previewImportData(json);
+    expect(preview.totalRecords).toBe(1);
+    expect(preview.hasConfig).toBe(true);
+    expect(preview.sections).toEqual([
+      { key: 'clientes', count: 1 },
+      { key: 'pedidos', count: 0 },
+    ]);
+    expect(getClientes()).toHaveLength(0);
   });
 });

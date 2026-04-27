@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getProveedores, getEgresos } from '@/lib/store';
@@ -74,7 +76,8 @@ export default function ProveedoresPage() {
       id: editingId || uuid(),
       createdAt: editingId ? (form as Proveedor).createdAt : new Date().toISOString(),
     };
-    editingId ? updateProveedor(data) : addProveedor(data);
+    if (editingId) updateProveedor(data);
+    else addProveedor(data);
     setModalOpen(false);
     reload();
   };

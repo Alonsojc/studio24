@@ -36,6 +36,7 @@ const SNAKE_OVERRIDES: Record<string, string> = {
   costoMateriales: 'costo_materiales',
   estadoPago: 'estado_pago',
   montoPagado: 'monto_pagado',
+  inventarioUsado: 'inventario_usado',
   archivoDiseno: 'archivo_diseno',
   fechaPedido: 'fecha_pedido',
   fechaEntrega: 'fecha_entrega',
@@ -90,7 +91,12 @@ async function upsertOne<T extends { id: string }>(table: string, item: T): Prom
   const row = toSnake(item as unknown as Record<string, unknown>);
   delete row.user_id;
   delete row.team_id; // Let DB default (current_user_team_id()) handle it
-  const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' });
+  let { error } = await supabase.from(table).upsert(row, { onConflict: 'id' });
+  if (error && table === 'pedidos' && (error.message.includes('pagos') || error.message.includes('inventario_usado'))) {
+    delete row.pagos;
+    delete row.inventario_usado;
+    ({ error } = await supabase.from(table).upsert(row, { onConflict: 'id' }));
+  }
   if (error) throw error;
   return item;
 }

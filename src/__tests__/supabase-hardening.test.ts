@@ -53,6 +53,10 @@ describe('supabase-hardening.sql', () => {
   });
 
   it('bloquea sobrepagos y totales incorrectos en pedidos', () => {
+    expect(sql).toContain("alter table pedidos add column if not exists pagos jsonb not null default '[]'::jsonb");
+    expect(sql).toContain(
+      "alter table pedidos add column if not exists inventario_usado jsonb not null default '[]'::jsonb",
+    );
     expect(sql).toContain('pedidos_payment_not_over_total');
     expect(sql).toContain('check (monto_pagado <= monto_total)');
     expect(sql).toContain('pedidos_total_matches_items');
