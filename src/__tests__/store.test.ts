@@ -4,10 +4,6 @@ import {
   addCliente,
   updateCliente,
   deleteCliente,
-  getIngresos,
-  addIngreso,
-  getEgresos,
-  addEgreso,
   getProductos,
   addProducto,
   updateProducto,
@@ -26,7 +22,7 @@ import {
   ACTIVE_USER_KEY,
   getNextFolio,
 } from '@/lib/store';
-import type { Cliente, Ingreso, Egreso, Producto, Cotizacion, ConfigNegocio } from '@/lib/types';
+import type { Cliente, Producto, Cotizacion, ConfigNegocio } from '@/lib/types';
 
 function createMemoryStorage(): Storage {
   let data: Record<string, string> = {};
@@ -301,6 +297,24 @@ describe('Backup y Restore', () => {
     expect(cleared).toBe(true);
     expect(getClientes()).toHaveLength(0);
     expect(localStorage.getItem(ACTIVE_USER_KEY)).toBe('u2');
+  });
+
+  it('bindLocalDataToUser conserva cache cuando el usuario no cambia', () => {
+    bindLocalDataToUser('u1');
+    addCliente({
+      id: 'c1',
+      nombre: 'Usuario 1',
+      telefono: '',
+      email: '',
+      direccion: '',
+      logo: '',
+      notas: '',
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    const cleared = bindLocalDataToUser('u1');
+    expect(cleared).toBe(false);
+    expect(getClientes()).toHaveLength(1);
+    expect(localStorage.getItem(ACTIVE_USER_KEY)).toBe('u1');
   });
 
   it('importAllData rechaza JSON inválido', () => {

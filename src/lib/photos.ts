@@ -2,6 +2,7 @@
 
 import { supabase } from './supabase';
 import { getMyTeamId } from './teams';
+import { validateStorageUpload } from './storage-limits';
 
 const BUCKET = 'photos';
 
@@ -11,6 +12,7 @@ function buildPath(teamId: string, pedidoId: string, photoId: string): string {
 }
 
 export async function uploadPhoto(pedidoId: string, photoId: string, blob: Blob): Promise<void> {
+  validateStorageUpload('photos', blob);
   const teamId = await getMyTeamId();
   if (!teamId) throw new Error('No se encontró el equipo actual');
   const path = buildPath(teamId, pedidoId, photoId);

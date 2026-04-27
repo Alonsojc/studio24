@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import PageHeader from '@/components/PageHeader';
-import { getInpc, saveInpc, deleteInpc, syncInpcFromInegi, type InpcEntry } from '@/lib/inpc';
+import { getInpc, saveInpc, deleteInpc, syncInpcFromInegi, getInpcSyncHealth, type InpcEntry } from '@/lib/inpc';
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
@@ -87,6 +87,7 @@ export default function InpcPage() {
   }, [entries]);
 
   const latest = entries[0];
+  const health = getInpcSyncHealth(entries, now);
   const years = Array.from({ length: 6 }, (_, i) => now.getFullYear() - i);
 
   return (
@@ -126,14 +127,23 @@ export default function InpcPage() {
       )}
 
       {latest && (
-        <div className="bg-white rounded-2xl border border-neutral-100 p-5 mb-6 flex items-center justify-between">
+        <div className="bg-white rounded-2xl border border-neutral-100 p-5 mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Último publicado</p>
             <p className="text-sm text-neutral-500 mt-1">
               {MESES[latest.month - 1]} {latest.year} · fuente {latest.source}
             </p>
           </div>
-          <p className="text-3xl font-black">{latest.valor.toFixed(4)}</p>
+          <div className="flex items-center gap-4">
+            <span
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase ${
+                health.stale ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+              }`}
+            >
+              {health.stale ? `Revisar cron (${health.monthsBehind} mes(es))` : 'Cron al día'}
+            </span>
+            <p className="text-3xl font-black">{latest.valor.toFixed(4)}</p>
+          </div>
         </div>
       )}
 
@@ -253,7 +263,8 @@ export default function InpcPage() {
 
       <p className="text-[10px] text-neutral-400 mt-6 leading-relaxed">
         Fuente: Banco de México (SIE), serie <code>SP74665</code> — INPC General Mensual base 2018=100. El cron corre el
-        día 11 de cada mes; si algún valor no aparece, usa <strong>Sincronizar con Banxico</strong> o captúralo a mano.
+        día 11 de cada mes. Periodo esperado: <strong>{health.expectedLabel}</strong>; último disponible:{' '}
+        <strong>{health.latestLabel}</strong>.
       </p>
     </div>
   );

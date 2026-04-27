@@ -1,7 +1,5 @@
 'use client';
 
-import { supabase } from './supabase';
-
 export interface InpcEntry {
   year: number;
   month: number;
@@ -10,7 +8,15 @@ export interface InpcEntry {
   updated_at?: string;
 }
 
+export interface InpcSyncHealth {
+  latestLabel: string;
+  expectedLabel: string;
+  stale: boolean;
+  monthsBehind: number;
+}
+
 export async function getInpc(): Promise<InpcEntry[]> {
+  const { supabase } = await import('./supabase');
   const { data, error } = await supabase
     .from('inpc')
     .select('year, month, valor, source, updated_at')
@@ -21,29 +27,30 @@ export async function getInpc(): Promise<InpcEntry[]> {
 }
 
 export async function saveInpc(entry: Pick<InpcEntry, 'year' | 'month' | 'valor'>): Promise<void> {
-  const { error } = await supabase
-    .from('inpc')
-    .upsert(
-      {
-        year: entry.year,
-        month: entry.month,
-        valor: entry.valor,
-        source: 'manual',
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'year,month' },
-    );
+  const { supabase } = await import('./supabase');
+  const { error } = await supabase.from('inpc').upsert(
+    {
+      year: entry.year,
+      month: entry.month,
+      valor: entry.valor,
+      source: 'manual',
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'year,month' },
+  );
   if (error) throw error;
 }
 
 export async function deleteInpc(year: number, month: number): Promise<void> {
+  const { supabase } = await import('./supabase');
   const { error } = await supabase.from('inpc').delete().eq('year', year).eq('month', month);
   if (error) throw error;
 }
 
-/** Invoca la Edge Function `fetch-inpc` para jalar datos frescos de INEGI. */
+/** Invoca la Edge Function `fetch-inpc` para jalar datos frescos de Banxico. */
 export async function syncInpcFromInegi(): Promise<{ updated: number; error?: string }> {
   try {
+    const { supabase } = await import('./supabase');
     const { data, error } = await supabase.functions.invoke('fetch-inpc', { body: {} });
     if (error) return { updated: 0, error: error.message };
     if (data && typeof data === 'object' && 'error' in data) {
@@ -55,6 +62,40 @@ export async function syncInpcFromInegi(): Promise<{ updated: number; error?: st
     const message = e instanceof Error ? e.message : 'error desconocido';
     return { updated: 0, error: message };
   }
+}
+
+function periodIndex(year: number, month: number): number {
+  return year * 12 + month;
+}
+
+function periodLabel(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+export function getExpectedInpcPeriod(now = new Date()): { year: number; month: number } {
+  const monthOffset = now.getDate() >= 12 ? 1 : 2;
+  const date = new Date(now.getFullYear(), now.getMonth() - monthOffset, 1);
+  return { year: date.getFullYear(), month: date.getMonth() + 1 };
+}
+
+export function getInpcSyncHealth(entries: Pick<InpcEntry, 'year' | 'month'>[], now = new Date()): InpcSyncHealth {
+  const expected = getExpectedInpcPeriod(now);
+  const latest = [...entries].sort((a, b) => periodIndex(b.year, b.month) - periodIndex(a.year, a.month))[0];
+  if (!latest) {
+    return {
+      latestLabel: 'sin datos',
+      expectedLabel: periodLabel(expected.year, expected.month),
+      stale: true,
+      monthsBehind: Number.POSITIVE_INFINITY,
+    };
+  }
+  const monthsBehind = Math.max(0, periodIndex(expected.year, expected.month) - periodIndex(latest.year, latest.month));
+  return {
+    latestLabel: periodLabel(latest.year, latest.month),
+    expectedLabel: periodLabel(expected.year, expected.month),
+    stale: monthsBehind > 0,
+    monthsBehind,
+  };
 }
 
 /** Busca el factor de actualización entre dos meses (YYYY-MM). */

@@ -1,7 +1,5 @@
 'use client';
 
-import { supabase } from './supabase';
-
 export type UserRole = 'admin' | 'operador' | 'contador';
 
 export interface UserProfile {
@@ -13,6 +11,7 @@ export interface UserProfile {
 
 // Get current user's profile/role
 export async function getMyProfile(): Promise<UserProfile | null> {
+  const { supabase } = await import('./supabase');
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -41,6 +40,7 @@ export async function getMyProfile(): Promise<UserProfile | null> {
 
 // Update profile
 export async function updateProfile(profile: Partial<UserProfile>): Promise<void> {
+  const { supabase } = await import('./supabase');
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -56,17 +56,20 @@ const ROLE_ROUTES: Record<UserRole, string[]> = {
   admin: ['*'], // Everything
   operador: [
     '/',
+    '/ajustes',
     '/pedidos',
     '/agenda',
     '/disenos',
     '/inventario',
     '/productos',
+    '/cotizador',
     '/plantillas',
     '/seguimiento',
     '/calculadora',
   ],
   contador: [
     '/',
+    '/ajustes',
     '/ingresos',
     '/egresos',
     '/reportes',

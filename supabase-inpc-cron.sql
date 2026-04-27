@@ -1,8 +1,8 @@
 -- Studio 24 — Cron mensual para fetch-inpc
 --
 -- Corre la Edge Function `fetch-inpc` automáticamente cada día 11 de cada mes
--- a las 09:00 (UTC). INEGI publica el INPC del mes anterior alrededor del
--- día 10, así que el día 11 ya está disponible.
+-- a las 09:00 (UTC). Banxico publica el INPC del mes anterior alrededor
+-- del día 10, así que el día 11 ya suele estar disponible.
 --
 -- Requiere:
 --   - Edge Function `fetch-inpc` ya desplegada (ver

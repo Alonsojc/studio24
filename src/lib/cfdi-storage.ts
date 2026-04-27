@@ -2,6 +2,7 @@
 
 import { supabase } from './supabase';
 import { getMyTeamId } from './teams';
+import { validateStorageUpload } from './storage-limits';
 
 const BUCKET = 'facturas';
 
@@ -15,6 +16,9 @@ export async function uploadFacturaFiles(
   xmlFile: Blob,
   pdfFile?: Blob,
 ): Promise<{ xmlPath: string; pdfPath: string }> {
+  validateStorageUpload('facturas', xmlFile);
+  if (pdfFile) validateStorageUpload('facturas', pdfFile);
+
   const teamId = await getMyTeamId();
   if (!teamId) throw new Error('No se encontró el equipo actual');
 

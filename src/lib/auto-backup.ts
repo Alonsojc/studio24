@@ -2,6 +2,7 @@
 
 import { supabase } from './supabase';
 import { exportAllData } from './store';
+import { isSafeBackupFileName, validateStorageUpload } from './storage-limits';
 
 const BACKUP_KEY = 'bordados_last_backup';
 const BACKUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -35,11 +36,12 @@ export async function autoBackupIfDue(): Promise<void> {
     const date = new Date().toISOString().split('T')[0];
     const fileName = `${user.id}/${date}.json`;
 
-    const { error } = await supabase.storage
-      .from(BUCKET)
-      .upload(fileName, new Blob([json], { type: 'application/json' }), {
-        upsert: true,
-      });
+    const backupBlob = new Blob([json], { type: 'application/json' });
+    validateStorageUpload('backups', backupBlob);
+
+    const { error } = await supabase.storage.from(BUCKET).upload(fileName, backupBlob, {
+      upsert: true,
+    });
 
     if (error) {
       // Bucket might not exist — that's OK, skip silently
@@ -78,17 +80,21 @@ export async function listBackups(): Promise<{ name: string; date: string; size:
 
   if (error || !files) return [];
 
-  return files.map((f) => ({
-    name: f.name,
-    date: f.name.replace('.json', ''),
-    size: f.metadata?.size || 0,
-  }));
+  return files
+    .filter((f) => isSafeBackupFileName(f.name))
+    .map((f) => ({
+      name: f.name,
+      date: f.name.replace('.json', ''),
+      size: f.metadata?.size || 0,
+    }));
 }
 
 /**
  * Download a specific backup.
  */
 export async function downloadBackup(fileName: string): Promise<string | null> {
+  if (!isSafeBackupFileName(fileName)) return null;
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
