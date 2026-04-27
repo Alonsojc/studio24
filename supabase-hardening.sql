@@ -6,38 +6,73 @@
 -- 1. Role helpers
 -- ============================================================
 
-create or replace function public.current_user_team_role()
+create schema if not exists app_private;
+revoke all on schema app_private from public;
+grant usage on schema app_private to anon, authenticated;
+
+create or replace function app_private.current_user_team_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select team_id
+  from public.team_members
+  where user_id = auth.uid()
+  order by joined_at desc
+  limit 1;
+$$;
+
+create or replace function app_private.current_user_team_role()
 returns text
 language sql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
   select role
-  from team_members
+  from public.team_members
   where user_id = auth.uid()
-    and team_id = current_user_team_id()
+    and team_id = app_private.current_user_team_id()
   limit 1;
 $$;
 
-create or replace function public.current_user_has_role(variadic allowed_roles text[])
+create or replace function app_private.current_user_has_role(variadic allowed_roles text[])
 returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
   select exists (
     select 1
-    from team_members
+    from public.team_members
     where user_id = auth.uid()
-      and team_id = current_user_team_id()
+      and team_id = app_private.current_user_team_id()
       and role = any(allowed_roles)
   );
 $$;
 
-grant execute on function public.current_user_team_role() to authenticated;
-grant execute on function public.current_user_has_role(text[]) to authenticated;
+revoke all on function app_private.current_user_team_id() from public;
+revoke all on function app_private.current_user_team_role() from public;
+revoke all on function app_private.current_user_has_role(text[]) from public;
+grant execute on function app_private.current_user_team_id() to anon, authenticated;
+grant execute on function app_private.current_user_has_role(text[]) to anon, authenticated;
+
+do $$
+declare
+  tbl text;
+begin
+  foreach tbl in array array[
+    'clientes', 'proveedores', 'ingresos', 'egresos', 'pedidos',
+    'productos', 'cotizaciones', 'egresos_recurrentes', 'inventario',
+    'disenos', 'plantillas', 'recurrentes_log', 'config', 'folio_counter',
+    'invitations'
+  ] loop
+    execute format('alter table public.%I alter column team_id set default app_private.current_user_team_id()', tbl);
+  end loop;
+end $$;
 
 -- ============================================================
 -- 2. Transactional folios
@@ -46,20 +81,20 @@ grant execute on function public.current_user_has_role(text[]) to authenticated;
 create or replace function public.next_folio(p_prefix text)
 returns text
 language plpgsql
-security definer
-set search_path = public
+security invoker
+set search_path = ''
 as $$
 declare
   v_team_id uuid;
   v_next int;
   v_prefix text;
 begin
-  v_team_id := current_user_team_id();
+  v_team_id := app_private.current_user_team_id();
   if auth.uid() is null or v_team_id is null then
     raise exception 'No authenticated team';
   end if;
 
-  if not current_user_has_role('admin', 'operador', 'contador') then
+  if not app_private.current_user_has_role('admin', 'operador', 'contador') then
     raise exception 'Insufficient role for folio generation';
   end if;
 
@@ -68,10 +103,10 @@ begin
     v_prefix := 'DOC';
   end if;
 
-  insert into folio_counter (team_id, counter)
+  insert into public.folio_counter (team_id, counter)
   values (v_team_id, 1)
   on conflict (team_id)
-  do update set counter = folio_counter.counter + 1
+  do update set counter = public.folio_counter.counter + 1
   returning counter into v_next;
 
   return v_prefix || '-' || lpad(v_next::text, 3, '0');
@@ -92,7 +127,7 @@ set search_path = public
 as $$
 begin
   if new.role is distinct from old.role then
-    if not current_user_has_role('admin') then
+    if not app_private.current_user_has_role('admin') then
       raise exception 'Only admins can change profile roles';
     end if;
   end if;
@@ -117,7 +152,7 @@ alter table profiles alter column role set default 'operador';
 create policy "Team reads profiles" on profiles for select
   using (
     id = auth.uid()
-    or id in (select user_id from team_members where team_id = current_user_team_id())
+    or id in (select user_id from team_members where team_id = app_private.current_user_team_id())
   );
 
 create policy "Users insert own operador profile" on profiles for insert
@@ -152,89 +187,101 @@ begin
 end $$;
 
 -- Shared directory
-create policy "Team reads clientes" on clientes for select using (team_id = current_user_team_id());
-create policy "Allowed roles insert clientes" on clientes for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador', 'contador'));
-create policy "Allowed roles update clientes" on clientes for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'operador', 'contador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador', 'contador'));
-create policy "Allowed roles delete clientes" on clientes for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads clientes" on clientes for select using (team_id = app_private.current_user_team_id());
+create policy "Allowed roles insert clientes" on clientes for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador', 'contador'));
+create policy "Allowed roles update clientes" on clientes for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador', 'contador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador', 'contador'));
+create policy "Allowed roles delete clientes" on clientes for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
-create policy "Team reads proveedores" on proveedores for select using (team_id = current_user_team_id());
-create policy "Finance roles insert proveedores" on proveedores for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'contador'));
-create policy "Finance roles update proveedores" on proveedores for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'contador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'contador'));
-create policy "Admin deletes proveedores" on proveedores for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads proveedores" on proveedores for select using (team_id = app_private.current_user_team_id());
+create policy "Finance roles insert proveedores" on proveedores for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador'));
+create policy "Finance roles update proveedores" on proveedores for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador'));
+create policy "Admin deletes proveedores" on proveedores for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
 -- Production and sales
-create policy "Team reads pedidos" on pedidos for select using (team_id = current_user_team_id());
-create policy "Production roles insert pedidos" on pedidos for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Production roles update pedidos" on pedidos for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'operador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Admin deletes pedidos" on pedidos for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads pedidos" on pedidos for select using (team_id = app_private.current_user_team_id());
+create policy "Production roles insert pedidos" on pedidos for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Production roles update pedidos" on pedidos for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Admin deletes pedidos" on pedidos for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
-create policy "Team reads productos" on productos for select using (team_id = current_user_team_id());
-create policy "Production roles insert productos" on productos for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Production roles update productos" on productos for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'operador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Admin deletes productos" on productos for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads productos" on productos for select using (team_id = app_private.current_user_team_id());
+create policy "Production roles insert productos" on productos for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Production roles update productos" on productos for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Admin deletes productos" on productos for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
-create policy "Team reads cotizaciones" on cotizaciones for select using (team_id = current_user_team_id());
-create policy "Production roles insert cotizaciones" on cotizaciones for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Production roles update cotizaciones" on cotizaciones for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'operador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Admin deletes cotizaciones" on cotizaciones for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads cotizaciones" on cotizaciones for select using (team_id = app_private.current_user_team_id());
+create policy "Production roles insert cotizaciones" on cotizaciones for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Production roles update cotizaciones" on cotizaciones for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Admin deletes cotizaciones" on cotizaciones for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
-create policy "Team reads inventario" on inventario for select using (team_id = current_user_team_id());
-create policy "Production roles insert inventario" on inventario for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Production roles update inventario" on inventario for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'operador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Admin deletes inventario" on inventario for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads inventario" on inventario for select using (team_id = app_private.current_user_team_id());
+create policy "Production roles insert inventario" on inventario for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Production roles update inventario" on inventario for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Admin deletes inventario" on inventario for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
-create policy "Team reads disenos" on disenos for select using (team_id = current_user_team_id());
-create policy "Production roles insert disenos" on disenos for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Production roles update disenos" on disenos for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'operador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Admin deletes disenos" on disenos for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads disenos" on disenos for select using (team_id = app_private.current_user_team_id());
+create policy "Production roles insert disenos" on disenos for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Production roles update disenos" on disenos for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Admin deletes disenos" on disenos for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
-create policy "Team reads plantillas" on plantillas for select using (team_id = current_user_team_id());
-create policy "Production roles insert plantillas" on plantillas for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Production roles update plantillas" on plantillas for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'operador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador'));
-create policy "Admin deletes plantillas" on plantillas for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads plantillas" on plantillas for select using (team_id = app_private.current_user_team_id());
+create policy "Production roles insert plantillas" on plantillas for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Production roles update plantillas" on plantillas for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador'));
+create policy "Admin deletes plantillas" on plantillas for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
 -- Finance
-create policy "Team reads ingresos" on ingresos for select using (team_id = current_user_team_id());
-create policy "Finance roles insert ingresos" on ingresos for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'contador'));
-create policy "Finance roles update ingresos" on ingresos for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'contador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'contador'));
-create policy "Admin deletes ingresos" on ingresos for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads ingresos" on ingresos for select using (team_id = app_private.current_user_team_id());
+create policy "Finance roles insert ingresos" on ingresos for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador'));
+create policy "Finance roles update ingresos" on ingresos for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador'));
+create policy "Admin deletes ingresos" on ingresos for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
-create policy "Team reads egresos" on egresos for select using (team_id = current_user_team_id());
-create policy "Finance roles insert egresos" on egresos for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'contador'));
-create policy "Finance roles update egresos" on egresos for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'contador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'contador'));
-create policy "Admin deletes egresos" on egresos for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads egresos" on egresos for select using (team_id = app_private.current_user_team_id());
+create policy "Finance roles insert egresos" on egresos for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador'));
+create policy "Finance roles update egresos" on egresos for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador'));
+create policy "Admin deletes egresos" on egresos for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
-create policy "Team reads egresos recurrentes" on egresos_recurrentes for select using (team_id = current_user_team_id());
-create policy "Finance roles insert egresos recurrentes" on egresos_recurrentes for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'contador'));
-create policy "Finance roles update egresos recurrentes" on egresos_recurrentes for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'contador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'contador'));
-create policy "Admin deletes egresos recurrentes" on egresos_recurrentes for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads egresos recurrentes" on egresos_recurrentes for select using (team_id = app_private.current_user_team_id());
+create policy "Finance roles insert egresos recurrentes" on egresos_recurrentes for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador'));
+create policy "Finance roles update egresos recurrentes" on egresos_recurrentes for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador'));
+create policy "Admin deletes egresos recurrentes" on egresos_recurrentes for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
-create policy "Team reads recurrentes log" on recurrentes_log for select using (team_id = current_user_team_id());
-create policy "Finance roles insert recurrentes log" on recurrentes_log for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'contador'));
-create policy "Finance roles update recurrentes log" on recurrentes_log for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'contador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'contador'));
-create policy "Admin deletes recurrentes log" on recurrentes_log for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads recurrentes log" on recurrentes_log for select using (team_id = app_private.current_user_team_id());
+create policy "Finance roles insert recurrentes log" on recurrentes_log for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador'));
+create policy "Finance roles update recurrentes log" on recurrentes_log for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'contador'));
+create policy "Admin deletes recurrentes log" on recurrentes_log for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
 -- Settings / counters
-create policy "Team reads config" on config for select using (team_id = current_user_team_id());
-create policy "Admin inserts config" on config for insert with check (team_id = current_user_team_id() and current_user_has_role('admin'));
-create policy "Admin updates config" on config for update using (team_id = current_user_team_id() and current_user_has_role('admin')) with check (team_id = current_user_team_id() and current_user_has_role('admin'));
-create policy "Admin deletes config" on config for delete using (team_id = current_user_team_id() and current_user_has_role('admin'));
+create policy "Team reads config" on config for select using (team_id = app_private.current_user_team_id());
+create policy "Admin inserts config" on config for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
+create policy "Admin updates config" on config for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
+create policy "Admin deletes config" on config for delete using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
-create policy "Team reads folio counter" on folio_counter for select using (team_id = current_user_team_id());
-create policy "Team inserts folio counter" on folio_counter for insert with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador', 'contador'));
-create policy "Team updates folio counter" on folio_counter for update using (team_id = current_user_team_id() and current_user_has_role('admin', 'operador', 'contador')) with check (team_id = current_user_team_id() and current_user_has_role('admin', 'operador', 'contador'));
+create policy "Team reads folio counter" on folio_counter for select using (team_id = app_private.current_user_team_id());
+create policy "Team inserts folio counter" on folio_counter for insert with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador', 'contador'));
+create policy "Team updates folio counter" on folio_counter for update using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador', 'contador')) with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin', 'operador', 'contador'));
 
 -- Teams and invitations
+drop policy if exists "Members see their team" on teams;
+create policy "Members see their team" on teams for select
+  using (id = app_private.current_user_team_id());
+
+drop policy if exists "Owner manages team" on teams;
+create policy "Owner manages team" on teams for update
+  using (owner_id = (select auth.uid()));
+
+drop policy if exists "Members see team members" on team_members;
+create policy "Members see team members" on team_members for select
+  using (team_id = app_private.current_user_team_id());
+
 drop policy if exists "Owner manages members" on team_members;
 drop policy if exists "Admin manages team members" on team_members;
 create policy "Admin manages team members" on team_members for all
-  using (team_id = current_user_team_id() and current_user_has_role('admin'))
-  with check (team_id = current_user_team_id() and current_user_has_role('admin'));
+  using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'))
+  with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
 drop policy if exists "Admin manages team invitations" on invitations;
 create policy "Admin manages team invitations" on invitations for all
-  using (team_id = current_user_team_id() and current_user_has_role('admin'))
-  with check (team_id = current_user_team_id() and current_user_has_role('admin'));
+  using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'))
+  with check (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
 -- ============================================================
 -- 5. Public INPC: read for auth users, write only finance roles
@@ -243,8 +290,8 @@ create policy "Admin manages team invitations" on invitations for all
 drop policy if exists "Anyone authenticated can write inpc" on inpc;
 drop policy if exists "Finance roles write inpc" on inpc;
 create policy "Finance roles write inpc" on inpc for all
-  using (auth.uid() is not null and current_user_has_role('admin', 'contador'))
-  with check (auth.uid() is not null and current_user_has_role('admin', 'contador'));
+  using (auth.uid() is not null and app_private.current_user_has_role('admin', 'contador'))
+  with check (auth.uid() is not null and app_private.current_user_has_role('admin', 'contador'));
 
 -- ============================================================
 -- 6. Storage policies
@@ -273,36 +320,41 @@ create policy "Users delete own backups" on storage.objects for delete
 
 drop policy if exists "Team reads own facturas" on storage.objects;
 create policy "Team reads own facturas" on storage.objects for select
-  using (bucket_id = 'facturas' and (storage.foldername(name))[1] = current_user_team_id()::text);
+  using (bucket_id = 'facturas' and (storage.foldername(name))[1] = app_private.current_user_team_id()::text);
 
 drop policy if exists "Team uploads own facturas" on storage.objects;
 create policy "Team uploads own facturas" on storage.objects for insert
   with check (
     bucket_id = 'facturas'
-    and (storage.foldername(name))[1] = current_user_team_id()::text
-    and current_user_has_role('admin', 'contador')
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'contador')
   );
 
 drop policy if exists "Team updates own facturas" on storage.objects;
 create policy "Team updates own facturas" on storage.objects for update
   using (
     bucket_id = 'facturas'
-    and (storage.foldername(name))[1] = current_user_team_id()::text
-    and current_user_has_role('admin', 'contador')
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'contador')
   )
   with check (
     bucket_id = 'facturas'
-    and (storage.foldername(name))[1] = current_user_team_id()::text
-    and current_user_has_role('admin', 'contador')
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'contador')
   );
 
 drop policy if exists "Team deletes own facturas" on storage.objects;
 create policy "Team deletes own facturas" on storage.objects for delete
   using (
     bucket_id = 'facturas'
-    and (storage.foldername(name))[1] = current_user_team_id()::text
-    and current_user_has_role('admin', 'contador')
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'contador')
   );
+
+drop policy if exists "Team uploads team photos" on storage.objects;
+drop policy if exists "Team views team photos" on storage.objects;
+drop policy if exists "Team updates team photos" on storage.objects;
+drop policy if exists "Team deletes team photos" on storage.objects;
 
 drop policy if exists "Users upload own photos" on storage.objects;
 create policy "Users upload own photos" on storage.objects for insert
@@ -384,7 +436,7 @@ alter table audit_log enable row level security;
 
 drop policy if exists "Admins read audit log" on audit_log;
 create policy "Admins read audit log" on audit_log for select
-  using (team_id = current_user_team_id() and current_user_has_role('admin'));
+  using (team_id = app_private.current_user_team_id() and app_private.current_user_has_role('admin'));
 
 create or replace function public.capture_audit_log()
 returns trigger
@@ -453,13 +505,11 @@ begin
   end if;
 
   if to_regprocedure('public.current_user_team_id()') is not null then
-    execute 'revoke execute on function public.current_user_team_id() from public, anon';
-    execute 'grant execute on function public.current_user_team_id() to authenticated';
+    execute 'revoke execute on function public.current_user_team_id() from public, anon, authenticated';
   end if;
 
   if to_regprocedure('public.current_user_has_role(text[])') is not null then
-    execute 'revoke execute on function public.current_user_has_role(text[]) from public, anon';
-    execute 'grant execute on function public.current_user_has_role(text[]) to authenticated';
+    execute 'revoke execute on function public.current_user_has_role(text[]) from public, anon, authenticated';
   end if;
 
   if to_regprocedure('public.current_user_team_role()') is not null then
