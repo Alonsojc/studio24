@@ -238,6 +238,10 @@ describe('validatePedido', () => {
   it('falla con monto pagado negativo', () => {
     expect(validatePedido({ ...base, montoPagado: -1 })).toContain('negativo');
   });
+
+  it('falla si el pago excede el total del pedido', () => {
+    expect(validatePedido({ ...base, montoPagado: 1001 })).toContain('exceder');
+  });
 });
 
 describe('validateCliente', () => {

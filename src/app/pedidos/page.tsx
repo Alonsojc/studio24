@@ -2,12 +2,12 @@
 
 import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getPedidos, getClientes } from '@/lib/store';
-import { cloudGetPedidos, cloudGetClientes } from '@/lib/store-cloud';
+import { getPedidos, getClientes, getIngresos } from '@/lib/store';
+import { cloudGetPedidos, cloudGetClientes, cloudGetIngresos } from '@/lib/store-cloud';
 import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolioAsync } from '@/lib/store-sync';
 import { useCloudStore } from '@/lib/useCloudStore';
 import Pagination, { PAGE_SIZE } from '@/components/Pagination';
-import { Pedido, EstadoPedido, EstadoPago, ConceptoIngreso, Ingreso } from '@/lib/types';
+import { Pedido, EstadoPedido, EstadoPago, ConceptoIngreso } from '@/lib/types';
 import {
   formatCurrency,
   formatDate,
@@ -16,8 +16,13 @@ import {
   estadoPedidoColor,
   todayString,
   validatePedido,
-  calcIVA,
 } from '@/lib/helpers';
+import {
+  buildIngresoFromPedido,
+  calculateEstadoPago,
+  calculatePedidoTotal,
+  canCreateIngresoForPedido,
+} from '@/lib/business-rules';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import ActionMenu from '@/components/ActionMenu';
@@ -91,6 +96,7 @@ const statusMessages: Record<EstadoPedido, string> = {
 export default function PedidosPage() {
   const { data: pedidosRaw, reload: reloadPedidos } = useCloudStore(getPedidos, cloudGetPedidos, 'bordados_pedidos');
   const { data: clientes, reload: reloadClientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
+  const { data: ingresos, reload: reloadIngresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
   const pedidos = [...pedidosRaw].sort((a, b) => {
     if (a.urgente && !b.urgente) return -1;
     if (!a.urgente && b.urgente) return 1;
@@ -99,6 +105,7 @@ export default function PedidosPage() {
   const reload = () => {
     reloadPedidos();
     reloadClientes();
+    reloadIngresos();
   };
   const [modalOpen, setModalOpen] = useState(false);
   const [checklistOpen, setChecklistOpen] = useState<string | null>(null);
@@ -109,7 +116,6 @@ export default function PedidosPage() {
   const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
   const [page, setPage] = useState(0);
   const { role } = useRole();
-  const canCreateIngreso = role === 'admin' || role === 'contador';
   const pagedPedidos = pedidos.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const isClient = typeof window !== 'undefined';
   const [mounted] = useState(() => isClient);
@@ -143,11 +149,8 @@ export default function PedidosPage() {
       return;
     }
     setFormError(null);
-    const montoTotal = form.piezas * form.precioUnitario;
-    let estadoPago = form.estadoPago;
-    if (form.montoPagado >= montoTotal && montoTotal > 0) estadoPago = 'pagado';
-    else if (form.montoPagado > 0) estadoPago = 'parcial';
-    else estadoPago = 'pendiente';
+    const montoTotal = calculatePedidoTotal(form);
+    const estadoPago = calculateEstadoPago(montoTotal, form.montoPagado);
     const data: Pedido = {
       ...(form as Pedido),
       id: editingId || uuid(),
@@ -170,7 +173,7 @@ export default function PedidosPage() {
     if (estado === 'entregado') {
       updated.fechaEntregaReal = todayString();
       // If fully paid, offer to create Ingreso
-      if (canCreateIngreso && (p.estadoPago === 'pagado' || p.montoPagado >= p.montoTotal) && p.montoTotal > 0) {
+      if (canCreateIngresoForPedido(role, p, ingresos)) {
         if (confirm('Pedido entregado y pagado. ¿Crear ingreso automáticamente?')) {
           const conFactura = confirm('¿Facturar este ingreso? (IVA 16%)');
           await crearIngresoDePedido(p, conFactura);
@@ -182,24 +185,15 @@ export default function PedidosPage() {
   };
 
   const crearIngresoDePedido = async (p: Pedido, conFactura: boolean) => {
-    const iva = conFactura ? calcIVA(p.montoTotal) : 0;
-    const ingreso: Ingreso = {
+    if (!canCreateIngresoForPedido(role, p, ingresos)) return false;
+    const ingreso = buildIngresoFromPedido(p, {
       id: uuid(),
-      fecha: todayString(),
-      clienteId: p.clienteId,
-      pedidoId: p.id,
-      descripcion: p.descripcion,
-      concepto: p.concepto,
-      monto: p.montoTotal,
-      iva,
-      montoTotal: p.montoTotal + iva,
-      formaPago: 'transferencia',
-      factura: conFactura,
+      conFactura,
       numeroFactura: conFactura ? await getNextFolioAsync('ING') : '',
-      notas: `Generado desde pedido`,
-      createdAt: new Date().toISOString(),
-    };
+    });
     addIngreso(ingreso);
+    reloadIngresos();
+    return true;
   };
 
   const repetirPedido = (p: Pedido) => {
@@ -774,14 +768,14 @@ export default function PedidosPage() {
                               items={[
                                 { label: 'Editar', onClick: () => openEdit(p) },
                                 { label: 'Imprimir orden', onClick: () => imprimirOrdenTrabajo(p) },
-                                ...((p.estadoPago === 'pagado' || p.montoPagado > 0) && canCreateIngreso
+                                ...(canCreateIngresoForPedido(role, p, ingresos)
                                   ? [
                                       {
                                         label: 'Crear Ingreso',
                                         onClick: async () => {
                                           const conFactura = confirm('¿Facturar este ingreso? (IVA 16%)');
-                                          await crearIngresoDePedido(p, conFactura);
-                                          alert('Ingreso creado!');
+                                          const created = await crearIngresoDePedido(p, conFactura);
+                                          alert(created ? 'Ingreso creado!' : 'Este pedido ya tiene un ingreso.');
                                         },
                                       },
                                     ]

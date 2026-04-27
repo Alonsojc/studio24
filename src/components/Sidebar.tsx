@@ -159,6 +159,13 @@ const navGroups: NavGroup[] = [
         label: 'Conciliación',
         icon: IC('M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5'),
       },
+      {
+        href: '/auditoria',
+        label: 'Auditoría',
+        icon: IC(
+          'M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068M15.75 21a8.97 8.97 0 0 0 3.75-7.318V5.25A2.25 2.25 0 0 0 17.25 3H6.75A2.25 2.25 0 0 0 4.5 5.25v8.432A8.97 8.97 0 0 0 8.25 21h7.5Z',
+        ),
+      },
     ],
   },
   {
@@ -209,7 +216,9 @@ export default function Sidebar() {
 
   const { profile, role } = useRole();
   const visibleGroups = getVisibleGroups(role);
-  const filteredGroups = navGroups.filter((g) => visibleGroups.includes(g.label));
+  const filteredGroups = navGroups
+    .map((g) => ({ ...g, items: g.items.filter((item) => canAccess(role, item.href)) }))
+    .filter((g) => visibleGroups.includes(g.label) && g.items.length > 0);
 
   // Auto-open group that contains active route
   const activeGroup = filteredGroups.findIndex((g) => g.items.some((i) => pathname.startsWith(i.href)));

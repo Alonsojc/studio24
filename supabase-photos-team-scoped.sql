@@ -1,5 +1,6 @@
 -- Studio 24 — Fotos de pedidos compartidas por equipo
--- Ejecutar UNA vez en Supabase SQL Editor, después de supabase-teams-migration.sql.
+-- Ejecutar UNA vez en Supabase SQL Editor, después de supabase-hardening.sql
+-- o en una base que ya tenga los helpers app_private de RLS.
 --
 -- El bucket `photos` existe desde el schema original pero sus policies de
 -- storage.objects estaban keyeadas por auth.uid(), lo que significa que
@@ -29,23 +30,31 @@ drop policy if exists "Team updates team photos" on storage.objects;
 create policy "Team views team photos" on storage.objects for select
   using (
     bucket_id = 'photos'
-    and (storage.foldername(name))[1] = current_user_team_id()::text
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
   );
 
 create policy "Team uploads team photos" on storage.objects for insert
   with check (
     bucket_id = 'photos'
-    and (storage.foldername(name))[1] = current_user_team_id()::text
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'operador')
   );
 
 create policy "Team updates team photos" on storage.objects for update
   using (
     bucket_id = 'photos'
-    and (storage.foldername(name))[1] = current_user_team_id()::text
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'operador')
+  )
+  with check (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'operador')
   );
 
 create policy "Team deletes team photos" on storage.objects for delete
   using (
     bucket_id = 'photos'
-    and (storage.foldername(name))[1] = current_user_team_id()::text
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'operador')
   );

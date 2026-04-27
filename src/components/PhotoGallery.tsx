@@ -29,7 +29,7 @@ export default function PhotoGallery({ pedidoId, readOnly = false }: PhotoGaller
   }, [pedidoId]);
 
   useEffect(() => {
-    reload();
+    void Promise.resolve().then(reload);
   }, [reload]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

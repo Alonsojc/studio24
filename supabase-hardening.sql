@@ -297,9 +297,16 @@ create policy "Finance roles write inpc" on inpc for all
 -- 6. Storage policies
 -- ============================================================
 
-insert into storage.buckets (id, name, public)
-values ('backups', 'backups', false)
-on conflict (id) do nothing;
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values
+  ('backups', 'backups', false, 5 * 1024 * 1024, array['application/json', 'text/plain']),
+  ('facturas', 'facturas', false, 10 * 1024 * 1024, array['application/xml', 'text/xml', 'application/pdf']),
+  ('photos', 'photos', false, 5 * 1024 * 1024, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+set
+  public = false,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "Users read own backups" on storage.objects;
 create policy "Users read own backups" on storage.objects for select
@@ -355,18 +362,41 @@ drop policy if exists "Team uploads team photos" on storage.objects;
 drop policy if exists "Team views team photos" on storage.objects;
 drop policy if exists "Team updates team photos" on storage.objects;
 drop policy if exists "Team deletes team photos" on storage.objects;
-
 drop policy if exists "Users upload own photos" on storage.objects;
-create policy "Users upload own photos" on storage.objects for insert
-  with check (bucket_id = 'photos' and auth.uid()::text = (storage.foldername(name))[1]);
-
 drop policy if exists "Users view own photos" on storage.objects;
-create policy "Users view own photos" on storage.objects for select
-  using (bucket_id = 'photos' and auth.uid()::text = (storage.foldername(name))[1]);
-
 drop policy if exists "Users delete own photos" on storage.objects;
-create policy "Users delete own photos" on storage.objects for delete
-  using (bucket_id = 'photos' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "Team views team photos" on storage.objects for select
+  using (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+  );
+
+create policy "Team uploads team photos" on storage.objects for insert
+  with check (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'operador')
+  );
+
+create policy "Team updates team photos" on storage.objects for update
+  using (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'operador')
+  )
+  with check (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'operador')
+  );
+
+create policy "Team deletes team photos" on storage.objects for delete
+  using (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = app_private.current_user_team_id()::text
+    and app_private.current_user_has_role('admin', 'operador')
+  );
 
 -- ============================================================
 -- 7. Financial consistency constraints and unique CFDI
@@ -387,6 +417,10 @@ create unique index if not exists egresos_team_uuid_cfdi_unique
   on egresos(team_id, uuid_cfdi)
   where coalesce(uuid_cfdi, '') <> '';
 
+create unique index if not exists ingresos_team_pedido_unique
+  on ingresos(team_id, pedido_id)
+  where coalesce(pedido_id, '') <> '';
+
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname = 'ingresos_amounts_nonnegative') then
@@ -397,6 +431,12 @@ begin
   end if;
   if not exists (select 1 from pg_constraint where conname = 'pedidos_amounts_nonnegative') then
     alter table pedidos add constraint pedidos_amounts_nonnegative check (piezas >= 1 and precio_unitario >= 0 and monto_total >= 0 and costo_materiales >= 0 and monto_pagado >= 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'pedidos_payment_not_over_total') then
+    alter table pedidos add constraint pedidos_payment_not_over_total check (monto_pagado <= monto_total);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'pedidos_total_matches_items') then
+    alter table pedidos add constraint pedidos_total_matches_items check (abs(monto_total - (piezas * precio_unitario)) <= 0.01);
   end if;
   if not exists (select 1 from pg_constraint where conname = 'pedidos_valid_estado') then
     alter table pedidos add constraint pedidos_valid_estado check (estado in ('pendiente', 'diseno', 'aprobado', 'en_maquina', 'terminado', 'entregado', 'cancelado'));
