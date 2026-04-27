@@ -96,7 +96,8 @@ export default function IngresosPage() {
       montoTotal: nextForm.monto + iva,
       createdAt: editingId ? (form as Ingreso).createdAt : new Date().toISOString(),
     };
-    editingId ? updateIngreso(data) : addIngreso(data);
+    if (editingId) updateIngreso(data);
+    else addIngreso(data);
     setModalOpen(false);
     reload();
   };

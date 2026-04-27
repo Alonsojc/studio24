@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getPedidos, getClientes, getIngresos } from '@/lib/store';
@@ -7,7 +9,7 @@ import { cloudGetPedidos, cloudGetClientes, cloudGetIngresos } from '@/lib/store
 import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolioAsync } from '@/lib/store-sync';
 import { useCloudStore } from '@/lib/useCloudStore';
 import Pagination, { PAGE_SIZE } from '@/components/Pagination';
-import { Pedido, EstadoPedido, EstadoPago, ConceptoIngreso } from '@/lib/types';
+import { Pedido, EstadoPedido, EstadoPago, ConceptoIngreso, FormaPago } from '@/lib/types';
 import {
   formatCurrency,
   formatDate,
@@ -19,7 +21,10 @@ import {
 } from '@/lib/helpers';
 import {
   buildIngresoFromPedido,
+  applyPedidoPayment,
+  buildPedidoPayment,
   calculateEstadoPago,
+  calculatePedidoPaidAmount,
   calculatePedidoTotal,
   canCreateIngresoForPedido,
 } from '@/lib/business-rules';
@@ -71,9 +76,11 @@ function emptyPedido(): Omit<Pedido, 'id' | 'createdAt'> {
     estado: 'pendiente',
     estadoPago: 'pendiente',
     montoPagado: 0,
+    pagos: [],
     maquina: '',
     archivoDiseno: '',
     fotos: [],
+    inventarioUsado: [],
     checklist: { ...emptyChecklist },
     fechaPedido: todayString(),
     fechaEntrega: '',
@@ -113,6 +120,9 @@ export default function PedidosPage() {
   const [form, setForm] = useState(emptyPedido());
   const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentForma, setPaymentForma] = useState<FormaPago>('transferencia');
+  const [paymentReferencia, setPaymentReferencia] = useState('');
   const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
   const [page, setPage] = useState(0);
   const { role } = useRole();
@@ -133,13 +143,19 @@ export default function PedidosPage() {
     setForm(initial);
     setFormSnapshot(JSON.stringify(initial));
     setFormError(null);
+    setPaymentAmount('');
+    setPaymentReferencia('');
+    setPaymentForma('transferencia');
     setModalOpen(true);
   };
   const openEdit = (p: Pedido) => {
     setEditingId(p.id);
-    setForm({ ...p });
+    setForm({ ...p, pagos: p.pagos || [], inventarioUsado: p.inventarioUsado || [] });
     setFormSnapshot(JSON.stringify(p));
     setFormError(null);
+    setPaymentAmount('');
+    setPaymentReferencia('');
+    setPaymentForma('transferencia');
     setModalOpen(true);
   };
   const handleSave = () => {
@@ -150,17 +166,44 @@ export default function PedidosPage() {
     }
     setFormError(null);
     const montoTotal = calculatePedidoTotal(form);
-    const estadoPago = calculateEstadoPago(montoTotal, form.montoPagado);
+    const montoPagado = calculatePedidoPaidAmount(form);
+    const estadoPago = calculateEstadoPago(montoTotal, montoPagado);
     const data: Pedido = {
       ...(form as Pedido),
       id: editingId || uuid(),
       montoTotal,
+      montoPagado,
       estadoPago,
       createdAt: editingId ? (form as Pedido).createdAt : new Date().toISOString(),
     };
-    editingId ? updatePedido(data) : addPedido(data);
+    if (editingId) updatePedido(data);
+    else addPedido(data);
     setModalOpen(false);
     reload();
+  };
+  const addPaymentToForm = () => {
+    const amount = parseFloat(paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setFormError('Ingresa un monto de pago válido');
+      return;
+    }
+    const total = calculatePedidoTotal(form);
+    const currentPaid = calculatePedidoPaidAmount(form);
+    if (currentPaid + amount > total + 0.01) {
+      setFormError('El pago excede el total del pedido');
+      return;
+    }
+    const pago = buildPedidoPayment({
+      id: uuid(),
+      monto: amount,
+      formaPago: paymentForma,
+      referencia: paymentReferencia.trim(),
+    });
+    const updated = applyPedidoPayment({ ...form, montoTotal: total }, pago);
+    setForm(updated);
+    setPaymentAmount('');
+    setPaymentReferencia('');
+    setFormError(null);
   };
   const handleDelete = (id: string) => {
     if (confirm('Eliminar pedido?')) {
@@ -203,6 +246,8 @@ export default function PedidosPage() {
       estado: 'pendiente',
       estadoPago: 'pendiente',
       montoPagado: 0,
+      pagos: [],
+      inventarioUsado: [],
       fechaPedido: todayString(),
       fechaEntrega: '',
       fechaEntregaReal: '',
@@ -306,11 +351,12 @@ export default function PedidosPage() {
     y += 8;
 
     // Payment status
+    const montoPagado = calculatePedidoPaidAmount(p);
     const pagoTexto =
       p.estadoPago === 'pagado'
         ? 'PAGADO'
         : p.estadoPago === 'parcial'
-          ? `PARCIAL — ${formatCurrency(p.montoPagado)} de ${formatCurrency(p.montoTotal)}`
+          ? `PARCIAL — ${formatCurrency(montoPagado)} de ${formatCurrency(p.montoTotal)}`
           : 'PENDIENTE DE PAGO';
     field('Estado de Pago', pagoTexto, 20, y);
     if (p.costoMateriales > 0) {
@@ -378,11 +424,6 @@ export default function PedidosPage() {
     reload();
   };
 
-  const removeFoto = (p: Pedido, idx: number) => {
-    const updated = { ...p, fotos: (p.fotos || []).filter((_, i) => i !== idx) };
-    updatePedido(updated);
-    reload();
-  };
   const toggleCheck = (p: Pedido, key: keyof typeof emptyChecklist) => {
     const updated = { ...p, checklist: { ...p.checklist, [key]: !p.checklist[key] } };
     updatePedido(updated);
@@ -679,7 +720,7 @@ export default function PedidosPage() {
             {(['pendiente', 'parcial', 'pagado'] as const).map((ep) => {
               const items = pedidos.filter((p) => (p.estadoPago || 'pendiente') === ep && p.estado !== 'cancelado');
               const total = items.reduce((s, p) => s + p.montoTotal, 0);
-              const pagado = items.reduce((s, p) => s + (p.montoPagado || 0), 0);
+              const pagado = items.reduce((s, p) => s + calculatePedidoPaidAmount(p), 0);
               return (
                 <div
                   key={ep}
@@ -736,7 +777,8 @@ export default function PedidosPage() {
                     return (order[a.estadoPago || 'pendiente'] || 0) - (order[b.estadoPago || 'pendiente'] || 0);
                   })
                   .map((p) => {
-                    const debe = p.montoTotal - (p.montoPagado || 0);
+                    const montoPagado = calculatePedidoPaidAmount(p);
+                    const debe = p.montoTotal - montoPagado;
                     return (
                       <tr key={p.id} className="border-b border-neutral-50 hover:bg-neutral-50/50">
                         <td className="px-5 py-4 text-xs font-semibold text-[#0a0a0a]">{clienteName(p.clienteId)}</td>
@@ -750,7 +792,7 @@ export default function PedidosPage() {
                         </td>
                         <td className="px-5 py-4 text-right text-xs font-bold">{formatCurrency(p.montoTotal)}</td>
                         <td className="px-5 py-4 text-right text-xs font-bold text-green-600">
-                          {formatCurrency(p.montoPagado || 0)}
+                          {formatCurrency(montoPagado)}
                         </td>
                         <td className="px-5 py-4 text-right text-xs font-bold text-red-500">
                           {debe > 0 ? formatCurrency(debe) : '—'}
@@ -947,14 +989,22 @@ export default function PedidosPage() {
             <h4 className={labelClass}>Pago</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
               <div>
-                <label className="text-[10px] text-neutral-400 font-medium">Monto pagado</label>
+                <label className="text-[10px] text-neutral-400 font-medium">Total pagado</label>
                 <input
                   type="number"
                   inputMode="decimal"
                   step="0.01"
                   min="0"
-                  value={form.montoPagado || ''}
-                  onChange={(e) => setForm({ ...form, montoPagado: parseFloat(e.target.value) || 0 })}
+                  value={calculatePedidoPaidAmount(form) || ''}
+                  onChange={(e) => {
+                    const montoPagado = parseFloat(e.target.value) || 0;
+                    setForm({
+                      ...form,
+                      pagos: [],
+                      montoPagado,
+                      estadoPago: calculateEstadoPago(form.piezas * form.precioUnitario, montoPagado),
+                    });
+                  }}
                   className={inputClass}
                 />
               </div>
@@ -964,15 +1014,72 @@ export default function PedidosPage() {
                 </label>
                 <div className="h-[42px] flex items-center">
                   <span
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${form.montoPagado >= form.piezas * form.precioUnitario && form.piezas * form.precioUnitario > 0 ? 'bg-green-100 text-green-700' : form.montoPagado > 0 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${calculatePedidoPaidAmount(form) >= form.piezas * form.precioUnitario && form.piezas * form.precioUnitario > 0 ? 'bg-green-100 text-green-700' : calculatePedidoPaidAmount(form) > 0 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}
                   >
-                    {form.montoPagado >= form.piezas * form.precioUnitario && form.piezas * form.precioUnitario > 0
+                    {calculatePedidoPaidAmount(form) >= form.piezas * form.precioUnitario &&
+                    form.piezas * form.precioUnitario > 0
                       ? 'Pagado'
-                      : form.montoPagado > 0
+                      : calculatePedidoPaidAmount(form) > 0
                         ? 'Parcial'
                         : 'Sin pago'}
                   </span>
                 </div>
+              </div>
+            </div>
+            <div className="mt-4 border-t border-neutral-200/70 pt-4">
+              <p className="text-[10px] font-bold tracking-[0.08em] text-neutral-400 uppercase mb-2">
+                Historial de pagos
+              </p>
+              {(form.pagos || []).length > 0 ? (
+                <div className="space-y-1.5 mb-3">
+                  {(form.pagos || []).map((pago) => (
+                    <div key={pago.id} className="flex items-center justify-between text-xs">
+                      <span className="text-neutral-500">
+                        {formatDate(pago.fecha)} · {pago.formaPago}
+                        {pago.referencia ? ` · ${pago.referencia}` : ''}
+                      </span>
+                      <span className="font-bold text-[#0a0a0a]">{formatCurrency(pago.monto)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-300 mb-3">Sin pagos detallados todavía</p>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr] gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  placeholder="Monto"
+                  className={inputClass}
+                />
+                <select
+                  value={paymentForma}
+                  onChange={(e) => setPaymentForma(e.target.value as FormaPago)}
+                  className={inputClass}
+                >
+                  <option value="transferencia">Transferencia</option>
+                  <option value="efectivo">Efectivo</option>
+                  <option value="tarjeta">Tarjeta</option>
+                  <option value="otro">Otro</option>
+                </select>
+                <input
+                  type="text"
+                  value={paymentReferencia}
+                  onChange={(e) => setPaymentReferencia(e.target.value)}
+                  placeholder="Referencia"
+                  className={`${inputClass} sm:col-span-2`}
+                />
+                <button
+                  type="button"
+                  onClick={addPaymentToForm}
+                  className="sm:col-span-2 px-4 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase border border-neutral-200 text-neutral-600 hover:border-[#c72a09] hover:text-[#c72a09] transition-colors"
+                >
+                  Agregar pago
+                </button>
               </div>
             </div>
           </div>

@@ -72,7 +72,8 @@ export default function DisenosPage() {
       id: editingId || uuid(),
       createdAt: editingId ? (form as Diseno).createdAt : new Date().toISOString(),
     };
-    editingId ? updateDiseno(data) : addDiseno(data);
+    if (editingId) updateDiseno(data);
+    else addDiseno(data);
     setModalOpen(false);
     reload();
   };

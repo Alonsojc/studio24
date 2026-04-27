@@ -67,7 +67,8 @@ export default function ProductosPage() {
       id: editingId || uuid(),
       createdAt: editingId ? (form as Producto).createdAt : new Date().toISOString(),
     };
-    editingId ? updateProducto(data) : addProducto(data);
+    if (editingId) updateProducto(data);
+    else addProducto(data);
     setModalOpen(false);
     reload();
   };

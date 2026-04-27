@@ -1,7 +1,7 @@
 'use client';
 
 import { supabase } from './supabase';
-import { exportAllData } from './store';
+import { exportAllData, previewImportData, type BackupPreview } from './store';
 import { isSafeBackupFileName, validateStorageUpload } from './storage-limits';
 
 const BACKUP_KEY = 'bordados_last_backup';
@@ -104,4 +104,14 @@ export async function downloadBackup(fileName: string): Promise<string | null> {
 
   if (error || !data) return null;
   return await data.text();
+}
+
+/**
+ * Download and validate a backup without importing it.
+ * This is a dry-run restore check for production confidence.
+ */
+export async function testBackupRestore(fileName: string): Promise<BackupPreview | null> {
+  const json = await downloadBackup(fileName);
+  if (!json) return null;
+  return previewImportData(json);
 }

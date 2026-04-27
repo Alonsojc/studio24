@@ -11,16 +11,7 @@ import {
   type TeamMember,
   type PendingInvitation,
 } from '@/lib/teams';
-import {
-  getConfig,
-  exportAllData,
-  importAllData,
-  clearAllData,
-  getClientes,
-  getProveedores,
-  getEgresos,
-  getIngresos,
-} from '@/lib/store';
+import { getConfig, exportAllData, importAllData } from '@/lib/store';
 import { saveConfig } from '@/lib/store-sync';
 import { ConfigNegocio } from '@/lib/types';
 import {
@@ -31,16 +22,7 @@ import {
   sendPendingInvoiceNotification,
   type NotifPrefs,
 } from '@/lib/notifications';
-import { listBackups, downloadBackup, autoBackupIfDue } from '@/lib/auto-backup';
-import {
-  getSeedClientes,
-  getSeedProveedores,
-  getSeedEgresos,
-  getSeedIngresos,
-  getSeedRecurrentes,
-  getSeedPedidos,
-  getSeedProductos,
-} from '@/lib/seed';
+import { listBackups, downloadBackup, autoBackupIfDue, testBackupRestore } from '@/lib/auto-backup';
 import PageHeader from '@/components/PageHeader';
 import { inputClass, labelClass } from '@/lib/styles';
 
@@ -51,7 +33,6 @@ export default function AjustesPage() {
   const [saved, setSaved] = useState(false);
   const [exported, setExported] = useState(false);
   const [imported, setImported] = useState(false);
-  const [seeded, setSeeded] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(() =>
     typeof window !== 'undefined'
       ? getNotifPrefs()
@@ -126,48 +107,6 @@ export default function AjustesPage() {
       }
     };
     reader.readAsText(file);
-  };
-
-  const handleSeedData = () => {
-    const hasData =
-      getClientes().length > 0 || getProveedores().length > 0 || getEgresos().length > 0 || getIngresos().length > 0;
-    if (hasData) {
-      if (!confirm('Ya existen datos en el sistema. Cargar datos demo agregará registros adicionales. ¿Continuar?'))
-        return;
-    }
-    const clientes = getSeedClientes();
-    const proveedores = getSeedProveedores();
-    const clienteIds = clientes.map((c) => c.id);
-    const proveedorIds = proveedores.map((p) => p.id);
-    const egresos = getSeedEgresos(proveedorIds);
-    const ingresos = getSeedIngresos(clienteIds);
-    const recurrentes = getSeedRecurrentes();
-    const pedidos = getSeedPedidos(clienteIds);
-    const productos = getSeedProductos();
-
-    localStorage.setItem('bordados_clientes', JSON.stringify([...getClientes(), ...clientes]));
-    localStorage.setItem('bordados_proveedores', JSON.stringify([...getProveedores(), ...proveedores]));
-    localStorage.setItem('bordados_egresos', JSON.stringify([...getEgresos(), ...egresos]));
-    localStorage.setItem('bordados_ingresos', JSON.stringify([...getIngresos(), ...ingresos]));
-    localStorage.setItem('bordados_egresos_recurrentes', JSON.stringify(recurrentes));
-    localStorage.setItem('bordados_pedidos', JSON.stringify(pedidos));
-    localStorage.setItem('bordados_productos', JSON.stringify(productos));
-
-    setSeeded(true);
-    setTimeout(() => {
-      setSeeded(false);
-      window.location.reload();
-    }, 1500);
-  };
-
-  const handleClear = () => {
-    if (confirm('Esto borrará TODOS los datos (clientes, pedidos, ingresos, egresos, etc). ¿Está seguro?')) {
-      if (confirm('Última oportunidad. ¿Descargar respaldo antes de borrar?')) {
-        handleExport();
-      }
-      clearAllData();
-      window.location.reload();
-    }
   };
 
   return (
@@ -589,6 +528,8 @@ function CloudBackups() {
   const [loading, setLoading] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
   const [backupDone, setBackupDone] = useState(false);
+  const [testingRestore, setTestingRestore] = useState('');
+  const [restoreChecks, setRestoreChecks] = useState<Record<string, string>>({});
 
   const loadBackups = async () => {
     setLoading(true);
@@ -622,6 +563,33 @@ function CloudBackups() {
     a.download = `studio24_backup_${fileName}`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleTestRestore = async (fileName: string) => {
+    setTestingRestore(fileName);
+    try {
+      const preview = await testBackupRestore(fileName);
+      if (!preview) {
+        setRestoreChecks((current) => ({ ...current, [fileName]: 'No se pudo descargar o validar el respaldo.' }));
+        return;
+      }
+      const sections = preview.sections
+        .filter((section) => section.count > 0)
+        .slice(0, 4)
+        .map((section) => `${section.key}: ${section.count}`)
+        .join(' · ');
+      setRestoreChecks((current) => ({
+        ...current,
+        [fileName]: `Restore válido: ${preview.totalRecords} registros${sections ? ` (${sections})` : ''}.`,
+      }));
+    } catch (e) {
+      setRestoreChecks((current) => ({
+        ...current,
+        [fileName]: e instanceof Error ? e.message : 'El respaldo no es válido.',
+      }));
+    } finally {
+      setTestingRestore('');
+    }
   };
 
   const handleRestore = async (fileName: string) => {
@@ -670,28 +638,37 @@ function CloudBackups() {
       ) : (
         <div className="space-y-2">
           {backups.map((b) => (
-            <div
-              key={b.name}
-              className="flex items-center justify-between py-2 border-b border-neutral-50 last:border-0"
-            >
-              <div>
-                <p className="text-sm font-semibold text-[#0a0a0a]">{b.date}</p>
-                {b.size > 0 && <p className="text-[10px] text-neutral-400">{(b.size / 1024).toFixed(0)} KB</p>}
+            <div key={b.name} className="py-2 border-b border-neutral-50 last:border-0">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[#0a0a0a]">{b.date}</p>
+                  {b.size > 0 && <p className="text-[10px] text-neutral-400">{(b.size / 1024).toFixed(0)} KB</p>}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleTestRestore(b.name)}
+                    disabled={testingRestore === b.name}
+                    className="text-[10px] font-bold text-neutral-400 hover:text-[#0a0a0a] uppercase tracking-wide transition-colors disabled:opacity-50"
+                  >
+                    {testingRestore === b.name ? 'Probando' : 'Probar'}
+                  </button>
+                  <button
+                    onClick={() => handleDownload(b.name)}
+                    className="text-[10px] font-bold text-neutral-400 hover:text-[#0a0a0a] uppercase tracking-wide transition-colors"
+                  >
+                    Descargar
+                  </button>
+                  <button
+                    onClick={() => handleRestore(b.name)}
+                    className="text-[10px] font-bold text-[#c72a09] hover:text-[#a82207] uppercase tracking-wide transition-colors"
+                  >
+                    Restaurar
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleDownload(b.name)}
-                  className="text-[10px] font-bold text-neutral-400 hover:text-[#0a0a0a] uppercase tracking-wide transition-colors"
-                >
-                  Descargar
-                </button>
-                <button
-                  onClick={() => handleRestore(b.name)}
-                  className="text-[10px] font-bold text-[#c72a09] hover:text-[#a82207] uppercase tracking-wide transition-colors"
-                >
-                  Restaurar
-                </button>
-              </div>
+              {restoreChecks[b.name] && (
+                <p className="text-[10px] text-green-600 mt-1 sm:text-right">{restoreChecks[b.name]}</p>
+              )}
             </div>
           ))}
         </div>

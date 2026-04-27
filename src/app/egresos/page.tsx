@@ -163,7 +163,8 @@ export default function EgresosPage() {
       montoTotal: nextForm.monto + iva,
       createdAt: editingId ? (form as Egreso).createdAt : new Date().toISOString(),
     };
-    editingId ? updateEgreso(data) : addEgreso(data);
+    if (editingId) updateEgreso(data);
+    else addEgreso(data);
     setModalOpen(false);
     reload();
   };
@@ -210,7 +211,8 @@ export default function EgresosPage() {
       id: editingRecId || uuid(),
       createdAt: editingRecId ? (recForm as EgresoRecurrente).createdAt : new Date().toISOString(),
     };
-    editingRecId ? updateEgresoRecurrente(data) : addEgresoRecurrente(data);
+    if (editingRecId) updateEgresoRecurrente(data);
+    else addEgresoRecurrente(data);
     setRecModalOpen(false);
     reload();
   };

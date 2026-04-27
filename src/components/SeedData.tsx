@@ -86,9 +86,14 @@ export default function SeedData() {
         generarEgresosRecurrentes();
       });
 
-    // Registrar Service Worker para PWA offline
+    // Registrar Service Worker sin dejar app shell viejo pegado después de deploys.
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/studio24/sw.js').catch(() => {});
+      navigator.serviceWorker
+        .register('/studio24/sw.js', { updateViaCache: 'none' })
+        .then((registration) => {
+          registration.update().catch(() => {});
+        })
+        .catch(() => {});
     }
 
     // Notificaciones de pedidos por vencer

@@ -2,7 +2,8 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ["main", "claude/embroidery-business-tracker-jXInn"]
+    branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -34,7 +35,27 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_PUBLIC_SENTRY_RELEASE: ${{ github.sha }}
+          SENTRY_UPLOAD_SOURCEMAPS: ${{ secrets.SENTRY_AUTH_TOKEN != '' && vars.SENTRY_ORG != '' && vars.SENTRY_PROJECT != '' && '1' || '0' }}
         run: npm run build
+
+      - name: Upload Sentry sourcemaps
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          SENTRY_RELEASE: ${{ github.sha }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_ORG" ] || [ -z "$SENTRY_PROJECT" ]; then
+            echo "Sentry sourcemaps disabled; set SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT to enable."
+            exit 0
+          fi
+          npx --yes @sentry/cli releases new "$SENTRY_RELEASE" || true
+          npx --yes @sentry/cli sourcemaps upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" --release "$SENTRY_RELEASE" out/_next/static
+          npx --yes @sentry/cli releases finalize "$SENTRY_RELEASE" || true
+
+      - name: Remove sourcemaps from Pages artifact
+        run: find out -name "*.map" -delete
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
