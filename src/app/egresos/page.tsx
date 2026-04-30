@@ -33,7 +33,7 @@ import { downloadCSV } from '@/lib/csv';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 import MonthBar from '@/components/MonthBar';
 import Pagination, { PAGE_SIZE } from '@/components/Pagination';
-import { openFacturaFile } from '@/lib/cfdi-storage';
+import { deleteFacturaFiles, openFacturaFile } from '@/lib/cfdi-storage';
 
 const categorias: CategoriaEgreso[] = [
   'programas',
@@ -182,6 +182,34 @@ export default function EgresosPage() {
     }
     deleteEgreso(id);
     reload();
+  };
+  const handleReplaceFactura = async (egreso: Egreso) => {
+    const hasCfdi = Boolean(egreso.uuidCFDI || egreso.xmlUrl || egreso.pdfUrl || egreso.numeroFactura);
+    if (!hasCfdi) {
+      alert('Este egreso no tiene CFDI o archivos de factura guardados.');
+      return;
+    }
+    if (
+      !confirm(
+        'Se borrarán el PDF/XML guardados y se limpiará el UUID para que puedas subir la factura correcta desde Facturas. El egreso se conserva. ¿Continuar?',
+      )
+    )
+      return;
+
+    try {
+      await deleteFacturaFiles({ pdfUrl: egreso.pdfUrl, xmlUrl: egreso.xmlUrl });
+      updateEgreso({
+        ...egreso,
+        numeroFactura: '',
+        uuidCFDI: '',
+        xmlUrl: '',
+        pdfUrl: '',
+      });
+      reload();
+      alert('Listo. Ahora sube el XML/PDF nuevo desde Facturas para vincularlo otra vez.');
+    } catch (err) {
+      alert(`No se pudo borrar la factura: ${err instanceof Error ? err.message : 'error desconocido'}`);
+    }
   };
 
   const openNewRec = () => {
@@ -503,73 +531,111 @@ export default function EgresosPage() {
               </tr>
             </thead>
             <tbody>
-              {paged.map((e) => (
-                <tr
-                  key={e.id}
-                  className={`border-b border-neutral-50 transition-colors ${e.soloFiscal ? 'bg-purple-50/30' : 'hover:bg-neutral-50/50'}`}
-                >
-                  <td className="px-5 py-4 text-neutral-400 text-xs">{formatDate(e.fecha)}</td>
-                  <td className="px-5 py-4">
-                    <span className={`font-semibold ${e.soloFiscal ? 'text-neutral-400' : 'text-[#0a0a0a]'}`}>
-                      {e.descripcion}
-                    </span>
-                    {e.soloFiscal && (
-                      <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-100 text-purple-600 uppercase">
-                        Solo fiscal
+              {paged.map((e) => {
+                const canReplaceFactura = Boolean(e.factura || e.uuidCFDI || e.xmlUrl || e.pdfUrl || e.numeroFactura);
+                return (
+                  <tr
+                    key={e.id}
+                    className={`border-b border-neutral-50 transition-colors ${e.soloFiscal ? 'bg-purple-50/30' : 'hover:bg-neutral-50/50'}`}
+                  >
+                    <td className="px-5 py-4 text-neutral-400 text-xs">{formatDate(e.fecha)}</td>
+                    <td className="px-5 py-4">
+                      <span className={`font-semibold ${e.soloFiscal ? 'text-neutral-400' : 'text-[#0a0a0a]'}`}>
+                        {e.descripcion}
                       </span>
-                    )}
-                    {e.subcategoria && <span className="block text-xs text-neutral-300 mt-0.5">{e.subcategoria}</span>}
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wide bg-neutral-100 text-neutral-500 uppercase">
-                      {categoriaLabel(e.categoria)}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-neutral-400 text-xs">{proveedorName(e.proveedorId) || '—'}</td>
-                  <td className="px-5 py-4 text-neutral-400 text-xs">{formaPagoLabel(e.formaPago)}</td>
-                  <td className="px-5 py-4 text-right">
-                    <span className={`font-bold ${e.soloFiscal ? 'text-purple-500' : 'text-red-600'}`}>
-                      {formatCurrency(e.montoTotal)}
-                    </span>
-                    {e.iva > 0 && (
-                      <span className="block text-[10px] text-neutral-300">IVA: {formatCurrency(e.iva)}</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-4 text-center">
-                    {e.factura ? (
-                      <button
-                        onClick={async () => {
-                          const ok = await openFacturaFile({ pdfUrl: e.pdfUrl, xmlUrl: e.xmlUrl });
-                          if (!ok) alert('Esta factura no tiene archivo guardado. Súbela desde /facturas.');
-                        }}
-                        title={e.pdfUrl || e.xmlUrl ? 'Ver factura' : 'Sin archivo guardado'}
-                        className={`w-7 h-7 rounded-full bg-[#c72a09] text-white text-[9px] font-bold inline-flex items-center justify-center transition-opacity ${e.pdfUrl || e.xmlUrl ? 'hover:bg-[#a82207]' : 'opacity-60 hover:opacity-100'}`}
-                      >
-                        F
-                      </button>
-                    ) : (
-                      <span className="text-neutral-200">—</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="flex justify-end">
-                      <ActionMenu
-                        items={[
-                          { label: 'Editar', onClick: () => openEdit(e) },
-                          {
-                            label: e.soloFiscal ? 'Quitar solo fiscal' : 'Marcar solo fiscal',
-                            onClick: () => {
-                              updateEgreso({ ...e, soloFiscal: !e.soloFiscal });
-                              reload();
+                      {e.soloFiscal && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-100 text-purple-600 uppercase">
+                          Solo fiscal
+                        </span>
+                      )}
+                      {e.subcategoria && (
+                        <span className="block text-xs text-neutral-300 mt-0.5">{e.subcategoria}</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wide bg-neutral-100 text-neutral-500 uppercase">
+                        {categoriaLabel(e.categoria)}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-neutral-400 text-xs">{proveedorName(e.proveedorId) || '—'}</td>
+                    <td className="px-5 py-4 text-neutral-400 text-xs">{formaPagoLabel(e.formaPago)}</td>
+                    <td className="px-5 py-4 text-right">
+                      <span className={`font-bold ${e.soloFiscal ? 'text-purple-500' : 'text-red-600'}`}>
+                        {formatCurrency(e.montoTotal)}
+                      </span>
+                      {e.iva > 0 && (
+                        <span className="block text-[10px] text-neutral-300">IVA: {formatCurrency(e.iva)}</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      {canReplaceFactura ? (
+                        <div className="flex items-center justify-center gap-1.5">
+                          {e.factura ? (
+                            <button
+                              onClick={async () => {
+                                const ok = await openFacturaFile({ pdfUrl: e.pdfUrl, xmlUrl: e.xmlUrl });
+                                if (!ok) alert('Esta factura no tiene archivo guardado. Súbela desde /facturas.');
+                              }}
+                              title={e.pdfUrl || e.xmlUrl ? 'Ver factura' : 'Sin archivo guardado'}
+                              className={`w-7 h-7 rounded-full bg-[#c72a09] text-white text-[9px] font-bold inline-flex items-center justify-center transition-opacity ${e.pdfUrl || e.xmlUrl ? 'hover:bg-[#a82207]' : 'opacity-60 hover:opacity-100'}`}
+                            >
+                              F
+                            </button>
+                          ) : null}
+                          <button
+                            onClick={() => handleReplaceFactura(e)}
+                            title="Reemplazar factura"
+                            aria-label="Reemplazar factura"
+                            className="w-7 h-7 rounded-full border border-neutral-200 text-neutral-400 inline-flex items-center justify-center hover:border-[#c72a09] hover:text-[#c72a09] transition-colors"
+                          >
+                            <svg
+                              className="w-3.5 h-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M4 4v6h6M20 20v-6h-6M20 9A8 8 0 0 0 6.3 3.7L4 6m16 12-2.3 2.3A8 8 0 0 1 4 15"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-neutral-200">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex justify-end">
+                        <ActionMenu
+                          items={[
+                            { label: 'Editar', onClick: () => openEdit(e) },
+                            {
+                              label: e.soloFiscal ? 'Quitar solo fiscal' : 'Marcar solo fiscal',
+                              onClick: () => {
+                                updateEgreso({ ...e, soloFiscal: !e.soloFiscal });
+                                reload();
+                              },
                             },
-                          },
-                          { label: 'Eliminar', onClick: () => handleDelete(e.id), danger: true },
-                        ]}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                            ...(canReplaceFactura
+                              ? [
+                                  {
+                                    label: 'Reemplazar factura',
+                                    onClick: () => handleReplaceFactura(e),
+                                    danger: true,
+                                  },
+                                ]
+                              : []),
+                            { label: 'Eliminar', onClick: () => handleDelete(e.id), danger: true },
+                          ]}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -47,6 +47,14 @@ export async function getFacturaSignedUrl(path: string): Promise<string | null> 
   return data?.signedUrl || null;
 }
 
+export async function deleteFacturaFiles(record: { pdfUrl?: string; xmlUrl?: string }): Promise<void> {
+  const paths = Array.from(new Set([record.pdfUrl, record.xmlUrl].filter(Boolean))) as string[];
+  if (paths.length === 0) return;
+
+  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  if (error) throw error;
+}
+
 /** Opens the best available factura file in a new tab (prefers PDF, falls back to XML). */
 export async function openFacturaFile(record: { pdfUrl?: string; xmlUrl?: string }): Promise<boolean> {
   const path = record.pdfUrl || record.xmlUrl;

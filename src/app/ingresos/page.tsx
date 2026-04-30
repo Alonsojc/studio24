@@ -24,7 +24,7 @@ import { downloadCSV } from '@/lib/csv';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 import MonthBar from '@/components/MonthBar';
 import Pagination, { PAGE_SIZE } from '@/components/Pagination';
-import { openFacturaFile } from '@/lib/cfdi-storage';
+import { deleteFacturaFiles, openFacturaFile } from '@/lib/cfdi-storage';
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
 const formasPago: FormaPago[] = ['efectivo', 'tarjeta', 'transferencia', 'otro'];
@@ -115,6 +115,34 @@ export default function IngresosPage() {
     }
     deleteIngreso(id);
     reload();
+  };
+  const handleReplaceFactura = async (ingreso: Ingreso) => {
+    const hasCfdi = Boolean(ingreso.uuidCFDI || ingreso.xmlUrl || ingreso.pdfUrl || ingreso.numeroFactura);
+    if (!hasCfdi) {
+      alert('Este ingreso no tiene CFDI o archivos de factura guardados.');
+      return;
+    }
+    if (
+      !confirm(
+        'Se borrarán el PDF/XML guardados y se limpiará el UUID para que puedas subir la factura correcta desde Facturas. El ingreso se conserva. ¿Continuar?',
+      )
+    )
+      return;
+
+    try {
+      await deleteFacturaFiles({ pdfUrl: ingreso.pdfUrl, xmlUrl: ingreso.xmlUrl });
+      updateIngreso({
+        ...ingreso,
+        numeroFactura: '',
+        uuidCFDI: '',
+        xmlUrl: '',
+        pdfUrl: '',
+      });
+      reload();
+      alert('Listo. Ahora sube el XML/PDF nuevo desde Facturas para vincularlo otra vez.');
+    } catch (err) {
+      alert(`No se pudo borrar la factura: ${err instanceof Error ? err.message : 'error desconocido'}`);
+    }
   };
 
   const clienteName = (id: string) => clientes.find((c) => c.id === id)?.nombre || '';
@@ -285,58 +313,94 @@ export default function IngresosPage() {
               </tr>
             </thead>
             <tbody>
-              {paged.map((i) => (
-                <tr key={i.id} className="border-b border-neutral-50 hover:bg-neutral-50/50 transition-colors">
-                  <td className="px-5 py-4 text-neutral-400 text-xs">{formatDate(i.fecha)}</td>
-                  <td className="px-5 py-4 font-semibold text-[#0a0a0a]">
-                    {i.descripcion}
-                    {i.pedidoId && (
-                      <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-orange-50 text-orange-500 uppercase">
-                        Pedido
+              {paged.map((i) => {
+                const canReplaceFactura = Boolean(i.factura || i.uuidCFDI || i.xmlUrl || i.pdfUrl || i.numeroFactura);
+                return (
+                  <tr key={i.id} className="border-b border-neutral-50 hover:bg-neutral-50/50 transition-colors">
+                    <td className="px-5 py-4 text-neutral-400 text-xs">{formatDate(i.fecha)}</td>
+                    <td className="px-5 py-4 font-semibold text-[#0a0a0a]">
+                      {i.descripcion}
+                      {i.pedidoId && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-orange-50 text-orange-500 uppercase">
+                          Pedido
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 text-neutral-400 text-xs">{clienteName(i.clienteId) || '—'}</td>
+                    <td className="px-5 py-4">
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wide bg-green-50 text-green-700 uppercase">
+                        {conceptoLabel(i.concepto)}
                       </span>
-                    )}
-                  </td>
-                  <td className="px-5 py-4 text-neutral-400 text-xs">{clienteName(i.clienteId) || '—'}</td>
-                  <td className="px-5 py-4">
-                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wide bg-green-50 text-green-700 uppercase">
-                      {conceptoLabel(i.concepto)}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-neutral-400 text-xs">{formaPagoLabel(i.formaPago)}</td>
-                  <td className="px-5 py-4 text-right">
-                    <span className="font-bold text-green-600">{formatCurrency(i.montoTotal)}</span>
-                    {i.iva > 0 && (
-                      <span className="block text-[10px] text-neutral-300">IVA: {formatCurrency(i.iva)}</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-4 text-center">
-                    {i.factura ? (
-                      <button
-                        onClick={async () => {
-                          const ok = await openFacturaFile({ pdfUrl: i.pdfUrl, xmlUrl: i.xmlUrl });
-                          if (!ok) alert('Esta factura no tiene archivo guardado. Súbela desde /facturas.');
-                        }}
-                        title={i.pdfUrl || i.xmlUrl ? 'Ver factura' : 'Sin archivo guardado'}
-                        className={`w-7 h-7 rounded-full bg-[#c72a09] text-white text-[9px] font-bold inline-flex items-center justify-center transition-opacity ${i.pdfUrl || i.xmlUrl ? 'hover:bg-[#a82207]' : 'opacity-60 hover:opacity-100'}`}
-                      >
-                        F
-                      </button>
-                    ) : (
-                      <span className="text-neutral-200">—</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="flex justify-end">
-                      <ActionMenu
-                        items={[
-                          { label: 'Editar', onClick: () => openEdit(i) },
-                          { label: 'Eliminar', onClick: () => handleDelete(i.id), danger: true },
-                        ]}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-5 py-4 text-neutral-400 text-xs">{formaPagoLabel(i.formaPago)}</td>
+                    <td className="px-5 py-4 text-right">
+                      <span className="font-bold text-green-600">{formatCurrency(i.montoTotal)}</span>
+                      {i.iva > 0 && (
+                        <span className="block text-[10px] text-neutral-300">IVA: {formatCurrency(i.iva)}</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      {canReplaceFactura ? (
+                        <div className="flex items-center justify-center gap-1.5">
+                          {i.factura ? (
+                            <button
+                              onClick={async () => {
+                                const ok = await openFacturaFile({ pdfUrl: i.pdfUrl, xmlUrl: i.xmlUrl });
+                                if (!ok) alert('Esta factura no tiene archivo guardado. Súbela desde /facturas.');
+                              }}
+                              title={i.pdfUrl || i.xmlUrl ? 'Ver factura' : 'Sin archivo guardado'}
+                              className={`w-7 h-7 rounded-full bg-[#c72a09] text-white text-[9px] font-bold inline-flex items-center justify-center transition-opacity ${i.pdfUrl || i.xmlUrl ? 'hover:bg-[#a82207]' : 'opacity-60 hover:opacity-100'}`}
+                            >
+                              F
+                            </button>
+                          ) : null}
+                          <button
+                            onClick={() => handleReplaceFactura(i)}
+                            title="Reemplazar factura"
+                            aria-label="Reemplazar factura"
+                            className="w-7 h-7 rounded-full border border-neutral-200 text-neutral-400 inline-flex items-center justify-center hover:border-[#c72a09] hover:text-[#c72a09] transition-colors"
+                          >
+                            <svg
+                              className="w-3.5 h-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M4 4v6h6M20 20v-6h-6M20 9A8 8 0 0 0 6.3 3.7L4 6m16 12-2.3 2.3A8 8 0 0 1 4 15"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-neutral-200">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex justify-end">
+                        <ActionMenu
+                          items={[
+                            { label: 'Editar', onClick: () => openEdit(i) },
+                            ...(canReplaceFactura
+                              ? [
+                                  {
+                                    label: 'Reemplazar factura',
+                                    onClick: () => handleReplaceFactura(i),
+                                    danger: true,
+                                  },
+                                ]
+                              : []),
+                            { label: 'Eliminar', onClick: () => handleDelete(i.id), danger: true },
+                          ]}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
