@@ -6,6 +6,7 @@ import { getIngresos, getEgresos, getClientes } from '@/lib/store';
 import { cloudGetIngresos, cloudGetEgresos, cloudGetClientes } from '@/lib/store-cloud';
 import { useCloudStore } from '@/lib/useCloudStore';
 import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
+import { calcApartadoUtilidad } from '@/lib/utilidad';
 import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
 
@@ -25,6 +26,54 @@ const Legend = dynamic(() => import('recharts').then((m) => m.Legend), { ssr: fa
 import { Cell } from 'recharts';
 
 const COLORS = ['#c72a09', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#ec4899', '#0891b2', '#65a30d'];
+const APARTADOS_UTILIDAD_KEY = 'bordados_apartados_utilidad';
+
+type ApartadoKind = 'reinversion' | 'donacion';
+type ApartadoStatus = Partial<Record<ApartadoKind, boolean>>;
+type ApartadoStatusMap = Record<string, ApartadoStatus>;
+
+function readApartadoStatus(): ApartadoStatusMap {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(APARTADOS_UTILIDAD_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeApartadoStatus(status: ApartadoStatusMap): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(APARTADOS_UTILIDAD_KEY, JSON.stringify(status));
+}
+
+function StatusButton({
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-[0.04em] transition-colors ${
+        active
+          ? 'bg-green-100 text-green-700'
+          : disabled
+            ? 'bg-neutral-100 text-neutral-300 cursor-not-allowed'
+            : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+      }`}
+    >
+      {active ? 'Separado' : children}
+    </button>
+  );
+}
 
 export default function ReportesPage() {
   const { data: ingresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
@@ -36,6 +85,7 @@ export default function ReportesPage() {
   const [mesInicio, setMesInicio] = useState(0);
   const [mesFin, setMesFin] = useState(11);
   const [mounted] = useState(() => isClient);
+  const [apartadoStatus, setApartadoStatus] = useState<ApartadoStatusMap>(() => readApartadoStatus());
 
   if (!mounted)
     return (
@@ -59,14 +109,23 @@ export default function ReportesPage() {
     const m = parseInt(fecha.substring(5, 7), 10) - 1;
     return y === year && m >= mesInicio && m <= mesFin;
   };
+  const inSelectedYear = (fecha: string) => parseInt(fecha.substring(0, 4), 10) === year;
   const ingresosYear = ingresos.filter((i) => inRange(i.fecha));
   const egresosYear = egresos.filter((e) => inRange(e.fecha));
+  const ingresosAnuales = ingresos.filter((i) => inSelectedYear(i.fecha));
+  const egresosAnuales = egresos.filter((e) => inSelectedYear(e.fecha));
   // Exclude soloFiscal egresos from business reports (they only count in Fiscal)
   const egresosNegocio = egresosYear.filter((e) => !e.soloFiscal);
+  const egresosNegocioAnuales = egresosAnuales.filter((e) => !e.soloFiscal);
 
   const totalIngresosYear = ingresosYear.reduce((s, i) => s + i.montoTotal, 0);
   const totalEgresosYear = egresosNegocio.reduce((s, e) => s + e.montoTotal, 0);
   const gananciaYear = totalIngresosYear - totalEgresosYear;
+  const totalIngresosAnual = ingresosAnuales.reduce((s, i) => s + i.montoTotal, 0);
+  const totalEgresosAnual = egresosNegocioAnuales.reduce((s, e) => s + e.montoTotal, 0);
+  const gananciaAnual = totalIngresosAnual - totalEgresosAnual;
+  const apartadoPeriodo = calcApartadoUtilidad(gananciaYear);
+  const apartadoAnual = calcApartadoUtilidad(gananciaAnual);
   const ivaCobradoYear = ingresosYear.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
   const ivaPagadoYear = egresosYear.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
   const facturadoIngresos = ingresosYear.filter((i) => i.factura).reduce((s, i) => s + i.montoTotal, 0);
@@ -79,6 +138,29 @@ export default function ReportesPage() {
     const eg = egresosNegocio.filter((e) => e.fecha.substring(5, 7) === ms).reduce((s, e) => s + e.montoTotal, 0);
     return { name, Ingresos: ing, Egresos: eg, Ganancia: ing - eg };
   });
+  const monthlyUtilityData = monthNames.map((name, idx) => {
+    const ms = String(idx + 1).padStart(2, '0');
+    const ing = ingresosAnuales.filter((i) => i.fecha.substring(5, 7) === ms).reduce((s, i) => s + i.montoTotal, 0);
+    const eg = egresosNegocioAnuales
+      .filter((e) => e.fecha.substring(5, 7) === ms)
+      .reduce((s, e) => s + e.montoTotal, 0);
+    const utilidad = ing - eg;
+    return { name, key: `${year}-${ms}`, ...calcApartadoUtilidad(utilidad) };
+  });
+  const annualStatusKey = `${year}-anual`;
+  const periodLabel =
+    mesInicio === 0 && mesFin === 11 ? String(year) : `${monthNames[mesInicio]} - ${monthNames[mesFin]} ${year}`;
+
+  const toggleApartado = (key: string, kind: ApartadoKind) => {
+    setApartadoStatus((prev) => {
+      const current = prev[key] || {};
+      const nextForKey = { ...current, [kind]: !current[kind] };
+      const next = { ...prev, [key]: nextForKey };
+      if (!nextForKey.reinversion && !nextForKey.donacion) delete next[key];
+      writeApartadoStatus(next);
+      return next;
+    });
+  };
 
   const categoriaData = Object.entries(
     egresosNegocio.reduce<Record<string, number>>((acc, e) => {
@@ -186,6 +268,131 @@ export default function ReportesPage() {
           value={formatCurrency(ivaCobradoYear - ivaPagadoYear)}
           subtitle="Anual acumulado"
         />
+      </div>
+
+      <div className="bg-white rounded-2xl border border-neutral-100 p-6 mb-8">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+          <div>
+            <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Apartado de utilidad</h3>
+            <p className="text-xs text-neutral-400 mt-1">Reinversión 10% · Donación 2% no fiscal · Disponible 88%</p>
+          </div>
+          <span className="px-3 py-1 rounded-lg bg-neutral-100 text-[10px] font-bold text-neutral-500 uppercase">
+            {periodLabel}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <div>
+            <p className="text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Utilidad periodo</p>
+            <p
+              className={`text-xl font-black mt-1 ${apartadoPeriodo.utilidad >= 0 ? 'text-[#0a0a0a]' : 'text-red-600'}`}
+            >
+              {formatCurrency(apartadoPeriodo.utilidad)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold tracking-[0.1em] text-green-600 uppercase">Reinversión 10%</p>
+            <p className="text-xl font-black text-green-600 mt-1">{formatCurrency(apartadoPeriodo.reinversion)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold tracking-[0.1em] text-blue-600 uppercase">Donación 2% no fiscal</p>
+            <p className="text-xl font-black text-blue-600 mt-1">{formatCurrency(apartadoPeriodo.donacion)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">Disponible</p>
+            <p className="text-xl font-black text-[#0a0a0a] mt-1">{formatCurrency(apartadoPeriodo.disponible)}</p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[760px]">
+            <thead>
+              <tr className="border-b border-neutral-100">
+                <th className="py-3 text-left text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">
+                  Mes
+                </th>
+                <th className="py-3 text-right text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">
+                  Utilidad
+                </th>
+                <th className="py-3 text-right text-[10px] font-bold tracking-[0.1em] text-green-600 uppercase">
+                  Reinversión
+                </th>
+                <th className="py-3 text-right text-[10px] font-bold tracking-[0.1em] text-blue-600 uppercase">
+                  Donación no fiscal
+                </th>
+                <th className="py-3 text-right text-[10px] font-bold tracking-[0.1em] text-neutral-400 uppercase">
+                  Seguimiento
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthlyUtilityData.map((m) => {
+                const status = apartadoStatus[m.key] || {};
+                const disabled = m.utilidad <= 0;
+                return (
+                  <tr key={m.key} className="border-b border-neutral-50">
+                    <td className="py-3 font-bold text-[#0a0a0a]">{m.name}</td>
+                    <td className={`py-3 text-right font-bold ${m.utilidad >= 0 ? 'text-[#0a0a0a]' : 'text-red-600'}`}>
+                      {formatCurrency(m.utilidad)}
+                    </td>
+                    <td className="py-3 text-right text-green-600 font-semibold">{formatCurrency(m.reinversion)}</td>
+                    <td className="py-3 text-right text-blue-600 font-semibold">{formatCurrency(m.donacion)}</td>
+                    <td className="py-3">
+                      <div className="flex justify-end gap-2">
+                        <StatusButton
+                          active={status.reinversion}
+                          disabled={disabled}
+                          onClick={() => toggleApartado(m.key, 'reinversion')}
+                        >
+                          Reinversión
+                        </StatusButton>
+                        <StatusButton
+                          active={status.donacion}
+                          disabled={disabled}
+                          onClick={() => toggleApartado(m.key, 'donacion')}
+                        >
+                          Donación
+                        </StatusButton>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className="py-4 font-black text-[#0a0a0a]">Total {year}</td>
+                <td
+                  className={`py-4 text-right font-black ${apartadoAnual.utilidad >= 0 ? 'text-[#0a0a0a]' : 'text-red-600'}`}
+                >
+                  {formatCurrency(apartadoAnual.utilidad)}
+                </td>
+                <td className="py-4 text-right font-black text-green-600">
+                  {formatCurrency(apartadoAnual.reinversion)}
+                </td>
+                <td className="py-4 text-right font-black text-blue-600">{formatCurrency(apartadoAnual.donacion)}</td>
+                <td className="py-4">
+                  <div className="flex justify-end gap-2">
+                    <StatusButton
+                      active={apartadoStatus[annualStatusKey]?.reinversion}
+                      disabled={apartadoAnual.utilidad <= 0}
+                      onClick={() => toggleApartado(annualStatusKey, 'reinversion')}
+                    >
+                      Reinversión anual
+                    </StatusButton>
+                    <StatusButton
+                      active={apartadoStatus[annualStatusKey]?.donacion}
+                      disabled={apartadoAnual.utilidad <= 0}
+                      onClick={() => toggleApartado(annualStatusKey, 'donacion')}
+                    >
+                      Donación anual
+                    </StatusButton>
+                  </div>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>
 
       {/* Monthly Chart */}
