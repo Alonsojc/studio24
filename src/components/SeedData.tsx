@@ -73,17 +73,17 @@ export default function SeedData() {
     // Intentar restaurar datos desde IDB si localStorage está vacío.
     // generarEgresosRecurrentes runs AFTER restore to avoid race-condition duplicates.
     restoreFromIDB()
-      .then((restored) => {
+      .then(async (restored) => {
         if (restored) {
           window.location.reload();
           return;
         }
         syncAllToIDB();
-        generarEgresosRecurrentes();
+        await generarEgresosRecurrentes();
       })
       .catch(() => {
         // IDB not available (e.g. mobile private mode) — run startup without restore
-        generarEgresosRecurrentes();
+        void generarEgresosRecurrentes();
       });
 
     // Registrar Service Worker sin dejar app shell viejo pegado después de deploys.

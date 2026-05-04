@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type DependencyList } from 'react';
+import { mergeCloudList, mergeCloudObject, writeLocalJSON } from './sync-queue';
 
 /**
  * Cloud-first data hook.
@@ -9,15 +10,17 @@ import { useState, useEffect, useCallback, useRef } from 'react';
  * 3. Merges cloud data into state + updates localStorage cache
  * 4. Falls back to localStorage if Supabase fails (offline)
  */
-export function useCloudStore<T>(
+export function useCloudStore<T extends { id: string; createdAt?: string; updatedAt?: string }>(
   localReader: () => T[],
   cloudFetcher: () => Promise<T[]>,
   localKey: string,
+  deps: DependencyList = [],
 ): { data: T[]; loading: boolean; reload: () => void } {
   const isClient = typeof window !== 'undefined';
   const [data, setData] = useState<T[]>(() => (isClient ? localReader() : []));
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(false);
+  const depsKey = deps.map(String).join('|');
 
   useEffect(() => {
     mountedRef.current = true;
@@ -26,8 +29,10 @@ export function useCloudStore<T>(
       try {
         const cloudData = await cloudFetcher();
         if (!cancelled && mountedRef.current) {
-          setData(cloudData);
-          localStorage.setItem(localKey, JSON.stringify(cloudData));
+          const localData = localReader();
+          const merged = mergeCloudList(localKey, localData as never[], cloudData as never[]) as T[];
+          setData(merged);
+          writeLocalJSON(localKey, merged);
         }
       } catch {
         // Offline — keep localStorage data
@@ -37,16 +42,19 @@ export function useCloudStore<T>(
     return () => {
       cancelled = true;
     };
+    // localReader/cloudFetcher are often inline page closures; deps controls
+    // intentional refetches such as selected year/month.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [localKey, depsKey]);
 
   const reload = useCallback(() => {
     setData(localReader());
     setLoading(true);
     cloudFetcher()
       .then((cloudData) => {
-        setData(cloudData);
-        localStorage.setItem(localKey, JSON.stringify(cloudData));
+        const merged = mergeCloudList(localKey, localReader() as never[], cloudData as never[]) as T[];
+        setData(merged);
+        writeLocalJSON(localKey, merged);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -62,9 +70,11 @@ export function useCloudStoreOne<T>(
   localReader: () => T,
   cloudFetcher: () => Promise<T>,
   localKey: string,
+  deps: DependencyList = [],
 ): { data: T; loading: boolean; reload: () => void } {
   const [data, setData] = useState<T>(() => localReader());
   const [loading, setLoading] = useState(true);
+  const depsKey = deps.map(String).join('|');
 
   useEffect(() => {
     let cancelled = false;
@@ -72,8 +82,13 @@ export function useCloudStoreOne<T>(
       try {
         const cloudData = await cloudFetcher();
         if (!cancelled) {
-          setData(cloudData);
-          localStorage.setItem(localKey, JSON.stringify(cloudData));
+          const merged = mergeCloudObject(
+            localKey,
+            localReader() as Record<string, unknown>,
+            cloudData as Record<string, unknown>,
+          ) as T;
+          setData(merged);
+          writeLocalJSON(localKey, merged);
         }
       } catch {
         // Offline — keep localStorage data
@@ -84,14 +99,19 @@ export function useCloudStoreOne<T>(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [localKey, depsKey]);
 
   const reload = useCallback(() => {
     setData(localReader());
     cloudFetcher()
       .then((cloudData) => {
-        setData(cloudData);
-        localStorage.setItem(localKey, JSON.stringify(cloudData));
+        const merged = mergeCloudObject(
+          localKey,
+          localReader() as Record<string, unknown>,
+          cloudData as Record<string, unknown>,
+        ) as T;
+        setData(merged);
+        writeLocalJSON(localKey, merged);
       })
       .catch(() => {});
   }, [localReader, cloudFetcher, localKey]);

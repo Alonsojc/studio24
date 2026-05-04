@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { getIngresos, getEgresos, getClientes } from '@/lib/store';
-import { cloudGetIngresos, cloudGetEgresos, cloudGetClientes } from '@/lib/store-cloud';
+import { cloudGetIngresosByYear, cloudGetEgresosByYear, cloudGetClientes } from '@/lib/store-cloud';
 import { useCloudStore } from '@/lib/useCloudStore';
 import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
 import { calcApartadoUtilidad } from '@/lib/utilidad';
@@ -76,14 +76,16 @@ function StatusButton({
 }
 
 export default function ReportesPage() {
-  const { data: ingresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
-  const { data: egresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
-  const { data: clientesList } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
-  const totalClientes = clientesList.length;
   const isClient = typeof window !== 'undefined';
   const [year, setYear] = useState(new Date().getFullYear());
   const [mesInicio, setMesInicio] = useState(0);
   const [mesFin, setMesFin] = useState(11);
+  const { data: ingresos } = useCloudStore(getIngresos, () => cloudGetIngresosByYear(year), 'bordados_ingresos', [
+    year,
+  ]);
+  const { data: egresos } = useCloudStore(getEgresos, () => cloudGetEgresosByYear(year), 'bordados_egresos', [year]);
+  const { data: clientesList } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
+  const totalClientes = clientesList.length;
   const [mounted] = useState(() => isClient);
   const [apartadoStatus, setApartadoStatus] = useState<ApartadoStatusMap>(() => readApartadoStatus());
 

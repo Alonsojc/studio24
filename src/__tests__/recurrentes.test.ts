@@ -12,6 +12,11 @@ import type { Egreso, EgresoRecurrente } from '@/lib/types';
 vi.mock('@/lib/store-sync', () => ({
   addEgreso: localAddEgreso,
   addRecurrenteLog: localAddRecurrenteLog,
+  createRecurrenteEgreso: async ({ egreso, logKey }: { egreso: Egreso; logKey: string }) => {
+    localAddEgreso(egreso);
+    localAddRecurrenteLog(logKey);
+    return egreso;
+  },
   deleteEgreso: localDeleteEgreso,
 }));
 
@@ -85,7 +90,7 @@ describe('generarEgresosRecurrentes', () => {
     const { generarEgresosRecurrentes } = await import('@/lib/recurrentes');
     addEgresoRecurrente(recurrente());
 
-    expect(generarEgresosRecurrentes()).toBe(4);
+    expect(await generarEgresosRecurrentes()).toBe(4);
     expect(getEgresos().map((e) => e.fecha)).toEqual(['2026-01-13', '2026-02-13', '2026-03-13', '2026-04-13']);
   });
 
@@ -94,7 +99,7 @@ describe('generarEgresosRecurrentes', () => {
     addEgresoRecurrente(recurrente({ id: 'rec-1' }));
     addEgresoRecurrente(recurrente({ id: 'rec-2' }));
 
-    expect(generarEgresosRecurrentes()).toBe(4);
+    expect(await generarEgresosRecurrentes()).toBe(4);
     expect(getEgresos()).toHaveLength(4);
     expect(getRecurrentesLog()).toContain('rec-1::2026-04');
     expect(getRecurrentesLog()).toContain('rec-2::2026-04');

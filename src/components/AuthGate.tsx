@@ -7,6 +7,7 @@ import { signIn, signUp, resetPassword } from '@/lib/auth';
 import { pullFromCloud } from '@/lib/store-cloud';
 import { bindLocalDataToUser, clearSensitiveLocalData } from '@/lib/store';
 import { reportError } from '@/lib/sentry';
+import { flushPendingSync } from '@/lib/sync-flush';
 
 type View = 'login' | 'register' | 'reset' | 'check-email';
 
@@ -46,6 +47,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
     const prepareUserSession = async (nextUser: User) => {
       const cacheWasCleared = bindLocalDataToUser(nextUser.id);
+      await flushPendingSync().catch((e) => reportError(e, { kind: 'authBootstrapFlushPendingSync' }));
       await withTimeout(pullFromCloud({ replaceEmpty: cacheWasCleared }), BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE);
     };
 
@@ -69,12 +71,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         } = await withTimeout(supabase.auth.getSession(), BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE);
         if (cancelled) return;
         const nextUser = session?.user ?? null;
-        setCurrentUser(nextUser);
-        setLoading(false);
         setSessionError('');
         if (nextUser) {
-          void syncUserSession(nextUser, 'authBootstrapPullFromCloud');
+          await syncUserSession(nextUser, 'authBootstrapPullFromCloud');
         }
+        if (cancelled) return;
+        setCurrentUser(nextUser);
+        setLoading(false);
       } catch (e) {
         reportError(e, { kind: 'authBootstrapGetUser' });
         if (!cancelled) {
@@ -99,11 +102,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         return;
       }
       if (cancelled) return;
+      setLoading(true);
+      if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION') {
+        await syncUserSession(nextUser, 'authStatePullFromCloud');
+      }
+      if (cancelled) return;
       setCurrentUser(nextUser);
       setLoading(false);
-      if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION') {
-        void syncUserSession(nextUser, 'authStatePullFromCloud');
-      }
     });
 
     return () => {

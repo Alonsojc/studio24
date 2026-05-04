@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, getEgresos, getConfig, getProveedores } from '@/lib/store';
-import { cloudGetIngresos, cloudGetEgresos } from '@/lib/store-cloud';
+import { cloudGetIngresosByYear, cloudGetEgresosByYear } from '@/lib/store-cloud';
 import { useCloudStore } from '@/lib/useCloudStore';
 import { addIngreso, updateIngreso, addEgreso, updateEgreso, updateProveedor } from '@/lib/store-sync';
 import { Ingreso, Egreso } from '@/lib/types';
@@ -34,18 +34,22 @@ interface FacturaPendiente {
 
 export default function FacturasPage() {
   const isClient = typeof window !== 'undefined';
-  const { data: ingresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
-  const { data: egresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
-  const [config] = useState(() => (isClient ? getConfig() : null));
-  const [mounted] = useState(() => isClient);
-  const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
-  const [processing, setProcessing] = useState(false);
-  const [duplicadas, setDuplicadas] = useState(0);
   const now = new Date();
   const [filterYear, setFilterYear] = useState(now.getFullYear());
   const [filterMonth, setFilterMonth] = useState<string>(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
   );
+  const { data: ingresos } = useCloudStore(getIngresos, () => cloudGetIngresosByYear(filterYear), 'bordados_ingresos', [
+    filterYear,
+  ]);
+  const { data: egresos } = useCloudStore(getEgresos, () => cloudGetEgresosByYear(filterYear), 'bordados_egresos', [
+    filterYear,
+  ]);
+  const [config] = useState(() => (isClient ? getConfig() : null));
+  const [mounted] = useState(() => isClient);
+  const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
+  const [processing, setProcessing] = useState(false);
+  const [duplicadas, setDuplicadas] = useState(0);
   const [filterTipo, setFilterTipo] = useState<'all' | 'ingreso' | 'egreso'>('all');
   const fileRef = useRef<HTMLInputElement>(null);
 

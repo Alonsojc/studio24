@@ -24,6 +24,7 @@ export interface Cliente {
   logo: string;
   notas: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Proveedor {
@@ -37,6 +38,7 @@ export interface Proveedor {
   logo: string;
   notas: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Egreso {
@@ -58,6 +60,7 @@ export interface Egreso {
   soloFiscal?: boolean;
   notas: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface EgresoRecurrente {
@@ -72,6 +75,7 @@ export interface EgresoRecurrente {
   diaDelMes: number; // 1-28, dia en que se genera
   activo: boolean;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export type EstadoPedido = 'pendiente' | 'diseno' | 'aprobado' | 'en_maquina' | 'terminado' | 'entregado' | 'cancelado';
@@ -85,6 +89,7 @@ export interface PagoPedido {
   monto: number;
   referencia: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface ConsumoInventarioPedido {
@@ -122,7 +127,9 @@ export interface Pedido {
   fechaEntregaReal: string;
   urgente: boolean;
   notas: string;
+  trackingToken?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Ingreso {
@@ -143,6 +150,7 @@ export interface Ingreso {
   pdfUrl?: string;
   notas: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Cotizacion {
@@ -157,6 +165,7 @@ export interface Cotizacion {
   iva: number;
   total: number;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export type CategoriaProducto = 'bordado' | 'prenda' | 'servicio' | 'otro';
@@ -168,6 +177,7 @@ export interface Producto {
   precio: number;
   activo: boolean;
   createdAt: string;
+  updatedAt?: string;
 }
 
 // --- Inventario ---
@@ -188,6 +198,7 @@ export interface ItemInventario {
   ubicacion: string;
   notas: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 // --- Biblioteca de diseños ---
@@ -204,6 +215,7 @@ export interface Diseno {
   tags: string[];
   notas: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 // --- Plantillas WhatsApp ---
@@ -213,6 +225,7 @@ export interface PlantillaWhatsApp {
   nombre: string;
   mensaje: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface ConfigNegocio {
@@ -228,4 +241,5 @@ export interface ConfigNegocio {
   email: string;
   direccion: string;
   logoUrl: string;
+  updatedAt?: string;
 }

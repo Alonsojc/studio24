@@ -16,7 +16,7 @@ import {
 } from './types';
 import { clearStudioDB, mirrorToIDB, removeFromIDB } from './db';
 
-const KEYS = {
+export const KEYS = {
   clientes: 'bordados_clientes',
   proveedores: 'bordados_proveedores',
   egresos: 'bordados_egresos',
@@ -32,6 +32,16 @@ const KEYS = {
   plantillas: 'bordados_plantillas',
 } as const;
 
+export const EXTRA_BACKUP_KEYS = {
+  apartadosUtilidad: 'bordados_apartados_utilidad',
+  perdidasFiscales: 'bordados_perdidas_fiscales',
+  syncQueue: 'bordados_sync_queue',
+  syncPullPausedUntil: 'bordados_sync_pull_paused_until',
+} as const;
+
+export type StoreKeyName = keyof typeof KEYS;
+export type StoreStorageKey = (typeof KEYS)[StoreKeyName];
+
 const KEEP_AFTER_CLEAR = new Set(['bordados_seeded']);
 
 export const ACTIVE_USER_KEY = 'bordados_active_user_id';
@@ -41,13 +51,13 @@ export function hasLocalBusinessData(): boolean {
   return Object.values(KEYS).some((key) => localStorage.getItem(key) !== null);
 }
 
-function getItems<T>(key: string): T[] {
+export function getItems<T>(key: string): T[] {
   if (typeof window === 'undefined') return [];
   const data = localStorage.getItem(key);
   return data ? JSON.parse(data) : [];
 }
 
-function safeSetItem(key: string, value: string): void {
+export function safeSetItem(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
     mirrorToIDB(key, value);
@@ -59,7 +69,7 @@ function safeSetItem(key: string, value: string): void {
   }
 }
 
-function setItems<T>(key: string, items: T[]): void {
+export function setItems<T>(key: string, items: T[]): void {
   safeSetItem(key, JSON.stringify(items));
 }
 
@@ -187,6 +197,11 @@ export function exportAllData(): string {
     const raw = localStorage.getItem(storageKey);
     if (raw) data[key] = JSON.parse(raw);
   });
+  Object.entries(EXTRA_BACKUP_KEYS).forEach(([key, storageKey]) => {
+    if (key === 'syncPullPausedUntil') return;
+    const raw = localStorage.getItem(storageKey);
+    if (raw) data[key] = JSON.parse(raw);
+  });
   data['config'] = getConfig();
   return JSON.stringify(data, null, 2);
 }
@@ -217,6 +232,18 @@ function parseAndValidateBackup(json: string): { data: Record<string, unknown>; 
   if (data.config !== undefined && (typeof data.config !== 'object' || Array.isArray(data.config))) {
     throw new Error('La sección "config" debe ser un objeto');
   }
+  for (const key of ['apartadosUtilidad', 'perdidasFiscales', 'syncQueue']) {
+    if (data[key] === undefined) continue;
+    if ((key === 'syncQueue' || key === 'perdidasFiscales') && !Array.isArray(data[key])) {
+      throw new Error(`La sección "${key}" debe ser una lista`);
+    }
+    if (
+      key === 'apartadosUtilidad' &&
+      (typeof data[key] !== 'object' || data[key] === null || Array.isArray(data[key]))
+    ) {
+      throw new Error(`La sección "${key}" debe ser un objeto`);
+    }
+  }
   return {
     data: data as Record<string, unknown>,
     preview: {
@@ -236,11 +263,15 @@ export function importAllData(json: string): void {
   Object.entries(KEYS).forEach(([key, storageKey]) => {
     if (data[key] !== undefined) safeSetItem(storageKey, JSON.stringify(data[key]));
   });
+  Object.entries(EXTRA_BACKUP_KEYS).forEach(([key, storageKey]) => {
+    if (key === 'syncPullPausedUntil') return;
+    if (data[key] !== undefined) safeSetItem(storageKey, JSON.stringify(data[key]));
+  });
   if (data.config) saveConfig(data.config as ConfigNegocio);
 }
 
 export function clearAllData(): void {
-  Object.values(KEYS).forEach((key) => {
+  [...Object.values(KEYS), ...Object.values(EXTRA_BACKUP_KEYS)].forEach((key) => {
     localStorage.removeItem(key);
     removeFromIDB(key);
   });

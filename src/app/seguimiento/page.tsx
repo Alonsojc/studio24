@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getPedidos, getClientes, getConfig } from '@/lib/store';
-import { EstadoPedido } from '@/lib/types';
+import { supabase } from '@/lib/supabase';
+import { EstadoPedido, Pedido, Cliente, ConfigNegocio } from '@/lib/types';
 import { formatCurrency, formatDate, conceptoLabel } from '@/lib/helpers';
 
 const STEPS: { estado: EstadoPedido; label: string; icon: string }[] = [
@@ -21,25 +22,78 @@ function stepIndex(estado: EstadoPedido): number {
 }
 
 export default function SeguimientoPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <SeguimientoContent />
+    </Suspense>
+  );
+}
+
+function SeguimientoContent() {
   const searchParams = useSearchParams();
+  const token = searchParams.get('t');
   const id = searchParams.get('id');
+  const [pedido, setPedido] = useState<Pedido | null>(null);
+  const [cliente, setCliente] = useState<Pick<Cliente, 'nombre'> | null>(null);
+  const [config, setConfig] = useState<Pick<ConfigNegocio, 'nombreNegocio' | 'telefono' | 'email'> | null>(null);
+  const [loading, setLoading] = useState(Boolean(token || id));
+  const [notFound, setNotFound] = useState(false);
 
-  const isClient = typeof window !== 'undefined';
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(Boolean(token || id));
+      setNotFound(false);
 
-  const { pedido, cliente, config, notFound } = useMemo(() => {
-    if (!isClient || !id) return { pedido: null, cliente: null, config: null, notFound: false };
-    const p = getPedidos().find((p) => p.id === id) || null;
-    if (!p) return { pedido: null, cliente: null, config: null, notFound: true };
-    return {
-      pedido: p,
-      cliente: getClientes().find((c) => c.id === p.clienteId) || null,
-      config: getConfig(),
-      notFound: false,
+      if (token) {
+        const { data, error } = await supabase.rpc('get_public_pedido_tracking', { p_token: token });
+        if (cancelled) return;
+        if (error || !data) {
+          setPedido(null);
+          setNotFound(true);
+          setLoading(false);
+          return;
+        }
+        const payload = data as {
+          pedido: Pedido;
+          cliente?: Pick<Cliente, 'nombre'> | null;
+          config?: Pick<ConfigNegocio, 'nombreNegocio' | 'telefono' | 'email'> | null;
+        };
+        setPedido(payload.pedido);
+        setCliente(payload.cliente || null);
+        setConfig(payload.config || null);
+        setLoading(false);
+        return;
+      }
+
+      if (id && typeof window !== 'undefined') {
+        const p = getPedidos().find((pedidoItem) => pedidoItem.id === id) || null;
+        if (!p) {
+          setNotFound(true);
+          setLoading(false);
+          return;
+        }
+        setPedido(p);
+        setCliente(getClientes().find((c) => c.id === p.clienteId) || null);
+        setConfig(getConfig());
+        setLoading(false);
+      }
     };
-  }, [id, isClient]);
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, token]);
 
   // Public layout — no sidebar
-  if (!id) {
+  if (!token && !id) {
     return (
       <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-4 -ml-0 lg:-ml-[260px]">
         <div className="text-center">
@@ -67,7 +121,7 @@ export default function SeguimientoPage() {
     );
   }
 
-  if (!pedido) {
+  if (loading || !pedido) {
     return (
       <div className="min-h-screen bg-[#fafafa] flex items-center justify-center -ml-0 lg:-ml-[260px]">
         <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />

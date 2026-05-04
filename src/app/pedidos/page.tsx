@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getPedidos, getClientes, getIngresos } from '@/lib/store';
-import { cloudGetPedidos, cloudGetClientes, cloudGetIngresos } from '@/lib/store-cloud';
+import { cloudGetPedidosPage, cloudGetClientes, cloudGetIngresosByYear } from '@/lib/store-cloud';
 import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolioAsync } from '@/lib/store-sync';
 import { useCloudStore } from '@/lib/useCloudStore';
 import Pagination, { PAGE_SIZE } from '@/components/Pagination';
@@ -34,6 +34,8 @@ import ActionMenu from '@/components/ActionMenu';
 import PhotoGallery from '@/components/PhotoGallery';
 import { useRole } from '@/components/RoleProvider';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
+import { createTrackingToken, publicTrackingUrl } from '@/lib/tracking';
+import { flushPendingSync } from '@/lib/sync-flush';
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
 const pipeline: { estado: EstadoPedido; label: string; emoji: string }[] = [
@@ -101,9 +103,19 @@ const statusMessages: Record<EstadoPedido, string> = {
 };
 
 export default function PedidosPage() {
-  const { data: pedidosRaw, reload: reloadPedidos } = useCloudStore(getPedidos, cloudGetPedidos, 'bordados_pedidos');
+  const now = new Date();
+  const { data: pedidosRaw, reload: reloadPedidos } = useCloudStore(
+    getPedidos,
+    () => cloudGetPedidosPage(500),
+    'bordados_pedidos',
+  );
   const { data: clientes, reload: reloadClientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
-  const { data: ingresos, reload: reloadIngresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const { data: ingresos, reload: reloadIngresos } = useCloudStore(
+    getIngresos,
+    () => cloudGetIngresosByYear(now.getFullYear()),
+    'bordados_ingresos',
+    [now.getFullYear()],
+  );
   const pedidos = [...pedidosRaw].sort((a, b) => {
     if (a.urgente && !b.urgente) return -1;
     if (!a.urgente && b.urgente) return 1;
@@ -174,6 +186,7 @@ export default function PedidosPage() {
       montoTotal,
       montoPagado,
       estadoPago,
+      trackingToken: (form as Pedido).trackingToken || createTrackingToken(),
       createdAt: editingId ? (form as Pedido).createdAt : new Date().toISOString(),
     };
     if (editingId) updatePedido(data);
@@ -253,6 +266,7 @@ export default function PedidosPage() {
       fechaEntregaReal: '',
       fotos: [],
       checklist: { ...emptyChecklist },
+      trackingToken: createTrackingToken(),
       createdAt: new Date().toISOString(),
     };
     addPedido(nuevo);
@@ -269,9 +283,18 @@ export default function PedidosPage() {
     window.open(url, '_blank');
   };
 
-  const compartirSeguimiento = (p: Pedido) => {
-    const base = typeof window !== 'undefined' ? window.location.origin : '';
-    const link = `${base}/studio24/seguimiento?id=${p.id}`;
+  const compartirSeguimiento = async (p: Pedido) => {
+    const trackingToken = p.trackingToken || createTrackingToken();
+    if (!p.trackingToken) {
+      updatePedido({ ...p, trackingToken });
+      reloadPedidos();
+    }
+    try {
+      await flushPendingSync();
+    } catch {
+      // Si no hay conexión, el link queda listo localmente y sincronizará en cuanto vuelva la nube.
+    }
+    const link = publicTrackingUrl(trackingToken);
     const cliente = clientes.find((c) => c.id === p.clienteId);
     const tel = cliente?.telefono?.replace(/\D/g, '') || '';
     const msg = `*STUDIO 24*\n\nHola ${cliente?.nombre || ''}! Aquí puedes ver el estado de tu pedido:\n\n${link}\n\nPedido: ${p.descripcion}`;

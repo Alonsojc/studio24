@@ -2,6 +2,7 @@
 
 import { supabase } from './supabase';
 import { getMyTeamId } from './teams';
+import { mergeCloudList, mergeCloudObject, readLocalArray, shouldSkipCloudPull, writeLocalJSON } from './sync-queue';
 import type {
   Cliente,
   Proveedor,
@@ -26,6 +27,8 @@ const SNAKE_OVERRIDES: Record<string, string> = {
   pdfUrl: 'pdf_url',
   logoUrl: 'logo_url',
   createdAt: 'created_at',
+  updatedAt: 'updated_at',
+  trackingToken: 'tracking_token',
   clienteId: 'cliente_id',
   pedidoId: 'pedido_id',
   proveedorId: 'proveedor_id',
@@ -81,8 +84,18 @@ function toCamel<T>(obj: Record<string, unknown>): T {
 
 // --- Generic CRUD ---
 
-async function getAll<T>(table: string): Promise<T[]> {
-  const { data, error } = await supabase.from(table).select('*').order('created_at', { ascending: false });
+type DateFilter = { dateColumn: string; year?: number; month?: string; limit?: number };
+
+async function getAll<T>(table: string, filter?: DateFilter): Promise<T[]> {
+  let query = supabase.from(table).select('*');
+  if (filter?.year) {
+    const start = filter.month || `${filter.year}-01`;
+    const end = filter.month && /^\d{4}-\d{2}$/.test(filter.month) ? `${filter.month}-32` : `${filter.year + 1}-01`;
+    query = query.gte(filter.dateColumn, start).lt(filter.dateColumn, end);
+  }
+  query = query.order('created_at', { ascending: false });
+  if (filter?.limit) query = query.limit(filter.limit);
+  const { data, error } = await query;
   if (error) throw error;
   return (data || []).map((row) => toCamel<T>(row as Record<string, unknown>));
 }
@@ -92,6 +105,11 @@ async function upsertOne<T extends { id: string }>(table: string, item: T): Prom
   delete row.user_id;
   delete row.team_id; // Let DB default (current_user_team_id()) handle it
   let { error } = await supabase.from(table).upsert(row, { onConflict: 'id' });
+  if (error && (error.message.includes('updated_at') || error.message.includes('tracking_token'))) {
+    delete row.updated_at;
+    if (table === 'pedidos' && error.message.includes('tracking_token')) delete row.tracking_token;
+    ({ error } = await supabase.from(table).upsert(row, { onConflict: 'id' }));
+  }
   if (error && table === 'pedidos' && (error.message.includes('pagos') || error.message.includes('inventario_usado'))) {
     delete row.pagos;
     delete row.inventario_usado;
@@ -120,16 +138,24 @@ export const cloudDeleteProveedor = (id: string) => deleteOne('proveedores', id)
 
 // Ingresos
 export const cloudGetIngresos = () => getAll<Ingreso>('ingresos');
+export const cloudGetIngresosByYear = (year: number) => getAll<Ingreso>('ingresos', { dateColumn: 'fecha', year });
+export const cloudGetIngresosByMonth = (month: string) =>
+  getAll<Ingreso>('ingresos', { dateColumn: 'fecha', year: Number(month.substring(0, 4)), month });
 export const cloudUpsertIngreso = (i: Ingreso) => upsertOne('ingresos', i);
 export const cloudDeleteIngreso = (id: string) => deleteOne('ingresos', id);
 
 // Egresos
 export const cloudGetEgresos = () => getAll<Egreso>('egresos');
+export const cloudGetEgresosByYear = (year: number) => getAll<Egreso>('egresos', { dateColumn: 'fecha', year });
+export const cloudGetEgresosByMonth = (month: string) =>
+  getAll<Egreso>('egresos', { dateColumn: 'fecha', year: Number(month.substring(0, 4)), month });
 export const cloudUpsertEgreso = (e: Egreso) => upsertOne('egresos', e);
 export const cloudDeleteEgreso = (id: string) => deleteOne('egresos', id);
 
 // Pedidos
 export const cloudGetPedidos = () => getAll<Pedido>('pedidos');
+export const cloudGetPedidosByYear = (year: number) => getAll<Pedido>('pedidos', { dateColumn: 'fecha_pedido', year });
+export const cloudGetPedidosPage = (limit = 500) => getAll<Pedido>('pedidos', { dateColumn: 'fecha_pedido', limit });
 export const cloudUpsertPedido = (p: Pedido) => upsertOne('pedidos', p);
 export const cloudDeletePedido = (id: string) => deleteOne('pedidos', id);
 
@@ -178,6 +204,7 @@ export async function cloudGetConfig(): Promise<ConfigNegocio> {
     email: '',
     direccion: '',
     logoUrl: '',
+    updatedAt: '',
   };
   const { data, error } = await supabase.from('config').select('*').maybeSingle();
   if (error || !data) return defaultConfig;
@@ -195,6 +222,7 @@ export async function cloudGetConfig(): Promise<ConfigNegocio> {
     email: (row.email as string) || '',
     direccion: (row.direccion as string) || '',
     logoUrl: (row.logo_url as string) || '',
+    updatedAt: (row.updated_at as string) || '',
   };
 }
 
@@ -216,6 +244,7 @@ export async function cloudSaveConfig(config: ConfigNegocio): Promise<void> {
       email: config.email,
       direccion: config.direccion,
       logo_url: config.logoUrl,
+      updated_at: config.updatedAt,
     },
     { onConflict: 'team_id' },
   );
@@ -252,7 +281,39 @@ export async function cloudGetRecurrentesLog(): Promise<string[]> {
 }
 
 export async function cloudAddRecurrenteLog(key: string): Promise<void> {
-  await supabase.from('recurrentes_log').upsert({ log_key: key });
+  const { error } = await supabase.from('recurrentes_log').upsert({ log_key: key });
+  if (error) throw error;
+}
+
+export interface CloudRecurrenteEgresoInput {
+  logKey: string;
+  recurrenteId: string;
+  yyyyMm: string;
+  egreso: Egreso;
+}
+
+export async function cloudCreateRecurrenteEgreso(
+  input: CloudRecurrenteEgresoInput,
+): Promise<{ created: boolean; egreso?: Egreso }> {
+  const { data, error } = await supabase.rpc('create_recurrente_egreso', {
+    p_log_key: input.logKey,
+    p_recurrente_id: input.recurrenteId,
+    p_yyyy_mm: input.yyyyMm,
+    p_egreso: toSnake(input.egreso as unknown as Record<string, unknown>),
+  });
+  if (error) {
+    if (error.message.includes('function') || error.message.includes('does not exist')) {
+      await cloudUpsertEgreso(input.egreso);
+      await cloudAddRecurrenteLog(input.logKey);
+      return { created: true, egreso: input.egreso };
+    }
+    throw error;
+  }
+  const result = data as { created?: boolean; egreso?: Record<string, unknown> } | null;
+  return {
+    created: Boolean(result?.created),
+    egreso: result?.egreso ? toCamel<Egreso>(result.egreso) : undefined,
+  };
 }
 
 // Migration: push all localStorage data to Supabase
@@ -285,6 +346,23 @@ export async function migrateLocalToCloud(): Promise<number> {
   await migrate<Diseno>('bordados_disenos', cloudUpsertDiseno);
   await migrate<PlantillaWhatsApp>('bordados_plantillas', cloudUpsertPlantilla);
 
+  const recurrentesLogRaw = localStorage.getItem('bordados_recurrentes_log');
+  if (recurrentesLogRaw) {
+    try {
+      const logKeys: string[] = JSON.parse(recurrentesLogRaw);
+      for (const key of logKeys) {
+        try {
+          await cloudAddRecurrenteLog(key);
+          count++;
+        } catch {
+          /* skip */
+        }
+      }
+    } catch {
+      /* skip invalid local log */
+    }
+  }
+
   // Config
   const configRaw = localStorage.getItem('bordados_config');
   if (configRaw) {
@@ -305,12 +383,18 @@ export async function migrateLocalToCloud(): Promise<number> {
 // Pull from cloud: download all Supabase data into localStorage
 // Used when logging in on a new device
 export async function pullFromCloud(opts: { replaceEmpty?: boolean } = {}): Promise<number> {
+  if (shouldSkipCloudPull()) return 0;
   let count = 0;
 
-  const pull = async <T>(table: string, localKey: string) => {
+  const pull = async <T extends { id: string; createdAt?: string; updatedAt?: string }>(
+    table: string,
+    localKey: string,
+  ) => {
     const items = await getAll<T>(table);
-    if (items.length > 0 || opts.replaceEmpty) {
-      localStorage.setItem(localKey, JSON.stringify(items));
+    const localItems = readLocalArray<T>(localKey);
+    const merged = mergeCloudList(localKey, localItems, items);
+    if (merged.length > 0 || opts.replaceEmpty) {
+      writeLocalJSON(localKey, merged);
     }
     count += items.length;
   };
@@ -340,14 +424,14 @@ export async function pullFromCloud(opts: { replaceEmpty?: boolean } = {}): Prom
         merged[key] = value;
       }
     }
-    localStorage.setItem('bordados_config', JSON.stringify(merged));
+    writeLocalJSON('bordados_config', mergeCloudObject('bordados_config', localConfig, merged));
     count++;
   }
 
   // Recurrentes log
   const log = await cloudGetRecurrentesLog();
   if (log.length > 0 || opts.replaceEmpty) {
-    localStorage.setItem('bordados_recurrentes_log', JSON.stringify(log));
+    writeLocalJSON('bordados_recurrentes_log', log);
   }
 
   return count;

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getIngresos, getEgresos, getConfig } from '@/lib/store';
-import { cloudGetIngresos, cloudGetEgresos } from '@/lib/store-cloud';
+import { cloudGetIngresosByYear, cloudGetEgresosByYear } from '@/lib/store-cloud';
 import { useCloudStore } from '@/lib/useCloudStore';
 import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
 import { downloadCSV } from '@/lib/csv';
@@ -15,11 +15,13 @@ import StatCard from '@/components/StatCard';
 
 export default function FiscalPage() {
   const isClient = typeof window !== 'undefined';
-  const { data: ingresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
-  const { data: egresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
   const [mounted] = useState(() => isClient);
   const [year, setYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth());
+  const { data: ingresos } = useCloudStore(getIngresos, () => cloudGetIngresosByYear(year), 'bordados_ingresos', [
+    year,
+  ]);
+  const { data: egresos } = useCloudStore(getEgresos, () => cloudGetEgresosByYear(year), 'bordados_egresos', [year]);
   const [inpc, setInpc] = useState<InpcEntry[]>([]);
   const savedYearsRef = useRef<Set<number>>(new Set());
 
@@ -42,6 +44,7 @@ export default function FiscalPage() {
 
   // Compute fiscal data unconditionally (pure math, no DOM)
   const yearStr = String(year);
+  const config = getConfig();
   const ingresosYear = ingresos.filter((i) => i.fecha.startsWith(yearStr + '-'));
   const egresosYear = egresos.filter((e) => e.fecha.startsWith(yearStr + '-'));
   const perdidaArrastrable = getPerdidaArrastrable(year);
@@ -49,7 +52,10 @@ export default function FiscalPage() {
     months: monthData,
     perdidaFinal: perdidaAcum,
     ivaFavorFinal: ivaFavorAcum,
-  } = calcMonthData(ingresosYear, egresosYear, perdidaArrastrable, inpcByMonth);
+  } = calcMonthData(ingresosYear, egresosYear, perdidaArrastrable, inpcByMonth, {
+    year,
+    regimenFiscal: config?.regimenFiscal,
+  });
 
   // Auto-save year-end loss when viewing a completed year (side effect only, no state)
   useEffect(() => {
@@ -70,8 +76,6 @@ export default function FiscalPage() {
       </div>
     );
   }
-
-  const config = getConfig();
 
   const years = Array.from(
     new Set([
@@ -632,10 +636,9 @@ export default function FiscalPage() {
       {/* Disclaimer */}
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
         <p className="text-xs text-amber-700">
-          <span className="font-bold">Nota:</span> Los cálculos de ISR usan la tabla del Art. 96 LISR para Persona
-          Física con Actividad Empresarial. Las pérdidas fiscales se acumulan mensualmente y se arrastran entre
-          ejercicios por hasta 10 años (Art. 57 LISR). El IVA a favor se acumula por separado. Las cifras son
-          estimaciones — consulta con tu contador.
+          <span className="font-bold">Nota:</span> ISR es una estimación con tarifas por año/régimen disponibles en la
+          app. RESICO se estima sobre ingresos facturados sin IVA; actividad empresarial usa tarifa progresiva
+          acumulada. El IVA a favor se acumula por separado. Valida siempre con tu contador antes de declarar.
         </p>
       </div>
     </div>

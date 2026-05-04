@@ -10,7 +10,13 @@ export async function getMyTeamId(): Promise<string | null> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data } = await supabase.from('team_members').select('team_id').eq('user_id', user.id).limit(1).maybeSingle();
+  const { data } = await supabase
+    .from('team_members')
+    .select('team_id')
+    .eq('user_id', user.id)
+    .order('joined_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
   cachedTeamId = (data?.team_id as string) || null;
   return cachedTeamId;
 }

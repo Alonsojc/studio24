@@ -30,6 +30,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'test-anon-key' }}
+        run: npm test
+
       - name: Build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
@@ -38,6 +47,21 @@ jobs:
           NEXT_PUBLIC_SENTRY_RELEASE: ${{ github.sha }}
           SENTRY_UPLOAD_SOURCEMAPS: ${{ secrets.SENTRY_AUTH_TOKEN != '' && vars.SENTRY_ORG != '' && vars.SENTRY_PROJECT != '' && '1' || '0' }}
         run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright tests
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+          E2E_OPERADOR_EMAIL: ${{ secrets.E2E_OPERADOR_EMAIL }}
+          E2E_OPERADOR_PASSWORD: ${{ secrets.E2E_OPERADOR_PASSWORD }}
+          E2E_CONTADOR_EMAIL: ${{ secrets.E2E_CONTADOR_EMAIL }}
+          E2E_CONTADOR_PASSWORD: ${{ secrets.E2E_CONTADOR_PASSWORD }}
+        run: npm run test:e2e
 
       - name: Upload Sentry sourcemaps
         env:

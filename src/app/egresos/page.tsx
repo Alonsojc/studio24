@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getEgresos, getProveedores, getEgresosRecurrentes } from '@/lib/store';
-import { cloudGetEgresos, cloudGetProveedores, cloudGetEgresosRecurrentes } from '@/lib/store-cloud';
+import { cloudGetEgresosByYear, cloudGetProveedores, cloudGetEgresosRecurrentes } from '@/lib/store-cloud';
 import { useCloudStore } from '@/lib/useCloudStore';
 import {
   addEgreso,
@@ -91,7 +91,17 @@ function emptyRecurrente(): Omit<EgresoRecurrente, 'id' | 'createdAt'> {
 }
 
 export default function EgresosPage() {
-  const { data: egresosRaw, reload: reloadEgresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
+  const now = new Date();
+  const [filterMonth, setFilterMonth] = useState<string>(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+  );
+  const [filterYear, setFilterYear] = useState(now.getFullYear());
+  const { data: egresosRaw, reload: reloadEgresos } = useCloudStore(
+    getEgresos,
+    () => cloudGetEgresosByYear(filterYear),
+    'bordados_egresos',
+    [filterYear],
+  );
   const { data: proveedores } = useCloudStore(getProveedores, cloudGetProveedores, 'bordados_proveedores');
   const { data: recurrentes, reload: reloadRec } = useCloudStore(
     getEgresosRecurrentes,
@@ -115,11 +125,6 @@ export default function EgresosPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [recFormError, setRecFormError] = useState<string | null>(null);
   const [filterCat, setFilterCat] = useState<string>('all');
-  const now = new Date();
-  const [filterMonth, setFilterMonth] = useState<string>(
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-  );
-  const [filterYear, setFilterYear] = useState(now.getFullYear());
   const [page, setPage] = useState(0);
 
   if (egresosRaw.length === 0 && typeof window === 'undefined')

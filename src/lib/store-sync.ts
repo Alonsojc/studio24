@@ -8,33 +8,7 @@
  * Esto permite migración gradual sin reescribir todas las páginas.
  */
 
-import {
-  cloudUpsertCliente,
-  cloudDeleteCliente,
-  cloudUpsertProveedor,
-  cloudDeleteProveedor,
-  cloudUpsertIngreso,
-  cloudDeleteIngreso,
-  cloudUpsertEgreso,
-  cloudDeleteEgreso,
-  cloudUpsertPedido,
-  cloudDeletePedido,
-  cloudUpsertProducto,
-  cloudDeleteProducto,
-  cloudUpsertCotizacion,
-  cloudDeleteCotizacion,
-  cloudUpsertEgresoRecurrente,
-  cloudDeleteEgresoRecurrente,
-  cloudUpsertItemInventario,
-  cloudDeleteItemInventario,
-  cloudUpsertDiseno,
-  cloudDeleteDiseno,
-  cloudUpsertPlantilla,
-  cloudDeletePlantilla,
-  cloudSaveConfig,
-  cloudAddRecurrenteLog,
-  cloudGetNextFolio,
-} from './store-cloud';
+import { cloudCreateRecurrenteEgreso, cloudGetNextFolio, type CloudRecurrenteEgresoInput } from './store-cloud';
 
 import {
   addCliente as localAddCliente,
@@ -91,201 +65,274 @@ import type {
 } from './types';
 
 import { trackSync } from './sync-status';
+import { flushPendingSync } from './sync-flush';
+import {
+  enqueueDelete,
+  enqueueRecurrenteEgreso,
+  enqueueRecurrenteLog,
+  enqueueUpsert,
+  type SyncTable,
+  type VersionedRecord,
+} from './sync-queue';
 
-// Helper: do local first, then cloud in background (with retry + error tracking)
-function syncAfter<T>(cloudFn: () => Promise<unknown>): T {
-  trackSync(cloudFn);
-  return undefined as unknown as T;
+function stamp<T extends { createdAt?: string; updatedAt?: string }>(item: T): T {
+  const timestamp = new Date().toISOString();
+  return {
+    ...item,
+    createdAt: item.createdAt || timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function kickFlush(): void {
+  trackSync(() => flushPendingSync());
+}
+
+function enqueueAndFlush<T extends VersionedRecord>(table: SyncTable, item: T): void {
+  enqueueUpsert(table, item);
+  kickFlush();
+}
+
+function enqueueDeleteAndFlush(table: SyncTable, id: string): void {
+  enqueueDelete(table, id);
+  kickFlush();
 }
 
 // --- Synced CRUD: local + cloud ---
 
 // Clientes
 export function addCliente(c: Cliente) {
-  localAddCliente(c);
-  syncAfter(() => cloudUpsertCliente(c));
-  return c;
+  const next = stamp(c);
+  localAddCliente(next);
+  enqueueAndFlush('clientes', next);
+  return next;
 }
 export function updateCliente(c: Cliente) {
-  localUpdateCliente(c);
-  syncAfter(() => cloudUpsertCliente(c));
-  return c;
+  const next = stamp(c);
+  localUpdateCliente(next);
+  enqueueAndFlush('clientes', next);
+  return next;
 }
 export function deleteCliente(id: string) {
   localDeleteCliente(id);
-  syncAfter(() => cloudDeleteCliente(id));
+  enqueueDeleteAndFlush('clientes', id);
 }
 
 // Proveedores
 export function addProveedor(p: Proveedor) {
-  localAddProveedor(p);
-  syncAfter(() => cloudUpsertProveedor(p));
-  return p;
+  const next = stamp(p);
+  localAddProveedor(next);
+  enqueueAndFlush('proveedores', next);
+  return next;
 }
 export function updateProveedor(p: Proveedor) {
-  localUpdateProveedor(p);
-  syncAfter(() => cloudUpsertProveedor(p));
-  return p;
+  const next = stamp(p);
+  localUpdateProveedor(next);
+  enqueueAndFlush('proveedores', next);
+  return next;
 }
 export function deleteProveedor(id: string) {
   localDeleteProveedor(id);
-  syncAfter(() => cloudDeleteProveedor(id));
+  enqueueDeleteAndFlush('proveedores', id);
 }
 
 // Ingresos
 export function addIngreso(i: Ingreso) {
-  localAddIngreso(i);
-  syncAfter(() => cloudUpsertIngreso(i));
-  return i;
+  const next = stamp(i);
+  localAddIngreso(next);
+  enqueueAndFlush('ingresos', next);
+  return next;
 }
 export function updateIngreso(i: Ingreso) {
-  localUpdateIngreso(i);
-  syncAfter(() => cloudUpsertIngreso(i));
-  return i;
+  const next = stamp(i);
+  localUpdateIngreso(next);
+  enqueueAndFlush('ingresos', next);
+  return next;
 }
 export function deleteIngreso(id: string) {
   localDeleteIngreso(id);
-  syncAfter(() => cloudDeleteIngreso(id));
+  enqueueDeleteAndFlush('ingresos', id);
 }
 
 // Egresos
 export function addEgreso(e: Egreso) {
-  localAddEgreso(e);
-  syncAfter(() => cloudUpsertEgreso(e));
-  return e;
+  const next = stamp(e);
+  localAddEgreso(next);
+  enqueueAndFlush('egresos', next);
+  return next;
 }
 export function updateEgreso(e: Egreso) {
-  localUpdateEgreso(e);
-  syncAfter(() => cloudUpsertEgreso(e));
-  return e;
+  const next = stamp(e);
+  localUpdateEgreso(next);
+  enqueueAndFlush('egresos', next);
+  return next;
 }
 export function deleteEgreso(id: string) {
   localDeleteEgreso(id);
-  syncAfter(() => cloudDeleteEgreso(id));
+  enqueueDeleteAndFlush('egresos', id);
 }
 
 // Pedidos
 export function addPedido(p: Pedido) {
-  localAddPedido(p);
-  syncAfter(() => cloudUpsertPedido(p));
-  return p;
+  const next = stamp(p);
+  localAddPedido(next);
+  enqueueAndFlush('pedidos', next);
+  return next;
 }
 export function updatePedido(p: Pedido) {
-  localUpdatePedido(p);
-  syncAfter(() => cloudUpsertPedido(p));
-  return p;
+  const next = stamp(p);
+  localUpdatePedido(next);
+  enqueueAndFlush('pedidos', next);
+  return next;
 }
 export function deletePedido(id: string) {
   localDeletePedido(id);
-  syncAfter(() => cloudDeletePedido(id));
+  enqueueDeleteAndFlush('pedidos', id);
 }
 
 // Productos
 export function addProducto(p: Producto) {
-  localAddProducto(p);
-  syncAfter(() => cloudUpsertProducto(p));
-  return p;
+  const next = stamp(p);
+  localAddProducto(next);
+  enqueueAndFlush('productos', next);
+  return next;
 }
 export function updateProducto(p: Producto) {
-  localUpdateProducto(p);
-  syncAfter(() => cloudUpsertProducto(p));
-  return p;
+  const next = stamp(p);
+  localUpdateProducto(next);
+  enqueueAndFlush('productos', next);
+  return next;
 }
 export function deleteProducto(id: string) {
   localDeleteProducto(id);
-  syncAfter(() => cloudDeleteProducto(id));
+  enqueueDeleteAndFlush('productos', id);
 }
 
 // Cotizaciones
 export function addCotizacion(c: Cotizacion) {
-  localAddCotizacion(c);
-  syncAfter(() => cloudUpsertCotizacion(c));
-  return c;
+  const next = stamp(c);
+  localAddCotizacion(next);
+  enqueueAndFlush('cotizaciones', next);
+  return next;
 }
 export function updateCotizacion(c: Cotizacion) {
-  localUpdateCotizacion(c);
-  syncAfter(() => cloudUpsertCotizacion(c));
-  return c;
+  const next = stamp(c);
+  localUpdateCotizacion(next);
+  enqueueAndFlush('cotizaciones', next);
+  return next;
 }
 export function deleteCotizacion(id: string) {
   localDeleteCotizacion(id);
-  syncAfter(() => cloudDeleteCotizacion(id));
+  enqueueDeleteAndFlush('cotizaciones', id);
 }
 
 // Egresos Recurrentes
 export function addEgresoRecurrente(e: EgresoRecurrente) {
-  localAddEgresoRecurrente(e);
-  syncAfter(() => cloudUpsertEgresoRecurrente(e));
-  return e;
+  const next = stamp(e);
+  localAddEgresoRecurrente(next);
+  enqueueAndFlush('egresos_recurrentes', next);
+  return next;
 }
 export function updateEgresoRecurrente(e: EgresoRecurrente) {
-  localUpdateEgresoRecurrente(e);
-  syncAfter(() => cloudUpsertEgresoRecurrente(e));
-  return e;
+  const next = stamp(e);
+  localUpdateEgresoRecurrente(next);
+  enqueueAndFlush('egresos_recurrentes', next);
+  return next;
 }
 export function deleteEgresoRecurrente(id: string) {
   localDeleteEgresoRecurrente(id);
-  syncAfter(() => cloudDeleteEgresoRecurrente(id));
+  enqueueDeleteAndFlush('egresos_recurrentes', id);
 }
 
 // Inventario
 export function addItemInventario(i: ItemInventario) {
-  localAddItemInventario(i);
-  syncAfter(() => cloudUpsertItemInventario(i));
-  return i;
+  const next = stamp(i);
+  localAddItemInventario(next);
+  enqueueAndFlush('inventario', next);
+  return next;
 }
 export function updateItemInventario(i: ItemInventario) {
-  localUpdateItemInventario(i);
-  syncAfter(() => cloudUpsertItemInventario(i));
-  return i;
+  const next = stamp(i);
+  localUpdateItemInventario(next);
+  enqueueAndFlush('inventario', next);
+  return next;
 }
 export function deleteItemInventario(id: string) {
   localDeleteItemInventario(id);
-  syncAfter(() => cloudDeleteItemInventario(id));
+  enqueueDeleteAndFlush('inventario', id);
 }
 
 // Diseños
 export function addDiseno(d: Diseno) {
-  localAddDiseno(d);
-  syncAfter(() => cloudUpsertDiseno(d));
-  return d;
+  const next = stamp(d);
+  localAddDiseno(next);
+  enqueueAndFlush('disenos', next);
+  return next;
 }
 export function updateDiseno(d: Diseno) {
-  localUpdateDiseno(d);
-  syncAfter(() => cloudUpsertDiseno(d));
-  return d;
+  const next = stamp(d);
+  localUpdateDiseno(next);
+  enqueueAndFlush('disenos', next);
+  return next;
 }
 export function deleteDiseno(id: string) {
   localDeleteDiseno(id);
-  syncAfter(() => cloudDeleteDiseno(id));
+  enqueueDeleteAndFlush('disenos', id);
 }
 
 // Plantillas
 export function addPlantilla(p: PlantillaWhatsApp) {
-  localAddPlantilla(p);
-  syncAfter(() => cloudUpsertPlantilla(p));
-  return p;
+  const next = stamp(p);
+  localAddPlantilla(next);
+  enqueueAndFlush('plantillas', next);
+  return next;
 }
 export function updatePlantilla(p: PlantillaWhatsApp) {
-  localUpdatePlantilla(p);
-  syncAfter(() => cloudUpsertPlantilla(p));
-  return p;
+  const next = stamp(p);
+  localUpdatePlantilla(next);
+  enqueueAndFlush('plantillas', next);
+  return next;
 }
 export function deletePlantilla(id: string) {
   localDeletePlantilla(id);
-  syncAfter(() => cloudDeletePlantilla(id));
+  enqueueDeleteAndFlush('plantillas', id);
 }
 
 // Config
 export function saveConfig(config: ConfigNegocio) {
-  localSaveConfig(config);
-  syncAfter(() => cloudSaveConfig(config));
+  const next = stamp(config);
+  localSaveConfig(next);
+  enqueueAndFlush('config', { id: 'config', ...next });
 }
 
 // Recurrentes log
 export function addRecurrenteLog(key: string) {
   localAddRecurrenteLog(key);
-  syncAfter(() => cloudAddRecurrenteLog(key));
+  enqueueRecurrenteLog(key);
+  kickFlush();
+}
+
+export async function createRecurrenteEgreso(input: CloudRecurrenteEgresoInput): Promise<Egreso | null> {
+  const next = stamp(input.egreso);
+  const payload: CloudRecurrenteEgresoInput = { ...input, egreso: next };
+
+  try {
+    const result = await cloudCreateRecurrenteEgreso(payload);
+    if (!result.created) {
+      localAddRecurrenteLog(input.logKey);
+      return null;
+    }
+    const synced = result.egreso || next;
+    localAddEgreso(synced);
+    localAddRecurrenteLog(input.logKey);
+    return synced;
+  } catch {
+    localAddEgreso(next);
+    localAddRecurrenteLog(input.logKey);
+    enqueueRecurrenteEgreso(payload, next.id);
+    kickFlush();
+    return next;
+  }
 }
 
 // Folio — uses cloud if available, falls back to local

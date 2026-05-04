@@ -1,7 +1,20 @@
 import { Ingreso, Egreso } from './types';
 
-// Tabla ISR mensual 2024 — Persona Física (Art. 96 LISR)
-export const TABLA_ISR_MENSUAL = [
+export interface TarifaISR {
+  limInf: number;
+  limSup: number;
+  cuota: number;
+  tasa: number;
+}
+
+export interface CalcISROptions {
+  year?: number;
+  month?: number;
+  regimenFiscal?: string;
+}
+
+// Tabla mensual 2024 legacy — se conserva para pruebas y años sin tabla anual cargada.
+export const TABLA_ISR_MENSUAL_2024: TarifaISR[] = [
   { limInf: 0, limSup: 746.04, cuota: 0, tasa: 0.0192 },
   { limInf: 746.05, limSup: 6332.05, cuota: 14.32, tasa: 0.064 },
   { limInf: 6332.06, limSup: 11128.01, cuota: 371.83, tasa: 0.1088 },
@@ -14,6 +27,84 @@ export const TABLA_ISR_MENSUAL = [
   { limInf: 125325.21, limSup: 375975.61, cuota: 32691.18, tasa: 0.34 },
   { limInf: 375975.62, limSup: Infinity, cuota: 117912.32, tasa: 0.35 },
 ];
+
+export const TABLA_ISR_MENSUAL = TABLA_ISR_MENSUAL_2024;
+
+// 2026: Anexo 8 RMF 2026, tarifas Art. 106 para pagos provisionales de personas físicas.
+const TABLA_ISR_2026_ENERO: TarifaISR[] = [
+  { limInf: 0, limSup: 844.59, cuota: 0, tasa: 0.0192 },
+  { limInf: 844.6, limSup: 7168.51, cuota: 16.22, tasa: 0.064 },
+  { limInf: 7168.52, limSup: 12598.02, cuota: 420.95, tasa: 0.1088 },
+  { limInf: 12598.03, limSup: 14644.64, cuota: 1011.68, tasa: 0.16 },
+  { limInf: 14644.65, limSup: 17533.64, cuota: 1339.14, tasa: 0.1792 },
+  { limInf: 17533.65, limSup: 35362.83, cuota: 1856.84, tasa: 0.2136 },
+  { limInf: 35362.84, limSup: 55736.68, cuota: 5665.16, tasa: 0.2352 },
+  { limInf: 55736.69, limSup: 106410.5, cuota: 10457.09, tasa: 0.3 },
+  { limInf: 106410.51, limSup: 141880.66, cuota: 25659.23, tasa: 0.32 },
+  { limInf: 141880.67, limSup: 425641.99, cuota: 37009.69, tasa: 0.34 },
+  { limInf: 425642, limSup: Infinity, cuota: 133488.54, tasa: 0.35 },
+];
+
+const TABLA_ISR_2026_DICIEMBRE: TarifaISR[] = [
+  { limInf: 0, limSup: 10135.11, cuota: 0, tasa: 0.0192 },
+  { limInf: 10135.12, limSup: 86022.11, cuota: 194.59, tasa: 0.064 },
+  { limInf: 86022.12, limSup: 151176.19, cuota: 5051.37, tasa: 0.1088 },
+  { limInf: 151176.2, limSup: 175735.66, cuota: 12140.13, tasa: 0.16 },
+  { limInf: 175735.67, limSup: 210403.69, cuota: 16069.64, tasa: 0.1792 },
+  { limInf: 210403.7, limSup: 424353.97, cuota: 22282.14, tasa: 0.2136 },
+  { limInf: 424353.98, limSup: 668840.14, cuota: 67981.92, tasa: 0.2352 },
+  { limInf: 668840.15, limSup: 1276925.98, cuota: 125485.07, tasa: 0.3 },
+  { limInf: 1276925.99, limSup: 1702567.97, cuota: 307910.81, tasa: 0.32 },
+  { limInf: 1702567.98, limSup: 5107703.92, cuota: 444116.23, tasa: 0.34 },
+  { limInf: 5107703.93, limSup: Infinity, cuota: 1601862.46, tasa: 0.35 },
+];
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function scaleTariff(table: TarifaISR[], multiplier: number): TarifaISR[] {
+  return table.map((row) => ({
+    limInf: row.limInf <= 0.01 ? 0 : roundMoney(row.limInf * multiplier),
+    limSup: row.limSup === Infinity ? Infinity : roundMoney(row.limSup * multiplier),
+    cuota: roundMoney(row.cuota * multiplier),
+    tasa: row.tasa,
+  }));
+}
+
+const ISR_TABLES_BY_YEAR: Record<number, Record<number, TarifaISR[]>> = {
+  2024: Object.fromEntries(
+    Array.from({ length: 12 }, (_, idx) => [idx + 1, scaleTariff(TABLA_ISR_MENSUAL_2024, idx + 1)]),
+  ),
+  2026: {
+    ...Object.fromEntries(
+      Array.from({ length: 11 }, (_, idx) => [idx + 1, scaleTariff(TABLA_ISR_2026_ENERO, idx + 1)]),
+    ),
+    12: TABLA_ISR_2026_DICIEMBRE,
+  },
+};
+
+const RESICO_RATES = [
+  { limSup: 25000, tasa: 0.01 },
+  { limSup: 50000, tasa: 0.011 },
+  { limSup: 83333.33, tasa: 0.015 },
+  { limSup: 208333.33, tasa: 0.02 },
+  { limSup: 3500000, tasa: 0.025 },
+];
+
+function normalizeRegimen(regimenFiscal?: string): 'resico' | 'actividad_empresarial' {
+  if (regimenFiscal === '625' || regimenFiscal === '626') return 'resico';
+  return 'actividad_empresarial';
+}
+
+function getIsrTable(year = 2024, month = 1): TarifaISR[] {
+  const availableYears = Object.keys(ISR_TABLES_BY_YEAR)
+    .map(Number)
+    .sort((a, b) => a - b);
+  const resolvedYear = availableYears.includes(year) ? year : availableYears.filter((y) => y <= year).at(-1) || 2026;
+  const resolvedMonth = Math.min(12, Math.max(1, month));
+  return ISR_TABLES_BY_YEAR[resolvedYear][resolvedMonth] || ISR_TABLES_BY_YEAR[resolvedYear][1];
+}
 
 export const MESES = [
   'Enero',
@@ -30,14 +121,19 @@ export const MESES = [
   'Diciembre',
 ];
 
-export function calcISR(baseGravable: number): number {
+export function calcISR(baseGravable: number, options: CalcISROptions = {}): number {
   if (baseGravable <= 0) return 0;
-  for (const rango of TABLA_ISR_MENSUAL) {
+  if (normalizeRegimen(options.regimenFiscal) === 'resico') {
+    const rango = RESICO_RATES.find((row) => baseGravable <= row.limSup) || RESICO_RATES[RESICO_RATES.length - 1];
+    return baseGravable * rango.tasa;
+  }
+  const table = getIsrTable(options.year, options.month);
+  for (const rango of table) {
     if (baseGravable >= rango.limInf && baseGravable <= rango.limSup) {
       return rango.cuota + (baseGravable - rango.limInf) * rango.tasa;
     }
   }
-  const last = TABLA_ISR_MENSUAL[TABLA_ISR_MENSUAL.length - 1];
+  const last = table[table.length - 1];
   return last.cuota + (baseGravable - last.limInf) * last.tasa;
 }
 
@@ -98,6 +194,11 @@ export interface YearFiscalResult {
   ivaFavorFinal: number;
 }
 
+export interface CalcMonthDataOptions {
+  year?: number;
+  regimenFiscal?: string;
+}
+
 function inpcFactor(inpcMap: Map<string, number> | undefined, from: string, to: string): number {
   if (!inpcMap) return 1;
   const f = inpcMap.get(from);
@@ -125,11 +226,23 @@ export function calcMonthData(
   egresosYear: Egreso[],
   perdidaEjerciciosAnteriores = 0,
   inpcMap?: Map<string, number>,
+  options: CalcMonthDataOptions = {},
 ): YearFiscalResult {
   let perdida = 0;
   let perdidaMultiAnio = perdidaEjerciciosAnteriores;
+  let baseIsrAcumulada = 0;
+  let isrPagadoAnterior = 0;
   // Cola FIFO de saldos a favor pendientes (más antiguos primero).
   const favorQueue: IvaFavorOrigen[] = [];
+  const taxYear =
+    options.year ||
+    parseInt(
+      ingresosYear[0]?.fecha.substring(0, 4) ||
+        egresosYear[0]?.fecha.substring(0, 4) ||
+        String(new Date().getFullYear()),
+      10,
+    );
+  const normalizedRegimen = normalizeRegimen(options.regimenFiscal);
 
   const months = MESES.map((label, idx) => {
     const monthStr = String(idx + 1).padStart(2, '0');
@@ -146,7 +259,7 @@ export function calcMonthData(
     const ivaAcreditable = egMes.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
     const ivaDelMes = ivaTrasladado - ivaAcreditable;
     const ivaFavorAnterior = favorQueue.reduce((s, f) => s + f.monto, 0);
-    const targetKey = `${ingresosYear[0]?.fecha.substring(0, 4) || egresosYear[0]?.fecha.substring(0, 4) || new Date().getFullYear()}-${monthStr}`;
+    const targetKey = `${taxYear}-${monthStr}`;
 
     const aplicaciones: IvaFavorAplicacion[] = [];
     let ivaPorPagar = 0;
@@ -195,10 +308,30 @@ export function calcMonthData(
     const perdidaEjAnt = idx === 0 ? perdidaMultiAnio : 0;
     if (idx === 0) perdidaMultiAnio = 0; // consumed
 
-    const baseConPerdida = utilidadMes - perdida - perdidaEjAnt;
-    const baseISR = Math.max(0, baseConPerdida);
-    const isrEstimado = calcISR(baseISR);
-    perdida = baseConPerdida < 0 ? Math.abs(baseConPerdida) : 0;
+    let baseISR = 0;
+    let isrEstimado = 0;
+    if (normalizedRegimen === 'resico') {
+      baseISR = ingresosFacturados;
+      isrEstimado = calcISR(baseISR, {
+        year: taxYear,
+        month: idx + 1,
+        regimenFiscal: options.regimenFiscal,
+      });
+      perdida = 0;
+    } else {
+      const baseConPerdida = utilidadMes - perdida - perdidaEjAnt;
+      const utilidadFiscalMes = Math.max(0, baseConPerdida);
+      baseIsrAcumulada += utilidadFiscalMes;
+      baseISR = baseIsrAcumulada;
+      const isrCausadoAcumulado = calcISR(baseISR, {
+        year: taxYear,
+        month: idx + 1,
+        regimenFiscal: options.regimenFiscal,
+      });
+      isrEstimado = Math.max(0, isrCausadoAcumulado - isrPagadoAnterior);
+      isrPagadoAnterior += isrEstimado;
+      perdida = baseConPerdida < 0 ? Math.abs(baseConPerdida) : 0;
+    }
 
     const totalImpuestos = ivaPorPagar + isrEstimado;
 

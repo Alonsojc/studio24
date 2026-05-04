@@ -12,7 +12,10 @@ import {
   type PendingInvitation,
 } from '@/lib/teams';
 import { getConfig, exportAllData, importAllData } from '@/lib/store';
+import { migrateLocalToCloud } from '@/lib/store-cloud';
 import { saveConfig } from '@/lib/store-sync';
+import { flushPendingSync } from '@/lib/sync-flush';
+import { pauseCloudPulls } from '@/lib/sync-queue';
 import { ConfigNegocio } from '@/lib/types';
 import {
   getNotifPrefs,
@@ -50,6 +53,7 @@ export default function AjustesPage() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvitation[]>([]);
   const { role } = useRole();
+  const canEditConfig = role === 'admin';
   const fileRef = useRef<HTMLInputElement>(null);
 
   const reloadTeam = useCallback(async () => {
@@ -72,6 +76,7 @@ export default function AjustesPage() {
     );
 
   const handleSave = () => {
+    if (!canEditConfig) return;
     saveConfig(config);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -94,9 +99,16 @@ export default function AjustesPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
+        pauseCloudPulls();
         importAllData(ev.target?.result as string);
+        try {
+          await migrateLocalToCloud();
+          await flushPendingSync();
+        } catch {
+          pauseCloudPulls(5 * 60 * 1000);
+        }
         setImported(true);
         setTimeout(() => {
           setImported(false);
@@ -114,158 +126,172 @@ export default function AjustesPage() {
       <PageHeader title="Ajustes" description="Configuración del negocio y respaldos" />
 
       <div className="max-w-2xl space-y-8">
-        {/* Business Info */}
-        <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">Datos del Negocio</h3>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelClass}>Nombre del negocio</label>
-                <input
-                  type="text"
-                  value={config.nombreNegocio}
-                  onChange={(e) => setConfig({ ...config, nombreNegocio: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Logo (URL)</label>
-                <input
-                  type="url"
-                  value={config.logoUrl}
-                  onChange={(e) => setConfig({ ...config, logoUrl: e.target.value })}
-                  placeholder="https://..."
-                  className={inputClass}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className={labelClass}>RFC</label>
-                <input
-                  type="text"
-                  value={config.rfc || ''}
-                  onChange={(e) => setConfig({ ...config, rfc: e.target.value.toUpperCase() })}
-                  placeholder="XAXX010101000"
-                  maxLength={13}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Régimen Fiscal</label>
-                <select
-                  value={config.regimenFiscal || ''}
-                  onChange={(e) => setConfig({ ...config, regimenFiscal: e.target.value })}
-                  className={inputClass}
-                >
-                  <option value="">Seleccionar...</option>
-                  <option value="612">612 - Persona Física Act. Empresarial</option>
-                  <option value="601">601 - General de Ley</option>
-                  <option value="603">603 - Autotransporte</option>
-                  <option value="605">605 - Sueldos y Salarios</option>
-                  <option value="606">606 - Arrendamiento</option>
-                  <option value="621">621 - Incorporación Fiscal</option>
-                  <option value="625">625 - RESICO</option>
-                  <option value="626">626 - RESICO Confianza</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Código Postal</label>
-                <input
-                  type="text"
-                  value={config.codigoPostal || ''}
-                  onChange={(e) => setConfig({ ...config, codigoPostal: e.target.value })}
-                  placeholder="76168"
-                  maxLength={5}
-                  className={inputClass}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelClass}>Teléfono</label>
-                <input
-                  type="tel"
-                  value={config.telefono}
-                  onChange={(e) => setConfig({ ...config, telefono: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Email</label>
-                <input
-                  type="email"
-                  value={config.email}
-                  onChange={(e) => setConfig({ ...config, email: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-            </div>
-            <div>
-              <label className={labelClass}>Dirección</label>
-              <input
-                type="text"
-                value={config.direccion}
-                onChange={(e) => setConfig({ ...config, direccion: e.target.value })}
-                className={inputClass}
-              />
-            </div>
+        {!canEditConfig && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+            <p className="text-xs text-amber-700">
+              Solo administradores pueden editar la configuración del negocio. Tu rol puede consultar ajustes y
+              respaldos, pero Supabase rechazará cambios de configuración.
+            </p>
           </div>
-        </div>
+        )}
 
-        {/* Payment Info */}
-        <div className="bg-white rounded-2xl border border-neutral-100 p-6">
-          <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">
-            Datos de Pago (para cotizaciones)
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <label className={labelClass}>Titular de la cuenta</label>
-              <input
-                type="text"
-                value={config.titular}
-                onChange={(e) => setConfig({ ...config, titular: e.target.value })}
-                className={inputClass}
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className={labelClass}>Banco</label>
-                <input
-                  type="text"
-                  value={config.banco}
-                  onChange={(e) => setConfig({ ...config, banco: e.target.value })}
-                  className={inputClass}
-                />
+        <fieldset disabled={!canEditConfig} className="space-y-8 disabled:opacity-60">
+          {/* Business Info */}
+          <div className="bg-white rounded-2xl border border-neutral-100 p-6">
+            <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">
+              Datos del Negocio
+            </h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Nombre del negocio</label>
+                  <input
+                    type="text"
+                    value={config.nombreNegocio}
+                    onChange={(e) => setConfig({ ...config, nombreNegocio: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Logo (URL)</label>
+                  <input
+                    type="url"
+                    value={config.logoUrl}
+                    onChange={(e) => setConfig({ ...config, logoUrl: e.target.value })}
+                    placeholder="https://..."
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className={labelClass}>RFC</label>
+                  <input
+                    type="text"
+                    value={config.rfc || ''}
+                    onChange={(e) => setConfig({ ...config, rfc: e.target.value.toUpperCase() })}
+                    placeholder="XAXX010101000"
+                    maxLength={13}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Régimen Fiscal</label>
+                  <select
+                    value={config.regimenFiscal || ''}
+                    onChange={(e) => setConfig({ ...config, regimenFiscal: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="">Seleccionar...</option>
+                    <option value="612">612 - Persona Física Act. Empresarial</option>
+                    <option value="601">601 - General de Ley</option>
+                    <option value="603">603 - Autotransporte</option>
+                    <option value="605">605 - Sueldos y Salarios</option>
+                    <option value="606">606 - Arrendamiento</option>
+                    <option value="621">621 - Incorporación Fiscal</option>
+                    <option value="625">625 - RESICO</option>
+                    <option value="626">626 - RESICO Confianza</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Código Postal</label>
+                  <input
+                    type="text"
+                    value={config.codigoPostal || ''}
+                    onChange={(e) => setConfig({ ...config, codigoPostal: e.target.value })}
+                    placeholder="76168"
+                    maxLength={5}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Teléfono</label>
+                  <input
+                    type="tel"
+                    value={config.telefono}
+                    onChange={(e) => setConfig({ ...config, telefono: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Email</label>
+                  <input
+                    type="email"
+                    value={config.email}
+                    onChange={(e) => setConfig({ ...config, email: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
               </div>
               <div>
-                <label className={labelClass}>No. Cuenta</label>
+                <label className={labelClass}>Dirección</label>
                 <input
                   type="text"
-                  value={config.numeroCuenta}
-                  onChange={(e) => setConfig({ ...config, numeroCuenta: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>CLABE</label>
-                <input
-                  type="text"
-                  value={config.clabe}
-                  onChange={(e) => setConfig({ ...config, clabe: e.target.value })}
+                  value={config.direccion}
+                  onChange={(e) => setConfig({ ...config, direccion: e.target.value })}
                   className={inputClass}
                 />
               </div>
             </div>
           </div>
-        </div>
 
-        <button
-          onClick={handleSave}
-          className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors ${saved ? 'bg-green-500 text-white' : 'bg-[#c72a09] text-white hover:bg-[#a82207]'}`}
-        >
-          {saved ? '¡Guardado!' : 'Guardar Configuración'}
-        </button>
+          {/* Payment Info */}
+          <div className="bg-white rounded-2xl border border-neutral-100 p-6">
+            <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase mb-5">
+              Datos de Pago (para cotizaciones)
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className={labelClass}>Titular de la cuenta</label>
+                <input
+                  type="text"
+                  value={config.titular}
+                  onChange={(e) => setConfig({ ...config, titular: e.target.value })}
+                  className={inputClass}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className={labelClass}>Banco</label>
+                  <input
+                    type="text"
+                    value={config.banco}
+                    onChange={(e) => setConfig({ ...config, banco: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>No. Cuenta</label>
+                  <input
+                    type="text"
+                    value={config.numeroCuenta}
+                    onChange={(e) => setConfig({ ...config, numeroCuenta: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>CLABE</label>
+                  <input
+                    type="text"
+                    value={config.clabe}
+                    onChange={(e) => setConfig({ ...config, clabe: e.target.value })}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleSave}
+            disabled={!canEditConfig}
+            className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400 ${saved ? 'bg-green-500 text-white' : 'bg-[#c72a09] text-white hover:bg-[#a82207]'}`}
+          >
+            {saved ? '¡Guardado!' : 'Guardar Configuración'}
+          </button>
+        </fieldset>
 
         {/* Notifications */}
         <div className="bg-white rounded-2xl border border-neutral-100 p-6">
@@ -606,7 +632,14 @@ function CloudBackups() {
     }
     try {
       const { importAllData } = await import('@/lib/store');
+      pauseCloudPulls();
       importAllData(json);
+      try {
+        await migrateLocalToCloud();
+        await flushPendingSync();
+      } catch {
+        pauseCloudPulls(5 * 60 * 1000);
+      }
       alert('Respaldo restaurado. La página se recargará.');
       window.location.reload();
     } catch {

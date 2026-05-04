@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import { getEgresos, getEgresosRecurrentes, getRecurrentesLog } from './store';
-import { addEgreso, addRecurrenteLog, deleteEgreso } from './store-sync';
+import { addRecurrenteLog, createRecurrenteEgreso, deleteEgreso } from './store-sync';
 import { Egreso } from './types';
 import { calcIVA } from './helpers';
 
@@ -60,7 +60,7 @@ export function limpiarEgresosAutomaticosDuplicados(now = new Date()): number {
  * Usa un log para evitar duplicados: cada combinacion recurrenteId+YYYY-MM se procesa una sola vez.
  * Retorna la cantidad de egresos generados.
  */
-export function generarEgresosRecurrentes(): number {
+export async function generarEgresosRecurrentes(): Promise<number> {
   if (typeof window === 'undefined') return 0;
 
   limpiarEgresosAutomaticosDuplicados();
@@ -119,11 +119,12 @@ export function generarEgresosRecurrentes(): number {
         continue;
       }
 
-      addEgreso(egreso);
-      addRecurrenteLog(logKey);
+      const created = await createRecurrenteEgreso({ logKey, recurrenteId: rec.id, yyyyMm: mes, egreso });
       log.add(logKey);
-      existingAutomaticSignatures.add(signature);
-      generados++;
+      if (created) {
+        existingAutomaticSignatures.add(signature);
+        generados++;
+      }
     }
   }
 

@@ -185,7 +185,7 @@ export function generateFiscalPDF(year: number, monthData: MonthFiscalData[], op
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(160);
   doc.text(
-    'Estimaciones basadas en Art. 96 LISR (ISR) y Ley del IVA. Pérdidas arrastradas según Art. 57 LISR. Consulte con su contador.',
+    'Estimación fiscal: ISR por tarifas año/régimen disponibles e IVA según registros locales. Validar con contador antes de declarar.',
     margin,
     y + 3,
   );

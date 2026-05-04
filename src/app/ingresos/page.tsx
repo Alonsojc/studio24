@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, getClientes } from '@/lib/store';
-import { cloudGetIngresos, cloudGetClientes } from '@/lib/store-cloud';
+import { cloudGetIngresosByYear, cloudGetClientes } from '@/lib/store-cloud';
 import { addIngreso, updateIngreso, deleteIngreso, getNextFolioAsync } from '@/lib/store-sync';
 import { useCloudStore } from '@/lib/useCloudStore';
 import { Ingreso, ConceptoIngreso, FormaPago } from '@/lib/types';
@@ -46,7 +46,17 @@ function emptyIngreso(): Omit<Ingreso, 'id' | 'createdAt'> {
 }
 
 export default function IngresosPage() {
-  const { data: ingresosRaw, reload } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
+  const now = new Date();
+  const [filterMonth, setFilterMonth] = useState<string>(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+  );
+  const [filterYear, setFilterYear] = useState(now.getFullYear());
+  const { data: ingresosRaw, reload } = useCloudStore(
+    getIngresos,
+    () => cloudGetIngresosByYear(filterYear),
+    'bordados_ingresos',
+    [filterYear],
+  );
   const { data: clientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
   const ingresos = [...ingresosRaw].sort((a, b) => b.fecha.localeCompare(a.fecha));
   const [modalOpen, setModalOpen] = useState(false);
@@ -55,11 +65,6 @@ export default function IngresosPage() {
   const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [filterConcepto, setFilterConcepto] = useState<string>('all');
-  const now = new Date();
-  const [filterMonth, setFilterMonth] = useState<string>(
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-  );
-  const [filterYear, setFilterYear] = useState(now.getFullYear());
   const [page, setPage] = useState(0);
 
   const openNew = () => {
