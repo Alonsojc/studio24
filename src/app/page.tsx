@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { cloudGetIngresos, cloudGetEgresos, cloudGetClientes, cloudGetPedidos } from '@/lib/store-cloud';
+import { getIngresos, getEgresos, getPedidos, getClientes, KEYS } from '@/lib/store';
 import { Ingreso, Egreso, Pedido, Cliente } from '@/lib/types';
 import {
   formatCurrency,
@@ -12,7 +13,7 @@ import {
   categoriaLabel,
   estadoPedidoLabel,
 } from '@/lib/helpers';
-import { useCloud } from '@/lib/useCloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import StatCard from '@/components/StatCard';
 import PageHeader from '@/components/PageHeader';
 
@@ -20,13 +21,18 @@ type DashFilter = 'mes' | 'año' | 'todo';
 const filterLabels: Record<DashFilter, string> = { mes: 'Mes actual', año: 'Año actual', todo: 'Histórico' };
 
 export default function Dashboard() {
-  const { data: ingresos, loading: l1 } = useCloud<Ingreso[]>(cloudGetIngresos);
-  const { data: egresos, loading: l2 } = useCloud<Egreso[]>(cloudGetEgresos);
-  const { data: pedidos, loading: l3 } = useCloud<Pedido[]>(cloudGetPedidos);
-  const { data: clientes, loading: l4 } = useCloud<Cliente[]>(cloudGetClientes);
+  const { data: ingresos, loading: l1 } = useCloudStore<Ingreso>(getIngresos, cloudGetIngresos, KEYS.ingresos);
+  const { data: egresos, loading: l2 } = useCloudStore<Egreso>(getEgresos, cloudGetEgresos, KEYS.egresos);
+  const { data: pedidos, loading: l3 } = useCloudStore<Pedido>(getPedidos, cloudGetPedidos, KEYS.pedidos);
+  const { data: clientes, loading: l4 } = useCloudStore<Cliente>(getClientes, cloudGetClientes, KEYS.clientes);
   const [filter, setFilter] = useState<DashFilter>('mes');
 
-  if (l1 || l2 || l3 || l4 || !ingresos || !egresos || !pedidos || !clientes) {
+  if (
+    (l1 && ingresos.length === 0) ||
+    (l2 && egresos.length === 0) ||
+    (l3 && pedidos.length === 0) ||
+    (l4 && clientes.length === 0)
+  ) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
@@ -120,12 +126,14 @@ export default function Dashboard() {
           value={formatCurrency(totalIngresos)}
           subtitle={trendLabel(trendIng) || `${ingresosFiltered.length} ventas`}
           color="green"
+          href="/ingresos"
         />
         <StatCard
           label="Egresos"
           value={formatCurrency(totalEgresos)}
           subtitle={trendLabel(trendEg) || `${egresosNegocio.length} gastos`}
           color="red"
+          href="/egresos"
         />
         <StatCard
           label="Ganancia Neta"

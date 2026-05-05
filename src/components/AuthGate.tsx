@@ -5,7 +5,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { signIn, signUp, resetPassword } from '@/lib/auth';
 import { pullFromCloud } from '@/lib/store-cloud';
-import { bindLocalDataToUser, clearSensitiveLocalData } from '@/lib/store';
+import { bindLocalDataToUser, clearSensitiveLocalData, hasLocalBusinessData } from '@/lib/store';
 import { reportError } from '@/lib/sentry';
 import { flushPendingSync } from '@/lib/sync-flush';
 
@@ -13,6 +13,28 @@ type View = 'login' | 'register' | 'reset' | 'check-email';
 
 const BOOT_TIMEOUT_MS = 8000;
 const BOOT_ERROR_MESSAGE = 'No se pudo conectar, intenta recargar.';
+const BOOT_SYNC_PREFIX = 'bordados_boot_synced_';
+
+function bootSyncKey(userId: string): string {
+  return `${BOOT_SYNC_PREFIX}${userId}`;
+}
+
+function hasBootSync(userId: string): boolean {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem(bootSyncKey(userId)) === '1';
+}
+
+function markBootSynced(userId: string): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(bootSyncKey(userId), '1');
+}
+
+function clearBootSync(): void {
+  if (typeof window === 'undefined') return;
+  Object.keys(sessionStorage)
+    .filter((key) => key.startsWith(BOOT_SYNC_PREFIX))
+    .forEach((key) => sessionStorage.removeItem(key));
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -44,11 +66,23 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     let syncInFlight: Promise<void> | null = null;
+    let bootDone = false;
 
     const prepareUserSession = async (nextUser: User) => {
       const cacheWasCleared = bindLocalDataToUser(nextUser.id);
-      await flushPendingSync().catch((e) => reportError(e, { kind: 'authBootstrapFlushPendingSync' }));
-      await withTimeout(pullFromCloud({ replaceEmpty: cacheWasCleared }), BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE);
+      const canSyncInBackground = !cacheWasCleared && hasLocalBusinessData() && hasBootSync(nextUser.id);
+      const runSync = async () => {
+        await flushPendingSync().catch((e) => reportError(e, { kind: 'authBootstrapFlushPendingSync' }));
+        await withTimeout(pullFromCloud({ replaceEmpty: cacheWasCleared }), BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE);
+        markBootSynced(nextUser.id);
+      };
+
+      if (canSyncInBackground) {
+        void runSync().catch((e) => reportError(e, { kind: 'authBackgroundPullFromCloud' }));
+        return;
+      }
+
+      await runSync();
     };
 
     const syncUserSession = (nextUser: User, kind: string) => {
@@ -78,12 +112,14 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         setCurrentUser(nextUser);
         setLoading(false);
+        bootDone = true;
       } catch (e) {
         reportError(e, { kind: 'authBootstrapGetUser' });
         if (!cancelled) {
           setCurrentUser(null);
           setSessionError(BOOT_ERROR_MESSAGE);
           setLoading(false);
+          bootDone = true;
         }
       }
     };
@@ -95,15 +131,25 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const nextUser = session?.user ?? null;
       setSessionError('');
+      if (_event === 'INITIAL_SESSION' && !bootDone) return;
       if (!nextUser) {
         clearSensitiveLocalData();
+        clearBootSync();
         setCurrentUser(null);
         setLoading(false);
         return;
       }
       if (cancelled) return;
+      const sameUser = userRef.current?.id === nextUser.id;
+      if (sameUser) {
+        setCurrentUser(nextUser);
+        if (_event === 'SIGNED_IN') {
+          void syncUserSession(nextUser, 'authStateBackgroundPullFromCloud');
+        }
+        return;
+      }
       setLoading(true);
-      if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION') {
+      if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION' || _event === 'USER_UPDATED') {
         await syncUserSession(nextUser, 'authStatePullFromCloud');
       }
       if (cancelled) return;
