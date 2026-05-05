@@ -14,8 +14,6 @@ import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
 
 export default function FiscalPage() {
-  const isClient = typeof window !== 'undefined';
-  const [mounted] = useState(() => isClient);
   const [year, setYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth());
   const { data: ingresos } = useCloudStore(getIngresos, () => cloudGetIngresosByYear(year), 'bordados_ingresos', [
@@ -59,23 +57,15 @@ export default function FiscalPage() {
 
   // Auto-save year-end loss when viewing a completed year (side effect only, no state)
   useEffect(() => {
-    if (!isClient) return;
+    if (typeof window === 'undefined') return;
     if (year < new Date().getFullYear() && !savedYearsRef.current.has(year)) {
       savePerdida(year, perdidaAcum);
       savedYearsRef.current.add(year);
     }
-  }, [year, perdidaAcum, isClient]);
+  }, [year, perdidaAcum]);
 
   // Read perdidas fresh (cheap localStorage read)
-  const perdidas = isClient ? getPerdidas() : [];
-
-  if (!mounted) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  const perdidas = getPerdidas();
 
   const years = Array.from(
     new Set([

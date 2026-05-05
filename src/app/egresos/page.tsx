@@ -127,13 +127,6 @@ export default function EgresosPage() {
   const [filterCat, setFilterCat] = useState<string>('all');
   const [page, setPage] = useState(0);
 
-  if (egresosRaw.length === 0 && typeof window === 'undefined')
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-
   const openNew = () => {
     setEditingId(null);
     const initial = emptyEgreso();

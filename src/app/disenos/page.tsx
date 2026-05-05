@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getDisenos, getClientes } from '@/lib/store';
+import { getDisenos, getClientes, KEYS } from '@/lib/store';
+import { cloudGetDisenos, cloudGetClientes } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import { addDiseno, updateDiseno, deleteDiseno } from '@/lib/store-sync';
 import { Diseno, Cliente } from '@/lib/types';
 import PageHeader from '@/components/PageHeader';
@@ -17,12 +19,9 @@ function emptyDiseno(): Omit<Diseno, 'id' | 'createdAt'> {
 }
 
 export default function DisenosPage() {
-  const isClient = typeof window !== 'undefined';
-  const [disenos, setDisenos] = useState<Diseno[]>(() =>
-    isClient ? getDisenos().sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [],
-  );
-  const [clientes] = useState<Cliente[]>(() => (isClient ? getClientes() : []));
-  const [mounted] = useState(() => isClient);
+  const { data: disenosRaw, reload } = useCloudStore<Diseno>(getDisenos, cloudGetDisenos, KEYS.disenos);
+  const { data: clientes } = useCloudStore<Cliente>(getClientes, cloudGetClientes, KEYS.clientes);
+  const disenos = [...disenosRaw].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const [modalOpen, setModalOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedDiseno, setSelectedDiseno] = useState<Diseno | null>(null);
@@ -32,17 +31,6 @@ export default function DisenosPage() {
   const [tagInput, setTagInput] = useState('');
   const [search, setSearch] = useState('');
   const [filterCliente, setFilterCliente] = useState('all');
-
-  const reload = useCallback(() => {
-    setDisenos(getDisenos().sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-  }, []);
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   const clienteName = (id: string) => clientes.find((c) => c.id === id)?.nombre || '';
 

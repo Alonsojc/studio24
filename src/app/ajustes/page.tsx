@@ -30,9 +30,7 @@ import PageHeader from '@/components/PageHeader';
 import { inputClass, labelClass } from '@/lib/styles';
 
 export default function AjustesPage() {
-  const [config, setConfig] = useState<ConfigNegocio | null>(() =>
-    typeof window !== 'undefined' ? getConfig() : null,
-  );
+  const [config, setConfig] = useState<ConfigNegocio>(getConfig);
   const [saved, setSaved] = useState(false);
   const [exported, setExported] = useState(false);
   const [imported, setImported] = useState(false);
@@ -67,13 +65,6 @@ export default function AjustesPage() {
       void Promise.resolve().then(reloadTeam);
     }
   }, [role, reloadTeam]);
-
-  if (!config)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   const handleSave = () => {
     if (!canEditConfig) return;

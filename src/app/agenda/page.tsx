@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { getPedidos, getClientes } from '@/lib/store';
+import { getPedidos, getClientes, KEYS } from '@/lib/store';
+import { cloudGetPedidos, cloudGetClientes } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import { Pedido, Cliente } from '@/lib/types';
 import { formatCurrency, estadoPedidoLabel, estadoPedidoColor } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
@@ -24,23 +26,13 @@ const MONTH_NAMES = [
 const DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
 export default function AgendaPage() {
-  const isClient = typeof window !== 'undefined';
-  const [pedidos] = useState<Pedido[]>(() => (isClient ? getPedidos() : []));
-  const [clientes] = useState<Cliente[]>(() => (isClient ? getClientes() : []));
-  const [mounted] = useState(() => isClient);
+  const { data: pedidos } = useCloudStore<Pedido>(getPedidos, cloudGetPedidos, KEYS.pedidos);
+  const { data: clientes } = useCloudStore<Cliente>(getClientes, cloudGetClientes, KEYS.clientes);
 
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-
-  if (!mounted) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   const clienteName = (id: string) => clientes.find((c) => c.id === id)?.nombre || '';
 

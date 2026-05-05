@@ -76,7 +76,6 @@ function StatusButton({
 }
 
 export default function ReportesPage() {
-  const isClient = typeof window !== 'undefined';
   const [year, setYear] = useState(new Date().getFullYear());
   const [mesInicio, setMesInicio] = useState(0);
   const [mesFin, setMesFin] = useState(11);
@@ -86,15 +85,7 @@ export default function ReportesPage() {
   const { data: egresos } = useCloudStore(getEgresos, () => cloudGetEgresosByYear(year), 'bordados_egresos', [year]);
   const { data: clientesList } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
   const totalClientes = clientesList.length;
-  const [mounted] = useState(() => isClient);
   const [apartadoStatus, setApartadoStatus] = useState<ApartadoStatusMap>(() => readApartadoStatus());
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   const years = Array.from(
     new Set([

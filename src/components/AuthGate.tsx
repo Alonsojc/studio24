@@ -70,10 +70,16 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
     const prepareUserSession = async (nextUser: User) => {
       const cacheWasCleared = bindLocalDataToUser(nextUser.id);
-      const canSyncInBackground = !cacheWasCleared && hasLocalBusinessData() && hasBootSync(nextUser.id);
+      const hasLocalData = hasLocalBusinessData();
+      const shouldWriteEmptySnapshots = cacheWasCleared || !hasLocalData;
+      const canSyncInBackground = !cacheWasCleared && hasLocalData && hasBootSync(nextUser.id);
       const runSync = async () => {
         await flushPendingSync().catch((e) => reportError(e, { kind: 'authBootstrapFlushPendingSync' }));
-        await withTimeout(pullFromCloud({ replaceEmpty: cacheWasCleared }), BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE);
+        await withTimeout(
+          pullFromCloud({ replaceEmpty: shouldWriteEmptySnapshots }),
+          BOOT_TIMEOUT_MS,
+          BOOT_ERROR_MESSAGE,
+        );
         markBootSynced(nextUser.id);
       };
 

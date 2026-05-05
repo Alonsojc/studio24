@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getPlantillas, getPedidos, getClientes, getConfig } from '@/lib/store';
+import { getPlantillas, getPedidos, getClientes, getConfig, KEYS } from '@/lib/store';
+import { cloudGetPlantillas, cloudGetPedidos, cloudGetClientes, cloudGetConfig } from '@/lib/store-cloud';
+import { useCloudStore, useCloudStoreOne } from '@/lib/useCloudStore';
 import { addPlantilla, updatePlantilla, deletePlantilla } from '@/lib/store-sync';
 import { PlantillaWhatsApp, Pedido, Cliente } from '@/lib/types';
 import { formatCurrency, formatDate, estadoPedidoLabel } from '@/lib/helpers';
@@ -71,14 +73,15 @@ function replacePlaceholders(
 }
 
 export default function PlantillasPage() {
-  const isClient = typeof window !== 'undefined';
-  const [plantillas, setPlantillas] = useState<PlantillaWhatsApp[]>(() => (isClient ? getPlantillas() : []));
-  const [pedidos] = useState(() =>
-    isClient ? getPedidos().filter((p) => p.estado !== 'entregado' && p.estado !== 'cancelado') : [],
+  const { data: plantillas, reload } = useCloudStore<PlantillaWhatsApp>(
+    getPlantillas,
+    cloudGetPlantillas,
+    KEYS.plantillas,
   );
-  const [clientes] = useState(() => (isClient ? getClientes() : []));
-  const [config] = useState(() => (isClient ? getConfig() : null));
-  const [mounted] = useState(() => isClient);
+  const { data: pedidosRaw } = useCloudStore<Pedido>(getPedidos, cloudGetPedidos, KEYS.pedidos);
+  const { data: clientes } = useCloudStore<Cliente>(getClientes, cloudGetClientes, KEYS.clientes);
+  const { data: config } = useCloudStoreOne(getConfig, cloudGetConfig, KEYS.config);
+  const pedidos = pedidosRaw.filter((p) => p.estado !== 'entregado' && p.estado !== 'cancelado');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -91,17 +94,6 @@ export default function PlantillasPage() {
   const [sendTemplate, setSendTemplate] = useState<PlantillaWhatsApp | null>(null);
   const [sendPedidoId, setSendPedidoId] = useState('');
   const [preview, setPreview] = useState('');
-
-  const reload = useCallback(() => {
-    setPlantillas(getPlantillas());
-  }, []);
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   const negocio = config?.nombreNegocio || 'Studio 24';
   const telefonoNeg = config?.telefono || '';

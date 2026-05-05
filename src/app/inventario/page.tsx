@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getInventario } from '@/lib/store';
+import { getInventario, KEYS } from '@/lib/store';
+import { cloudGetInventario } from '@/lib/store-cloud';
+import { useCloudStore } from '@/lib/useCloudStore';
 import { addItemInventario, updateItemInventario, deleteItemInventario } from '@/lib/store-sync';
 import { ItemInventario, CategoriaInventario, UnidadInventario } from '@/lib/types';
 import { formatCurrency } from '@/lib/helpers';
@@ -45,11 +47,8 @@ function emptyItem(): Omit<ItemInventario, 'id' | 'createdAt'> {
 }
 
 export default function InventarioPage() {
-  const isClient = typeof window !== 'undefined';
-  const [items, setItems] = useState<ItemInventario[]>(() =>
-    isClient ? getInventario().sort((a, b) => a.nombre.localeCompare(b.nombre)) : [],
-  );
-  const [mounted] = useState(() => isClient);
+  const { data: itemsRaw, reload } = useCloudStore<ItemInventario>(getInventario, cloudGetInventario, KEYS.inventario);
+  const items = [...itemsRaw].sort((a, b) => a.nombre.localeCompare(b.nombre));
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyItem());
@@ -58,17 +57,6 @@ export default function InventarioPage() {
   const [search, setSearch] = useState('');
   const [adjustId, setAdjustId] = useState<string | null>(null);
   const [adjustQty, setAdjustQty] = useState(0);
-
-  const reload = useCallback(() => {
-    setItems(getInventario().sort((a, b) => a.nombre.localeCompare(b.nombre)));
-  }, []);
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   const openNew = () => {
     setEditingId(null);

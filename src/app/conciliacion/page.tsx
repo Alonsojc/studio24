@@ -24,13 +24,11 @@ export default function ConciliacionPage() {
   const { data: egresos } = useCloudStore(getEgresos, cloudGetEgresos, 'bordados_egresos');
   const { data: clientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
   const { data: proveedores } = useCloudStore(getProveedores, cloudGetProveedores, 'bordados_proveedores');
-  const isClient = typeof window !== 'undefined';
   const [results, setResults] = useState<MatchResult[] | null>(null);
   const [summary, setSummary] = useState<ConciliacionSummary | null>(null);
   const [filterTab, setFilterTab] = useState<FilterTab>('todos');
   const [fileName, setFileName] = useState('');
   const [parseError, setParseError] = useState('');
-  const [mounted] = useState(() => isClient);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
@@ -97,14 +95,6 @@ export default function ConciliacionPage() {
         return true;
       })
     : [];
-
-  if (!mounted) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div>

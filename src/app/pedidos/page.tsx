@@ -139,15 +139,6 @@ export default function PedidosPage() {
   const [page, setPage] = useState(0);
   const { role } = useRole();
   const pagedPedidos = pedidos.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const isClient = typeof window !== 'undefined';
-  const [mounted] = useState(() => isClient);
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   const openNew = () => {
     setEditingId(null);

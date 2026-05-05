@@ -21,24 +21,11 @@ type DashFilter = 'mes' | 'año' | 'todo';
 const filterLabels: Record<DashFilter, string> = { mes: 'Mes actual', año: 'Año actual', todo: 'Histórico' };
 
 export default function Dashboard() {
-  const { data: ingresos, loading: l1 } = useCloudStore<Ingreso>(getIngresos, cloudGetIngresos, KEYS.ingresos);
-  const { data: egresos, loading: l2 } = useCloudStore<Egreso>(getEgresos, cloudGetEgresos, KEYS.egresos);
-  const { data: pedidos, loading: l3 } = useCloudStore<Pedido>(getPedidos, cloudGetPedidos, KEYS.pedidos);
-  const { data: clientes, loading: l4 } = useCloudStore<Cliente>(getClientes, cloudGetClientes, KEYS.clientes);
+  const { data: ingresos } = useCloudStore<Ingreso>(getIngresos, cloudGetIngresos, KEYS.ingresos);
+  const { data: egresos } = useCloudStore<Egreso>(getEgresos, cloudGetEgresos, KEYS.egresos);
+  const { data: pedidos } = useCloudStore<Pedido>(getPedidos, cloudGetPedidos, KEYS.pedidos);
+  const { data: clientes } = useCloudStore<Cliente>(getClientes, cloudGetClientes, KEYS.clientes);
   const [filter, setFilter] = useState<DashFilter>('mes');
-
-  if (
-    (l1 && ingresos.length === 0) ||
-    (l2 && egresos.length === 0) ||
-    (l3 && pedidos.length === 0) ||
-    (l4 && clientes.length === 0)
-  ) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   const now = new Date();
   const currentMonth = String(now.getMonth() + 1).padStart(2, '0');

@@ -3,8 +3,12 @@
 import { useState, useEffect, useCallback, useRef, type DependencyList } from 'react';
 import { mergeCloudList, mergeCloudObject, writeLocalJSON } from './sync-queue';
 
+function hasLocalSnapshot(localKey: string): boolean {
+  return typeof window !== 'undefined' && localStorage.getItem(localKey) !== null;
+}
+
 /**
- * Cloud-first data hook.
+ * Local-first data hook.
  * 1. Returns localStorage data immediately (fast, synchronous)
  * 2. Fetches from Supabase in background
  * 3. Merges cloud data into state + updates localStorage cache
@@ -15,10 +19,11 @@ export function useCloudStore<T extends { id: string; createdAt?: string; update
   cloudFetcher: () => Promise<T[]>,
   localKey: string,
   deps: DependencyList = [],
-): { data: T[]; loading: boolean; reload: () => void } {
+): { data: T[]; loading: boolean; syncing: boolean; reload: () => void } {
   const isClient = typeof window !== 'undefined';
   const [data, setData] = useState<T[]>(() => (isClient ? localReader() : []));
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => isClient && !hasLocalSnapshot(localKey));
+  const [syncing, setSyncing] = useState(false);
   const mountedRef = useRef(false);
   const depsKey = deps.map(String).join('|');
 
@@ -26,6 +31,7 @@ export function useCloudStore<T extends { id: string; createdAt?: string; update
     mountedRef.current = true;
     let cancelled = false;
     (async () => {
+      setSyncing(true);
       try {
         const cloudData = await cloudFetcher();
         if (!cancelled && mountedRef.current) {
@@ -37,7 +43,10 @@ export function useCloudStore<T extends { id: string; createdAt?: string; update
       } catch {
         // Offline — keep localStorage data
       }
-      if (!cancelled) setLoading(false);
+      if (!cancelled) {
+        setLoading(false);
+        setSyncing(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -49,7 +58,7 @@ export function useCloudStore<T extends { id: string; createdAt?: string; update
 
   const reload = useCallback(() => {
     setData(localReader());
-    setLoading(true);
+    setSyncing(true);
     cloudFetcher()
       .then((cloudData) => {
         const merged = mergeCloudList(localKey, localReader() as never[], cloudData as never[]) as T[];
@@ -57,10 +66,13 @@ export function useCloudStore<T extends { id: string; createdAt?: string; update
         writeLocalJSON(localKey, merged);
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setSyncing(false);
+      });
   }, [localReader, cloudFetcher, localKey]);
 
-  return { data, loading, reload };
+  return { data, loading, syncing, reload };
 }
 
 /**
@@ -71,14 +83,16 @@ export function useCloudStoreOne<T>(
   cloudFetcher: () => Promise<T>,
   localKey: string,
   deps: DependencyList = [],
-): { data: T; loading: boolean; reload: () => void } {
+): { data: T; loading: boolean; syncing: boolean; reload: () => void } {
   const [data, setData] = useState<T>(() => localReader());
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !hasLocalSnapshot(localKey));
+  const [syncing, setSyncing] = useState(false);
   const depsKey = deps.map(String).join('|');
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      setSyncing(true);
       try {
         const cloudData = await cloudFetcher();
         if (!cancelled) {
@@ -93,7 +107,10 @@ export function useCloudStoreOne<T>(
       } catch {
         // Offline — keep localStorage data
       }
-      if (!cancelled) setLoading(false);
+      if (!cancelled) {
+        setLoading(false);
+        setSyncing(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -103,6 +120,7 @@ export function useCloudStoreOne<T>(
 
   const reload = useCallback(() => {
     setData(localReader());
+    setSyncing(true);
     cloudFetcher()
       .then((cloudData) => {
         const merged = mergeCloudObject(
@@ -113,8 +131,12 @@ export function useCloudStoreOne<T>(
         setData(merged);
         writeLocalJSON(localKey, merged);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        setLoading(false);
+        setSyncing(false);
+      });
   }, [localReader, cloudFetcher, localKey]);
 
-  return { data, loading, reload };
+  return { data, loading, syncing, reload };
 }

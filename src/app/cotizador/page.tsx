@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { formatCurrency, calcIVA } from '@/lib/helpers';
 import { v4 as uuid } from 'uuid';
-import { getClientes, getConfig, getCotizaciones, getProductos } from '@/lib/store';
+import { getClientes, getConfig, getCotizaciones, getProductos, KEYS } from '@/lib/store';
+import { cloudGetClientes, cloudGetConfig, cloudGetCotizaciones, cloudGetProductos } from '@/lib/store-cloud';
 import { addCotizacion, updateCotizacion, getNextFolioAsync, addPedido } from '@/lib/store-sync';
-import { Cliente, ConfigNegocio, Cotizacion, Pedido, Producto } from '@/lib/types';
+import { Cotizacion, Pedido } from '@/lib/types';
+import { useCloudStore, useCloudStoreOne } from '@/lib/useCloudStore';
 import PageHeader from '@/components/PageHeader';
 import { inputClass, labelClass } from '@/lib/styles';
 
@@ -18,10 +20,16 @@ interface LineItem {
 
 export default function CotizadorPage() {
   const nextIdRef = useRef(1);
-  const [allProductos, setAllProductos] = useState<Producto[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [config, setConfigState] = useState<ConfigNegocio | null>(null);
-  const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
+  const { data: productos } = useCloudStore(getProductos, cloudGetProductos, KEYS.productos);
+  const { data: clientes } = useCloudStore(getClientes, cloudGetClientes, KEYS.clientes);
+  const { data: config } = useCloudStoreOne(getConfig, cloudGetConfig, KEYS.config);
+  const { data: cotizacionesRaw, reload: reloadCotizaciones } = useCloudStore(
+    getCotizaciones,
+    cloudGetCotizaciones,
+    KEYS.cotizaciones,
+  );
+  const allProductos = productos.filter((p) => p.activo);
+  const cotizaciones = [...cotizacionesRaw].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const [clienteId, setClienteId] = useState('');
   const [clienteNombre, setClienteNombre] = useState('');
   const [clienteEmpresa, setClienteEmpresa] = useState('');
@@ -39,28 +47,9 @@ export default function CotizadorPage() {
   const [createdPedidoMsg, setCreatedPedidoMsg] = useState('');
   const [editingCotId, setEditingCotId] = useState<string | null>(null);
   const [showHistorial, setShowHistorial] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    setAllProductos(getProductos().filter((p) => p.activo));
-    setClientes(getClientes());
-    setConfigState(getConfig());
-    setCotizaciones(getCotizaciones().sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-    setMounted(true);
-  }, []);
-
-  const cfg = config || {
-    nombreNegocio: 'STUDIO 24',
-    titular: '',
-    banco: '',
-    numeroCuenta: '',
-    clabe: '',
-    telefono: '',
-    email: '',
-    direccion: '',
-    logoUrl: '',
-  };
+  const cfg = config;
 
   const presetsBordado = allProductos
     .filter((p) => p.categoria === 'bordado')
@@ -149,7 +138,7 @@ export default function CotizadorPage() {
           total,
         };
         updateCotizacion(updated);
-        setCotizaciones(cotizaciones.map((c) => (c.id === editingCotId ? updated : c)));
+        reloadCotizaciones();
       }
     } else {
       const cot: Cotizacion = {
@@ -166,7 +155,7 @@ export default function CotizadorPage() {
         createdAt: new Date().toISOString(),
       };
       addCotizacion(cot);
-      setCotizaciones([cot, ...cotizaciones]);
+      reloadCotizaciones();
     }
     setEditingCotId(null);
     setSavedMsg(true);
@@ -426,13 +415,6 @@ export default function CotizadorPage() {
     const filename = `cotizacion_${clienteNombre ? clienteNombre.replace(/\s+/g, '_').toLowerCase() : 'studio24'}_${new Date().toISOString().slice(0, 10)}.pdf`;
     doc.save(filename);
   };
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   return (
     <div>

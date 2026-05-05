@@ -33,7 +33,6 @@ interface FacturaPendiente {
 }
 
 export default function FacturasPage() {
-  const isClient = typeof window !== 'undefined';
   const now = new Date();
   const [filterYear, setFilterYear] = useState(now.getFullYear());
   const [filterMonth, setFilterMonth] = useState<string>(
@@ -45,20 +44,12 @@ export default function FacturasPage() {
   const { data: egresos } = useCloudStore(getEgresos, () => cloudGetEgresosByYear(filterYear), 'bordados_egresos', [
     filterYear,
   ]);
-  const [config] = useState(() => (isClient ? getConfig() : null));
-  const [mounted] = useState(() => isClient);
+  const [config] = useState(getConfig);
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
   const [processing, setProcessing] = useState(false);
   const [duplicadas, setDuplicadas] = useState(0);
   const [filterTipo, setFilterTipo] = useState<'all' | 'ingreso' | 'egreso'>('all');
   const fileRef = useRef<HTMLInputElement>(null);
-
-  if (!mounted)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
