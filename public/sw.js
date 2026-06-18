@@ -1,4 +1,4 @@
-const CACHE_NAME = 'studio24-v4';
+const CACHE_NAME = 'studio24-v5';
 const APP_BASE = '/studio24';
 
 function isSupabaseRequest(url) {
