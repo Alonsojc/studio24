@@ -48,15 +48,14 @@ jobs:
           SENTRY_UPLOAD_SOURCEMAPS: ${{ secrets.SENTRY_AUTH_TOKEN != '' && vars.SENTRY_ORG != '' && vars.SENTRY_PROJECT != '' && '1' || '0' }}
         run: npm run build
 
-      - name: Install Playwright browsers
-        timeout-minutes: 5
-        run: |
-          timeout 180s npx playwright install --with-deps chromium || npx playwright install chromium
+      - name: Verify Chrome for Playwright
+        run: google-chrome --version
 
       - name: Playwright tests
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          PLAYWRIGHT_USE_SYSTEM_CHROME: "1"
           E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
           E2E_OPERADOR_EMAIL: ${{ secrets.E2E_OPERADOR_EMAIL }}
