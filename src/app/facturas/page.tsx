@@ -18,6 +18,7 @@ import {
 } from '@/lib/deducibilidad';
 import PageHeader from '@/components/PageHeader';
 import MonthBar from '@/components/MonthBar';
+import ActionMenu from '@/components/ActionMenu';
 import { btnPrimary } from '@/lib/styles';
 
 interface FacturaPendiente {
@@ -41,9 +42,12 @@ export default function FacturasPage() {
   const { data: ingresos } = useCloudStore(getIngresos, () => cloudGetIngresosByYear(filterYear), 'bordados_ingresos', [
     filterYear,
   ]);
-  const { data: egresos } = useCloudStore(getEgresos, () => cloudGetEgresosByYear(filterYear), 'bordados_egresos', [
-    filterYear,
-  ]);
+  const { data: egresos, reload: reloadEgresos } = useCloudStore(
+    getEgresos,
+    () => cloudGetEgresosByYear(filterYear),
+    'bordados_egresos',
+    [filterYear],
+  );
   const [config] = useState(getConfig);
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
   const [processing, setProcessing] = useState(false);
@@ -411,6 +415,13 @@ export default function FacturasPage() {
     setFacturas((prev) => prev.filter((f) => f.id !== id));
   };
 
+  const toggleSoloFiscal = (id: string) => {
+    const egreso = egresos.find((e) => e.id === id);
+    if (!egreso) return;
+    updateEgreso({ ...egreso, soloFiscal: !egreso.soloFiscal });
+    reloadEgresos();
+  };
+
   const toggleTipo = (id: string) => {
     setFacturas((prev) => {
       // Collect IDs already matched by other facturas
@@ -430,6 +441,7 @@ export default function FacturasPage() {
     ...ingresos
       .filter((i) => i.uuidCFDI)
       .map((i) => ({
+        id: i.id,
         tipo: 'ingreso' as const,
         desc: i.descripcion,
         total: i.montoTotal,
@@ -438,10 +450,12 @@ export default function FacturasPage() {
         montoTotal: i.montoTotal,
         xmlUrl: i.xmlUrl || '',
         pdfUrl: i.pdfUrl || '',
+        soloFiscal: false,
       })),
     ...egresos
       .filter((e) => e.uuidCFDI)
       .map((e) => ({
+        id: e.id,
         tipo: 'egreso' as const,
         desc: e.descripcion,
         total: e.montoTotal,
@@ -450,6 +464,7 @@ export default function FacturasPage() {
         montoTotal: e.montoTotal,
         xmlUrl: e.xmlUrl || '',
         pdfUrl: e.pdfUrl || '',
+        soloFiscal: Boolean(e.soloFiscal),
       })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
@@ -706,7 +721,10 @@ export default function FacturasPage() {
                   </tr>
                 ) : (
                   facturasVisible.map((f) => (
-                    <tr key={f.uuid} className="border-b border-neutral-50 hover:bg-neutral-50/50">
+                    <tr
+                      key={`${f.tipo}-${f.id}`}
+                      className={`border-b border-neutral-50 transition-colors ${f.soloFiscal ? 'bg-purple-50/30' : 'hover:bg-neutral-50/50'}`}
+                    >
                       <td className="px-4 py-3 text-xs text-neutral-400">{formatDate(f.fecha)}</td>
                       <td className="px-4 py-3">
                         <span
@@ -715,28 +733,51 @@ export default function FacturasPage() {
                           {f.tipo === 'ingreso' ? 'Emitida' : 'Recibida'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-semibold text-[#0a0a0a]">{f.desc}</td>
-                      <td className="px-4 py-3 text-right font-bold">{formatCurrency(f.total)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`font-semibold ${f.soloFiscal ? 'text-neutral-400' : 'text-[#0a0a0a]'}`}>
+                          {f.desc}
+                        </span>
+                        {f.soloFiscal && (
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-100 text-purple-600 uppercase">
+                            Solo fiscal
+                          </span>
+                        )}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-bold ${f.soloFiscal ? 'text-purple-500' : ''}`}>
+                        {formatCurrency(f.total)}
+                      </td>
                       <td className="px-4 py-3 text-[10px] text-neutral-300 font-mono">{f.uuid.substring(0, 8)}...</td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex gap-2 justify-end">
-                          {f.pdfUrl ? (
-                            <button
-                              onClick={() => openFacturaFile({ pdfUrl: f.pdfUrl })}
-                              className="text-[10px] font-bold uppercase tracking-wide text-[#c72a09] hover:underline"
-                            >
-                              PDF
-                            </button>
-                          ) : null}
-                          {f.xmlUrl ? (
-                            <button
-                              onClick={() => openFacturaFile({ xmlUrl: f.xmlUrl })}
-                              className="text-[10px] font-bold uppercase tracking-wide text-neutral-500 hover:underline"
-                            >
-                              XML
-                            </button>
-                          ) : null}
-                          {!f.pdfUrl && !f.xmlUrl && <span className="text-[10px] text-neutral-300">—</span>}
+                        <div className="flex items-center gap-2 justify-end">
+                          <div className="flex gap-2 justify-end">
+                            {f.pdfUrl ? (
+                              <button
+                                onClick={() => openFacturaFile({ pdfUrl: f.pdfUrl })}
+                                className="text-[10px] font-bold uppercase tracking-wide text-[#c72a09] hover:underline"
+                              >
+                                PDF
+                              </button>
+                            ) : null}
+                            {f.xmlUrl ? (
+                              <button
+                                onClick={() => openFacturaFile({ xmlUrl: f.xmlUrl })}
+                                className="text-[10px] font-bold uppercase tracking-wide text-neutral-500 hover:underline"
+                              >
+                                XML
+                              </button>
+                            ) : null}
+                            {!f.pdfUrl && !f.xmlUrl && <span className="text-[10px] text-neutral-300">—</span>}
+                          </div>
+                          {f.tipo === 'egreso' && (
+                            <ActionMenu
+                              items={[
+                                {
+                                  label: f.soloFiscal ? 'Quitar solo fiscal' : 'Marcar solo fiscal',
+                                  onClick: () => toggleSoloFiscal(f.id),
+                                },
+                              ]}
+                            />
+                          )}
                         </div>
                       </td>
                     </tr>
