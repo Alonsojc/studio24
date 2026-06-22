@@ -18,4 +18,3 @@ https://janco.tech/sistemas/bordadoras
 
 Conoce mas de Janco y sus sistemas para operar negocios reales:
 https://janco.tech
-
