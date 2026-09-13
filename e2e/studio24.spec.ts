@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000/';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3107/studio24/';
 
 function appUrl(path = ''): string {
   return new URL(path.replace(/^\//, ''), baseURL.endsWith('/') ? baseURL : `${baseURL}/`).toString();
@@ -8,6 +8,7 @@ function appUrl(path = ''): string {
 
 async function login(page: Page, email?: string, password?: string): Promise<void> {
   test.skip(!email || !password, 'Define credenciales E2E para correr esta prueba.');
+  if (!email || !password) return;
   await page.goto(appUrl());
   await page.getByPlaceholder('Email').fill(email);
   await page.getByPlaceholder('Contraseña').fill(password);

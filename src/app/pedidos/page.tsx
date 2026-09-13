@@ -106,7 +106,7 @@ export default function PedidosPage() {
   const now = new Date();
   const { data: pedidosRaw, reload: reloadPedidos } = useCloudStore(
     getPedidos,
-    () => cloudGetPedidosPage(500),
+    cloudGetPedidosPage,
     'bordados_pedidos',
   );
   const { data: clientes, reload: reloadClientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');

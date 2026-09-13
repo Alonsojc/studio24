@@ -338,7 +338,7 @@ export default function Sidebar() {
           )}
         </div>
         <button
-          onClick={() => signOut()}
+          onClick={() => void signOut().catch((error) => alert(error.message))}
           className="w-8 h-8 rounded-lg bg-white/[0.06] text-neutral-600 hover:text-red-400 flex items-center justify-center transition-colors"
           title="Cerrar sesión"
         >

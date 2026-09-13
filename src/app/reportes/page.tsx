@@ -26,42 +26,27 @@ const Legend = dynamic(() => import('recharts').then((m) => m.Legend), { ssr: fa
 import { Cell } from 'recharts';
 
 const COLORS = ['#c72a09', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#ec4899', '#0891b2', '#65a30d'];
-const APARTADOS_UTILIDAD_KEY = 'bordados_apartados_utilidad';
-
-type ApartadoKind = 'reinversion' | 'donacion';
-type ApartadoStatus = Partial<Record<ApartadoKind, boolean>>;
-type ApartadoStatusMap = Record<string, ApartadoStatus>;
-
-function readApartadoStatus(): ApartadoStatusMap {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(APARTADOS_UTILIDAD_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeApartadoStatus(status: ApartadoStatusMap): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(APARTADOS_UTILIDAD_KEY, JSON.stringify(status));
-}
+import { apartadoStatuses, getFinanceEntries, saveFinanceEntry, type ApartadoKind } from '@/lib/finance-entries';
+import { cloudGetFinanceEntries } from '@/lib/store-cloud';
 
 function StatusButton({
   active,
   disabled,
   onClick,
   children,
+  title,
 }: {
   active?: boolean;
   disabled?: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  title?: string;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-[0.04em] transition-colors ${
         active
           ? 'bg-green-100 text-green-700'
@@ -85,7 +70,15 @@ export default function ReportesPage() {
   const { data: egresos } = useCloudStore(getEgresos, () => cloudGetEgresosByYear(year), 'bordados_egresos', [year]);
   const { data: clientesList } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
   const totalClientes = clientesList.length;
-  const [apartadoStatus, setApartadoStatus] = useState<ApartadoStatusMap>(() => readApartadoStatus());
+  const { data: financeEntries } = useCloudStore(getFinanceEntries, cloudGetFinanceEntries, 'bordados_finance_entries');
+  const apartadoStatus = apartadoStatuses(financeEntries);
+  const apartadoDetail = (period: string, kind: ApartadoKind) => {
+    const entry = financeEntries.find((item) => item.period === period && item.kind === kind && item.separated);
+    if (!entry) return undefined;
+    return entry.separatedAt
+      ? `${formatCurrency(entry.amount)} · ${new Date(entry.separatedAt).toLocaleDateString('es-MX')}`
+      : 'Registro anterior sin importe ni fecha';
+  };
 
   const years = Array.from(
     new Set([
@@ -145,14 +138,8 @@ export default function ReportesPage() {
     mesInicio === 0 && mesFin === 11 ? String(year) : `${monthNames[mesInicio]} - ${monthNames[mesFin]} ${year}`;
 
   const toggleApartado = (key: string, kind: ApartadoKind) => {
-    setApartadoStatus((prev) => {
-      const current = prev[key] || {};
-      const nextForKey = { ...current, [kind]: !current[kind] };
-      const next = { ...prev, [key]: nextForKey };
-      if (!nextForKey.reinversion && !nextForKey.donacion) delete next[key];
-      writeApartadoStatus(next);
-      return next;
-    });
+    const amounts = key === annualStatusKey ? apartadoAnual : monthlyUtilityData.find((item) => item.key === key);
+    if (amounts) saveFinanceEntry(kind, key, amounts[kind], !apartadoStatus[key]?.[kind]);
   };
 
   const categoriaData = Object.entries(
@@ -334,6 +321,7 @@ export default function ReportesPage() {
                       <div className="flex justify-end gap-2">
                         <StatusButton
                           active={status.reinversion}
+                          title={apartadoDetail(m.key, 'reinversion')}
                           disabled={disabled}
                           onClick={() => toggleApartado(m.key, 'reinversion')}
                         >
@@ -341,6 +329,7 @@ export default function ReportesPage() {
                         </StatusButton>
                         <StatusButton
                           active={status.donacion}
+                          title={apartadoDetail(m.key, 'donacion')}
                           disabled={disabled}
                           onClick={() => toggleApartado(m.key, 'donacion')}
                         >
@@ -368,6 +357,7 @@ export default function ReportesPage() {
                   <div className="flex justify-end gap-2">
                     <StatusButton
                       active={apartadoStatus[annualStatusKey]?.reinversion}
+                      title={apartadoDetail(annualStatusKey, 'reinversion')}
                       disabled={apartadoAnual.utilidad <= 0}
                       onClick={() => toggleApartado(annualStatusKey, 'reinversion')}
                     >
@@ -375,6 +365,7 @@ export default function ReportesPage() {
                     </StatusButton>
                     <StatusButton
                       active={apartadoStatus[annualStatusKey]?.donacion}
+                      title={apartadoDetail(annualStatusKey, 'donacion')}
                       disabled={apartadoAnual.utilidad <= 0}
                       onClick={() => toggleApartado(annualStatusKey, 'donacion')}
                     >

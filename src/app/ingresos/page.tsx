@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRole } from '@/components/RoleProvider';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, getClientes } from '@/lib/store';
 import { cloudGetIngresosByYear, cloudGetClientes } from '@/lib/store-cloud';
@@ -46,6 +47,7 @@ function emptyIngreso(): Omit<Ingreso, 'id' | 'createdAt'> {
 }
 
 export default function IngresosPage() {
+  const { role } = useRole();
   const now = new Date();
   const [filterMonth, setFilterMonth] = useState<string>(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
@@ -107,6 +109,7 @@ export default function IngresosPage() {
     reload();
   };
   const handleDelete = (id: string) => {
+    if (role !== 'admin') return;
     const ingreso = ingresos.find((i) => i.id === id);
     if (ingreso?.factura) {
       if (
@@ -398,7 +401,9 @@ export default function IngresosPage() {
                                   },
                                 ]
                               : []),
-                            { label: 'Eliminar', onClick: () => handleDelete(i.id), danger: true },
+                            ...(role === 'admin'
+                              ? [{ label: 'Eliminar', onClick: () => handleDelete(i.id), danger: true }]
+                              : []),
                           ]}
                         />
                       </div>

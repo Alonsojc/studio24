@@ -229,6 +229,7 @@ export interface PlantillaWhatsApp {
 }
 
 export interface ConfigNegocio {
+  serverUpdatedAt?: string;
   nombreNegocio: string;
   titular: string;
   rfc: string;

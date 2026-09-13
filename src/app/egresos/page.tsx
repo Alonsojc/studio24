@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRole } from '@/components/RoleProvider';
 import { v4 as uuid } from 'uuid';
 import { getEgresos, getProveedores, getEgresosRecurrentes } from '@/lib/store';
 import { cloudGetEgresosByYear, cloudGetProveedores, cloudGetEgresosRecurrentes } from '@/lib/store-cloud';
@@ -91,6 +92,7 @@ function emptyRecurrente(): Omit<EgresoRecurrente, 'id' | 'createdAt'> {
 }
 
 export default function EgresosPage() {
+  const { role } = useRole();
   const now = new Date();
   const [filterMonth, setFilterMonth] = useState<string>(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
@@ -167,6 +169,7 @@ export default function EgresosPage() {
     reload();
   };
   const handleDelete = (id: string) => {
+    if (role !== 'admin') return;
     const egreso = egresos.find((e) => e.id === id);
     if (egreso?.factura) {
       if (
@@ -376,7 +379,9 @@ export default function EgresosPage() {
                       <ActionMenu
                         items={[
                           { label: 'Editar', onClick: () => openEditRec(r) },
-                          { label: 'Eliminar', onClick: () => handleDeleteRec(r.id), danger: true },
+                          ...(role === 'admin'
+                            ? [{ label: 'Eliminar', onClick: () => handleDeleteRec(r.id), danger: true }]
+                            : []),
                         ]}
                       />
                     </div>
@@ -626,7 +631,9 @@ export default function EgresosPage() {
                                   },
                                 ]
                               : []),
-                            { label: 'Eliminar', onClick: () => handleDelete(e.id), danger: true },
+                            ...(role === 'admin'
+                              ? [{ label: 'Eliminar', onClick: () => handleDelete(e.id), danger: true }]
+                              : []),
                           ]}
                         />
                       </div>

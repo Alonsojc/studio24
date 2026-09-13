@@ -3,6 +3,25 @@
 import { useState, useEffect, useCallback, useRef, type DependencyList } from 'react';
 import { mergeCloudList, mergeCloudObject, writeLocalJSON } from './sync-queue';
 
+function useLocalChanges<T>(key: string, reader: () => T, setter: (value: T) => void) {
+  const readerRef = useRef(reader);
+  useEffect(() => {
+    readerRef.current = reader;
+  });
+  useEffect(() => {
+    const update = (event: Event) => {
+      const changedKey = event instanceof StorageEvent ? event.key : (event as CustomEvent).detail;
+      if (!changedKey || changedKey === key) setter(readerRef.current());
+    };
+    window.addEventListener('studio24:local-change', update);
+    window.addEventListener('storage', update);
+    return () => {
+      window.removeEventListener('studio24:local-change', update);
+      window.removeEventListener('storage', update);
+    };
+  }, [key, setter]);
+}
+
 function hasLocalSnapshot(localKey: string): boolean {
   return typeof window !== 'undefined' && localStorage.getItem(localKey) !== null;
 }
@@ -24,6 +43,7 @@ export function useCloudStore<T extends { id: string; createdAt?: string; update
   const [data, setData] = useState<T[]>(() => (isClient ? localReader() : []));
   const [loading, setLoading] = useState(() => isClient && !hasLocalSnapshot(localKey));
   const [syncing, setSyncing] = useState(false);
+  useLocalChanges(localKey, localReader, setData);
   const mountedRef = useRef(false);
   const depsKey = deps.map(String).join('|');
 
@@ -87,6 +107,7 @@ export function useCloudStoreOne<T>(
   const [data, setData] = useState<T>(() => localReader());
   const [loading, setLoading] = useState(() => !hasLocalSnapshot(localKey));
   const [syncing, setSyncing] = useState(false);
+  useLocalChanges(localKey, localReader, setData);
   const depsKey = deps.map(String).join('|');
 
   useEffect(() => {

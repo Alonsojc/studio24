@@ -30,6 +30,7 @@ export const KEYS = {
   inventario: 'bordados_inventario',
   disenos: 'bordados_disenos',
   plantillas: 'bordados_plantillas',
+  financeEntries: 'bordados_finance_entries',
 } as const;
 
 export const EXTRA_BACKUP_KEYS = {
@@ -37,6 +38,7 @@ export const EXTRA_BACKUP_KEYS = {
   perdidasFiscales: 'bordados_perdidas_fiscales',
   syncQueue: 'bordados_sync_queue',
   syncPullPausedUntil: 'bordados_sync_pull_paused_until',
+  deletedRecords: 'bordados_deleted_records',
 } as const;
 
 export type StoreKeyName = keyof typeof KEYS;
@@ -45,6 +47,7 @@ export type StoreStorageKey = (typeof KEYS)[StoreKeyName];
 const KEEP_AFTER_CLEAR = new Set(['bordados_seeded']);
 
 export const ACTIVE_USER_KEY = 'bordados_active_user_id';
+export const ACTIVE_TEAM_KEY = 'bordados_active_team_id';
 
 export function hasLocalBusinessData(): boolean {
   if (typeof window === 'undefined') return false;
@@ -61,6 +64,7 @@ export function safeSetItem(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
     mirrorToIDB(key, value);
+    window.dispatchEvent(new CustomEvent('studio24:local-change', { detail: key }));
   } catch (e) {
     if (e instanceof DOMException && e.name === 'QuotaExceededError') {
       throw new Error('Sin espacio en el navegador. Exporta un respaldo desde Ajustes y borra datos antiguos.');
@@ -75,7 +79,9 @@ export function setItems<T>(key: string, items: T[]): void {
 
 function addItem<T extends { id: string }>(key: string, item: T): T {
   const items = getItems<T>(key);
-  items.push(item);
+  const index = items.findIndex((existing) => existing.id === item.id);
+  if (index < 0) items.push(item);
+  else items[index] = item;
   setItems(key, items);
   return item;
 }
@@ -226,10 +232,21 @@ function parseAndValidateBackup(json: string): { data: Record<string, unknown>; 
       throw new Error(`La sección "${key}" debe ser una lista`);
     }
     if (Array.isArray(data[key])) {
+      const ids = new Set<string>();
+      for (const item of data[key]) {
+        if (key === 'recurrentesLog') {
+          if (typeof item !== 'string') throw new Error('Registro recurrente invalido');
+          continue;
+        }
+        if (!item || typeof item !== 'object' || typeof item.id !== 'string' || !item.id || ids.has(item.id)) {
+          throw new Error(`Registros invalidos o IDs duplicados en ${key}`);
+        }
+        ids.add(item.id);
+      }
       sections.push({ key, count: data[key].length });
     }
   }
-  if (data.config !== undefined && (typeof data.config !== 'object' || Array.isArray(data.config))) {
+  if (data.config !== undefined && (!data.config || typeof data.config !== 'object' || Array.isArray(data.config))) {
     throw new Error('La sección "config" debe ser un objeto');
   }
   for (const key of ['apartadosUtilidad', 'perdidasFiscales', 'syncQueue']) {
@@ -264,7 +281,7 @@ export function importAllData(json: string): void {
     if (data[key] !== undefined) safeSetItem(storageKey, JSON.stringify(data[key]));
   });
   Object.entries(EXTRA_BACKUP_KEYS).forEach(([key, storageKey]) => {
-    if (key === 'syncPullPausedUntil') return;
+    if (['syncPullPausedUntil', 'syncQueue', 'deletedRecords'].includes(key)) return;
     if (data[key] !== undefined) safeSetItem(storageKey, JSON.stringify(data[key]));
   });
   if (data.config) saveConfig(data.config as ConfigNegocio);
@@ -281,6 +298,7 @@ export function clearAllData(): void {
 
 export function clearSensitiveLocalData(): void {
   if (typeof window === 'undefined') return;
+  sessionStorage.removeItem('studio24:before-restore');
   const keysToRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);

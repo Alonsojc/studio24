@@ -6,11 +6,9 @@ import type { Ingreso, Egreso } from '@/lib/types';
 function ing(overrides: Partial<Ingreso> & { fecha: string; monto: number }): Ingreso {
   return {
     id: Math.random().toString(),
-    fecha: overrides.fecha,
     clienteId: '',
     descripcion: 'test',
     concepto: 'otro',
-    monto: overrides.monto,
     iva: overrides.iva ?? 0,
     montoTotal: overrides.montoTotal ?? overrides.monto,
     formaPago: 'transferencia',
@@ -25,12 +23,10 @@ function ing(overrides: Partial<Ingreso> & { fecha: string; monto: number }): In
 function eg(overrides: Partial<Egreso> & { fecha: string; monto: number }): Egreso {
   return {
     id: Math.random().toString(),
-    fecha: overrides.fecha,
     descripcion: 'test',
     categoria: 'otro',
     subcategoria: '',
     proveedorId: '',
-    monto: overrides.monto,
     iva: overrides.iva ?? 0,
     montoTotal: overrides.montoTotal ?? overrides.monto,
     formaPago: 'transferencia',

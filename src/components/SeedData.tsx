@@ -6,6 +6,7 @@ import { restoreFromIDB, syncAllToIDB } from '@/lib/db';
 import { getPedidos } from '@/lib/store';
 import { formatDate } from '@/lib/helpers';
 import { autoBackupIfDue } from '@/lib/auto-backup';
+import { useRole } from './RoleProvider';
 
 const NOTIF_KEY = 'bordados_last_notif';
 
@@ -67,8 +68,9 @@ function sendNotification(porVencer: ReturnType<typeof getPedidos>, vencidos: Re
  * - Registra Service Worker para PWA
  */
 export default function SeedData() {
+  const { role, loading } = useRole();
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || loading) return;
 
     // Intentar restaurar datos desde IDB si localStorage está vacío.
     // generarEgresosRecurrentes runs AFTER restore to avoid race-condition duplicates.
@@ -79,11 +81,11 @@ export default function SeedData() {
           return;
         }
         syncAllToIDB();
-        await generarEgresosRecurrentes();
+        if (role === 'admin' || role === 'contador') await generarEgresosRecurrentes();
       })
       .catch(() => {
         // IDB not available (e.g. mobile private mode) — run startup without restore
-        void generarEgresosRecurrentes();
+        if (role === 'admin' || role === 'contador') void generarEgresosRecurrentes();
       });
 
     // Registrar Service Worker sin dejar app shell viejo pegado después de deploys.
@@ -100,8 +102,8 @@ export default function SeedData() {
     checkPedidosNotification();
 
     // Auto-backup semanal a Supabase Storage
-    autoBackupIfDue();
-  }, []);
+    if (role === 'admin') autoBackupIfDue();
+  }, [role, loading]);
 
   return null;
 }

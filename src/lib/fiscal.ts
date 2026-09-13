@@ -373,25 +373,18 @@ export function calcMonthData(
 
 // --- Multi-year loss persistence (LISR Art. 57: up to 10 years) ---
 
-const LOSSES_KEY = 'bordados_perdidas_fiscales';
-
+import { getFinanceEntries, saveFinanceEntry } from './finance-entries';
 export interface PerdidaFiscal {
   year: number;
   monto: number;
 }
-
 export function getPerdidas(): PerdidaFiscal[] {
-  if (typeof window === 'undefined') return [];
-  const raw = localStorage.getItem(LOSSES_KEY);
-  return raw ? JSON.parse(raw) : [];
+  return getFinanceEntries()
+    .filter((item) => item.kind === 'perdida')
+    .map((item) => ({ year: Number(item.period), monto: item.amount }));
 }
-
 export function savePerdida(year: number, monto: number): void {
-  const perdidas = getPerdidas().filter((p) => p.year !== year);
-  if (monto > 0) {
-    perdidas.push({ year, monto });
-  }
-  localStorage.setItem(LOSSES_KEY, JSON.stringify(perdidas));
+  saveFinanceEntry('perdida', String(year), Math.max(0, monto));
 }
 
 /**
