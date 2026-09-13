@@ -1,124 +1,93 @@
 'use client';
 
-import type { ConfigNegocio } from './types';
 import {
   cloudAddRecurrenteLog,
   cloudCreateRecurrenteEgreso,
-  cloudDeleteCliente,
-  cloudDeleteCotizacion,
-  cloudDeleteDiseno,
-  cloudDeleteEgreso,
-  cloudDeleteEgresoRecurrente,
-  cloudDeleteIngreso,
-  cloudDeleteItemInventario,
-  cloudDeletePedido,
-  cloudDeletePlantilla,
-  cloudDeleteProducto,
-  cloudDeleteProveedor,
-  cloudSaveConfig,
-  cloudUpsertCliente,
-  cloudUpsertCotizacion,
-  cloudUpsertDiseno,
-  cloudUpsertEgreso,
-  cloudUpsertEgresoRecurrente,
-  cloudUpsertIngreso,
-  cloudUpsertItemInventario,
-  cloudUpsertPedido,
-  cloudUpsertPlantilla,
-  cloudUpsertProducto,
-  cloudUpsertProveedor,
+  cloudWriteRecord,
+  cloudDeleteRecord,
   type CloudRecurrenteEgresoInput,
 } from './store-cloud';
+import { ACTIVE_USER_KEY, KEYS } from './store';
 import {
+  acknowledgeSync,
   markSyncQueueEntryFailed,
   readSyncQueue,
-  removeSyncQueueEntry,
+  readLocalArray,
+  rememberDeleted,
+  writeLocalJSON,
   type SyncQueueEntry,
-  type SyncTable,
+  type VersionedRecord,
 } from './sync-queue';
 
-type UpsertHandler = (payload: unknown) => Promise<unknown>;
-type DeleteHandler = (id: string) => Promise<unknown>;
+let inFlight: Promise<number> | null = null;
 
-const UPSERT_HANDLERS: Partial<Record<SyncTable, UpsertHandler>> = {
-  clientes: (payload) => cloudUpsertCliente(payload as Parameters<typeof cloudUpsertCliente>[0]),
-  proveedores: (payload) => cloudUpsertProveedor(payload as Parameters<typeof cloudUpsertProveedor>[0]),
-  ingresos: (payload) => cloudUpsertIngreso(payload as Parameters<typeof cloudUpsertIngreso>[0]),
-  egresos: (payload) => cloudUpsertEgreso(payload as Parameters<typeof cloudUpsertEgreso>[0]),
-  pedidos: (payload) => cloudUpsertPedido(payload as Parameters<typeof cloudUpsertPedido>[0]),
-  productos: (payload) => cloudUpsertProducto(payload as Parameters<typeof cloudUpsertProducto>[0]),
-  cotizaciones: (payload) => cloudUpsertCotizacion(payload as Parameters<typeof cloudUpsertCotizacion>[0]),
-  egresos_recurrentes: (payload) =>
-    cloudUpsertEgresoRecurrente(payload as Parameters<typeof cloudUpsertEgresoRecurrente>[0]),
-  inventario: (payload) => cloudUpsertItemInventario(payload as Parameters<typeof cloudUpsertItemInventario>[0]),
-  disenos: (payload) => cloudUpsertDiseno(payload as Parameters<typeof cloudUpsertDiseno>[0]),
-  plantillas: (payload) => cloudUpsertPlantilla(payload as Parameters<typeof cloudUpsertPlantilla>[0]),
-  config: (payload) => cloudSaveConfig(payload as ConfigNegocio),
-};
-
-const DELETE_HANDLERS: Partial<Record<SyncTable, DeleteHandler>> = {
-  clientes: cloudDeleteCliente,
-  proveedores: cloudDeleteProveedor,
-  ingresos: cloudDeleteIngreso,
-  egresos: cloudDeleteEgreso,
-  pedidos: cloudDeletePedido,
-  productos: cloudDeleteProducto,
-  cotizaciones: cloudDeleteCotizacion,
-  egresos_recurrentes: cloudDeleteEgresoRecurrente,
-  inventario: cloudDeleteItemInventario,
-  disenos: cloudDeleteDiseno,
-  plantillas: cloudDeletePlantilla,
-};
-
-let flushInFlight: Promise<number> | null = null;
-
-async function runQueueEntry(entry: SyncQueueEntry): Promise<void> {
+async function send(entry: SyncQueueEntry): Promise<VersionedRecord | undefined> {
+  const owner = localStorage.getItem(ACTIVE_USER_KEY);
   if (entry.action === 'upsert') {
-    const handler = UPSERT_HANDLERS[entry.table];
-    if (!handler || !entry.payload) return;
-    await handler(entry.payload);
-    return;
+    if (!entry.payload) throw new Error('Cambio sin contenido');
+    return cloudWriteRecord(entry.table, entry.payload as VersionedRecord, entry.id);
   }
-
   if (entry.action === 'delete') {
-    const handler = DELETE_HANDLERS[entry.table];
-    if (!handler) return;
-    await handler(entry.recordId);
-    return;
-  }
-
-  if (entry.action === 'recurrente_log') {
+    await cloudDeleteRecord(
+      entry.table,
+      entry.recordId,
+      (entry.payload as VersionedRecord | undefined)?.serverUpdatedAt,
+    );
+    if (owner === localStorage.getItem(ACTIVE_USER_KEY)) rememberDeleted(entry.localKey, [entry.recordId]);
+  } else if (entry.action === 'recurrente_log') {
     await cloudAddRecurrenteLog(entry.recordId);
-    return;
-  }
-
-  if (entry.action === 'recurrente_egreso') {
-    await cloudCreateRecurrenteEgreso(entry.payload as CloudRecurrenteEgresoInput);
+  } else if (entry.action === 'recurrente_egreso') {
+    const result = await cloudCreateRecurrenteEgreso(entry.payload as CloudRecurrenteEgresoInput);
+    if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) return;
+    const items = readLocalArray<VersionedRecord>(KEYS.egresos).filter(
+      (row) => row.id !== entry.recordId && row.id !== result.egreso?.id,
+    );
+    // Reconcile with the canonical expense after retries or another device's insert.
+    if (result.egreso && !readSyncQueue().some((op) => op.recordId === entry.recordId && op.action === 'delete'))
+      items.push(result.egreso);
+    if (result.created && !result.egreso) throw new Error('Falta el egreso confirmado por el servidor');
+    writeLocalJSON(KEYS.egresos, items);
+    return result.egreso;
+  } else {
+    throw new Error('Operacion de sincronizacion desconocida');
   }
 }
 
-async function flushPendingSyncOnce(): Promise<number> {
+async function drain(): Promise<number> {
+  const owner = localStorage.getItem(ACTIVE_USER_KEY);
+  const tried = new Set<string>();
   let synced = 0;
-  const queue = readSyncQueue().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-  for (const entry of queue) {
+  let lastError: unknown;
+  while (owner === localStorage.getItem(ACTIVE_USER_KEY)) {
+    const entry = readSyncQueue().find((op) => !tried.has(op.id));
+    if (!entry) break;
+    tried.add(entry.id);
     try {
-      await runQueueEntry(entry);
-      removeSyncQueueEntry(entry.id);
+      const result = await send(entry);
+      if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) break;
+      acknowledgeSync(entry, result);
       synced++;
     } catch (error) {
+      if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) break;
       markSyncQueueEntryFailed(entry.id, error);
-      throw error;
+      lastError = error;
     }
   }
-
+  if (lastError) throw lastError;
   return synced;
 }
 
 export function flushPendingSync(): Promise<number> {
-  if (flushInFlight) return flushInFlight;
-  flushInFlight = flushPendingSyncOnce().finally(() => {
-    flushInFlight = null;
-  });
-  return flushInFlight;
+  if (inFlight) return inFlight;
+  const run = () => drain();
+  // Only one tab may drain the persistent queue at a time.
+  const promise = Promise.resolve(
+    typeof navigator !== 'undefined' && navigator.locks ? navigator.locks.request('studio24-sync', run) : run(),
+  )
+    .then((value) => value)
+    .finally(() => {
+      inFlight = null;
+    });
+  inFlight = promise;
+  return promise;
 }

@@ -3,13 +3,15 @@
 import { supabase } from './supabase';
 
 let cachedTeamId: string | null = null;
+let cachedUserId: string | null = null;
 
 export async function getMyTeamId(): Promise<string | null> {
-  if (cachedTeamId) return cachedTeamId;
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) return null;
+  if (cachedTeamId && cachedUserId === user.id) return cachedTeamId;
   const { data } = await supabase
     .from('team_members')
     .select('team_id')
@@ -18,11 +20,13 @@ export async function getMyTeamId(): Promise<string | null> {
     .limit(1)
     .maybeSingle();
   cachedTeamId = (data?.team_id as string) || null;
+  cachedUserId = user.id;
   return cachedTeamId;
 }
 
 export function clearTeamIdCache() {
   cachedTeamId = null;
+  cachedUserId = null;
 }
 
 export interface TeamMember {

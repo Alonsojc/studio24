@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getIngresos, getEgresos, getConfig } from '@/lib/store';
 import { cloudGetIngresosByYear, cloudGetEgresosByYear } from '@/lib/store-cloud';
 import { useCloudStore } from '@/lib/useCloudStore';
@@ -10,10 +10,13 @@ import { MESES, calcMonthData, getPerdidaArrastrable, savePerdida, getPerdidas }
 import { getInpc, inpcMap, type InpcEntry } from '@/lib/inpc';
 import { generateFiscalPDF } from '@/lib/fiscal-pdf';
 import Link from 'next/link';
+import { getFinanceEntries } from '@/lib/finance-entries';
+import { cloudGetFinanceEntries } from '@/lib/store-cloud';
 import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
 
 export default function FiscalPage() {
+  useCloudStore(getFinanceEntries, cloudGetFinanceEntries, 'bordados_finance_entries');
   const [year, setYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth());
   const { data: ingresos } = useCloudStore(getIngresos, () => cloudGetIngresosByYear(year), 'bordados_ingresos', [
@@ -21,7 +24,7 @@ export default function FiscalPage() {
   ]);
   const { data: egresos } = useCloudStore(getEgresos, () => cloudGetEgresosByYear(year), 'bordados_egresos', [year]);
   const [inpc, setInpc] = useState<InpcEntry[]>([]);
-  const savedYearsRef = useRef<Set<number>>(new Set());
+  const [lossSaved, setLossSaved] = useState(false);
 
   // Load INPC once so we can show INPC-adjusted saldos in the IVA detail.
   useEffect(() => {
@@ -54,15 +57,6 @@ export default function FiscalPage() {
     year,
     regimenFiscal: config?.regimenFiscal,
   });
-
-  // Auto-save year-end loss when viewing a completed year (side effect only, no state)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (year < new Date().getFullYear() && !savedYearsRef.current.has(year)) {
-      savePerdida(year, perdidaAcum);
-      savedYearsRef.current.add(year);
-    }
-  }, [year, perdidaAcum]);
 
   // Read perdidas fresh (cheap localStorage read)
   const perdidas = getPerdidas();
@@ -612,6 +606,23 @@ export default function FiscalPage() {
       </div>
 
       {/* Year-end loss saved notice */}
+      {year < new Date().getFullYear() && (
+        <button
+          className="text-sm font-semibold text-red-700"
+          onClick={() => {
+            if (
+              confirm(
+                'Guardar esta perdida estimada del ejercicio? Valida los datos con tu contador antes de confirmar.',
+              )
+            ) {
+              savePerdida(year, perdidaAcum);
+              setLossSaved(true);
+            }
+          }}
+        >
+          {lossSaved ? 'Perdida guardada' : 'Guardar perdida del ejercicio'}
+        </button>
+      )}
       {perdidaAcum > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
           <p className="text-xs text-amber-700">

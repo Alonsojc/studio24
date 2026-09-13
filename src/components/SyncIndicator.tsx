@@ -1,13 +1,19 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getSyncState, onSyncChange, retryAllFailed, clearFailures } from '@/lib/sync-status';
+import { getSyncState, onSyncChange, retryAllFailed } from '@/lib/sync-status';
+import SyncConflicts from './SyncConflicts';
 
 export default function SyncIndicator() {
   const [sync, setSync] = useState(getSyncState);
 
   useEffect(() => {
-    return onSyncChange(() => setSync(getSyncState()));
+    const off = onSyncChange(() => setSync(getSyncState()));
+    window.addEventListener('online', retryAllFailed);
+    return () => {
+      off();
+      window.removeEventListener('online', retryAllFailed);
+    };
   }, []);
 
   // Nothing to show when idle
@@ -34,7 +40,7 @@ export default function SyncIndicator() {
         </span>
       </div>
       <p className="text-[10px] text-amber-400/70 mb-2">
-        Los datos están guardados localmente. La nube se actualizará al reconectar.
+        {sync.message || 'Los cambios siguen guardados en este dispositivo. Reintenta al recuperar la conexion.'}
       </p>
       <div className="flex gap-2">
         <button
@@ -43,13 +49,8 @@ export default function SyncIndicator() {
         >
           Reintentar
         </button>
-        <button
-          onClick={clearFailures}
-          className="text-[9px] font-bold text-amber-500/60 uppercase tracking-wide hover:text-amber-400 transition-colors"
-        >
-          Ignorar
-        </button>
       </div>
+      <SyncConflicts />
     </div>
   );
 }

@@ -8,7 +8,7 @@
  * Esto permite migración gradual sin reescribir todas las páginas.
  */
 
-import { cloudCreateRecurrenteEgreso, cloudGetNextFolio, type CloudRecurrenteEgresoInput } from './store-cloud';
+import { cloudGetNextFolio, type CloudRecurrenteEgresoInput } from './store-cloud';
 
 import {
   addCliente as localAddCliente,
@@ -103,199 +103,199 @@ function enqueueDeleteAndFlush(table: SyncTable, id: string): void {
 // Clientes
 export function addCliente(c: Cliente) {
   const next = stamp(c);
-  localAddCliente(next);
   enqueueAndFlush('clientes', next);
+  localAddCliente(next);
   return next;
 }
 export function updateCliente(c: Cliente) {
   const next = stamp(c);
-  localUpdateCliente(next);
   enqueueAndFlush('clientes', next);
+  localUpdateCliente(next);
   return next;
 }
 export function deleteCliente(id: string) {
-  localDeleteCliente(id);
   enqueueDeleteAndFlush('clientes', id);
+  localDeleteCliente(id);
 }
 
 // Proveedores
 export function addProveedor(p: Proveedor) {
   const next = stamp(p);
-  localAddProveedor(next);
   enqueueAndFlush('proveedores', next);
+  localAddProveedor(next);
   return next;
 }
 export function updateProveedor(p: Proveedor) {
   const next = stamp(p);
-  localUpdateProveedor(next);
   enqueueAndFlush('proveedores', next);
+  localUpdateProveedor(next);
   return next;
 }
 export function deleteProveedor(id: string) {
-  localDeleteProveedor(id);
   enqueueDeleteAndFlush('proveedores', id);
+  localDeleteProveedor(id);
 }
 
 // Ingresos
 export function addIngreso(i: Ingreso) {
   const next = stamp(i);
-  localAddIngreso(next);
   enqueueAndFlush('ingresos', next);
+  localAddIngreso(next);
   return next;
 }
 export function updateIngreso(i: Ingreso) {
   const next = stamp(i);
-  localUpdateIngreso(next);
   enqueueAndFlush('ingresos', next);
+  localUpdateIngreso(next);
   return next;
 }
 export function deleteIngreso(id: string) {
-  localDeleteIngreso(id);
   enqueueDeleteAndFlush('ingresos', id);
+  localDeleteIngreso(id);
 }
 
 // Egresos
 export function addEgreso(e: Egreso) {
   const next = stamp(e);
-  localAddEgreso(next);
   enqueueAndFlush('egresos', next);
+  localAddEgreso(next);
   return next;
 }
 export function updateEgreso(e: Egreso) {
   const next = stamp(e);
-  localUpdateEgreso(next);
   enqueueAndFlush('egresos', next);
+  localUpdateEgreso(next);
   return next;
 }
 export function deleteEgreso(id: string) {
-  localDeleteEgreso(id);
   enqueueDeleteAndFlush('egresos', id);
+  localDeleteEgreso(id);
 }
 
 // Pedidos
 export function addPedido(p: Pedido) {
   const next = stamp(p);
-  localAddPedido(next);
   enqueueAndFlush('pedidos', next);
+  localAddPedido(next);
   return next;
 }
 export function updatePedido(p: Pedido) {
   const next = stamp(p);
-  localUpdatePedido(next);
   enqueueAndFlush('pedidos', next);
+  localUpdatePedido(next);
   return next;
 }
 export function deletePedido(id: string) {
-  localDeletePedido(id);
   enqueueDeleteAndFlush('pedidos', id);
+  localDeletePedido(id);
 }
 
 // Productos
 export function addProducto(p: Producto) {
   const next = stamp(p);
-  localAddProducto(next);
   enqueueAndFlush('productos', next);
+  localAddProducto(next);
   return next;
 }
 export function updateProducto(p: Producto) {
   const next = stamp(p);
-  localUpdateProducto(next);
   enqueueAndFlush('productos', next);
+  localUpdateProducto(next);
   return next;
 }
 export function deleteProducto(id: string) {
-  localDeleteProducto(id);
   enqueueDeleteAndFlush('productos', id);
+  localDeleteProducto(id);
 }
 
 // Cotizaciones
 export function addCotizacion(c: Cotizacion) {
   const next = stamp(c);
-  localAddCotizacion(next);
   enqueueAndFlush('cotizaciones', next);
+  localAddCotizacion(next);
   return next;
 }
 export function updateCotizacion(c: Cotizacion) {
   const next = stamp(c);
-  localUpdateCotizacion(next);
   enqueueAndFlush('cotizaciones', next);
+  localUpdateCotizacion(next);
   return next;
 }
 export function deleteCotizacion(id: string) {
-  localDeleteCotizacion(id);
   enqueueDeleteAndFlush('cotizaciones', id);
+  localDeleteCotizacion(id);
 }
 
 // Egresos Recurrentes
 export function addEgresoRecurrente(e: EgresoRecurrente) {
   const next = stamp(e);
-  localAddEgresoRecurrente(next);
   enqueueAndFlush('egresos_recurrentes', next);
+  localAddEgresoRecurrente(next);
   return next;
 }
 export function updateEgresoRecurrente(e: EgresoRecurrente) {
   const next = stamp(e);
-  localUpdateEgresoRecurrente(next);
   enqueueAndFlush('egresos_recurrentes', next);
+  localUpdateEgresoRecurrente(next);
   return next;
 }
 export function deleteEgresoRecurrente(id: string) {
-  localDeleteEgresoRecurrente(id);
   enqueueDeleteAndFlush('egresos_recurrentes', id);
+  localDeleteEgresoRecurrente(id);
 }
 
 // Inventario
 export function addItemInventario(i: ItemInventario) {
   const next = stamp(i);
-  localAddItemInventario(next);
   enqueueAndFlush('inventario', next);
+  localAddItemInventario(next);
   return next;
 }
 export function updateItemInventario(i: ItemInventario) {
   const next = stamp(i);
-  localUpdateItemInventario(next);
   enqueueAndFlush('inventario', next);
+  localUpdateItemInventario(next);
   return next;
 }
 export function deleteItemInventario(id: string) {
-  localDeleteItemInventario(id);
   enqueueDeleteAndFlush('inventario', id);
+  localDeleteItemInventario(id);
 }
 
 // Diseños
 export function addDiseno(d: Diseno) {
   const next = stamp(d);
-  localAddDiseno(next);
   enqueueAndFlush('disenos', next);
+  localAddDiseno(next);
   return next;
 }
 export function updateDiseno(d: Diseno) {
   const next = stamp(d);
-  localUpdateDiseno(next);
   enqueueAndFlush('disenos', next);
+  localUpdateDiseno(next);
   return next;
 }
 export function deleteDiseno(id: string) {
-  localDeleteDiseno(id);
   enqueueDeleteAndFlush('disenos', id);
+  localDeleteDiseno(id);
 }
 
 // Plantillas
 export function addPlantilla(p: PlantillaWhatsApp) {
   const next = stamp(p);
-  localAddPlantilla(next);
   enqueueAndFlush('plantillas', next);
+  localAddPlantilla(next);
   return next;
 }
 export function updatePlantilla(p: PlantillaWhatsApp) {
   const next = stamp(p);
-  localUpdatePlantilla(next);
   enqueueAndFlush('plantillas', next);
+  localUpdatePlantilla(next);
   return next;
 }
 export function deletePlantilla(id: string) {
-  localDeletePlantilla(id);
   enqueueDeleteAndFlush('plantillas', id);
+  localDeletePlantilla(id);
 }
 
 // Config
@@ -316,23 +316,11 @@ export async function createRecurrenteEgreso(input: CloudRecurrenteEgresoInput):
   const next = stamp(input.egreso);
   const payload: CloudRecurrenteEgresoInput = { ...input, egreso: next };
 
-  try {
-    const result = await cloudCreateRecurrenteEgreso(payload);
-    if (!result.created) {
-      localAddRecurrenteLog(input.logKey);
-      return null;
-    }
-    const synced = result.egreso || next;
-    localAddEgreso(synced);
-    localAddRecurrenteLog(input.logKey);
-    return synced;
-  } catch {
-    localAddEgreso(next);
-    localAddRecurrenteLog(input.logKey);
-    enqueueRecurrenteEgreso(payload, next.id);
-    kickFlush();
-    return next;
-  }
+  enqueueRecurrenteEgreso(payload, next.id);
+  localAddEgreso(next);
+  localAddRecurrenteLog(input.logKey);
+  kickFlush();
+  return next;
 }
 
 // Folio — uses cloud if available, falls back to local

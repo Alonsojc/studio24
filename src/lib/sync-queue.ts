@@ -15,6 +15,7 @@ export type SyncTable =
   | 'disenos'
   | 'plantillas'
   | 'config'
+  | 'finance_entries'
   | 'recurrentes_log';
 
 export type SyncAction = 'upsert' | 'delete' | 'recurrente_log' | 'recurrente_egreso';
@@ -36,6 +37,7 @@ export interface VersionedRecord {
   id: string;
   createdAt?: string;
   updatedAt?: string;
+  serverUpdatedAt?: string;
 }
 
 export const SYNC_QUEUE_KEY = EXTRA_BACKUP_KEYS.syncQueue;
@@ -54,6 +56,7 @@ const TABLE_TO_LOCAL_KEY: Record<SyncTable, string> = {
   disenos: KEYS.disenos,
   plantillas: KEYS.plantillas,
   config: KEYS.config,
+  finance_entries: KEYS.financeEntries,
   recurrentes_log: KEYS.recurrentesLog,
 };
 
@@ -66,7 +69,7 @@ function nowIso(): string {
 }
 
 function operationId(table: SyncTable, recordId: string, action: SyncAction): string {
-  return `${table}:${recordId}:${action}`;
+  return `${table}:${recordId}:${action}:${crypto.randomUUID()}`;
 }
 
 function parseQueue(raw: string | null): SyncQueueEntry[] {
@@ -113,13 +116,20 @@ export function getPendingRecordIds(localKey: string): { upserts: Set<string>; d
 export function enqueueUpsert<T extends VersionedRecord>(table: SyncTable, item: T): void {
   const localKey = localKeyForTable(table);
   const timestamp = nowIso();
+  const previous = readSyncQueue().find((op) => op.table === table && op.recordId === item.id);
+  if (previous?.action === 'recurrente_egreso') {
+    throw new Error('Espera a que el gasto recurrente termine de sincronizar antes de editarlo');
+  }
   const entry: SyncQueueEntry = {
     id: operationId(table, item.id, 'upsert'),
     table,
     localKey,
     action: 'upsert',
     recordId: item.id,
-    payload: item,
+    payload:
+      previous?.action === 'upsert'
+        ? { ...item, serverUpdatedAt: (previous.payload as VersionedRecord).serverUpdatedAt }
+        : item,
     createdAt: timestamp,
     updatedAt: timestamp,
     attempts: 0,
@@ -138,6 +148,7 @@ export function enqueueDelete(table: SyncTable, recordId: string): void {
     localKey,
     action: 'delete',
     recordId,
+    payload: readLocalArray<VersionedRecord>(localKey).find((item) => item.id === recordId),
     createdAt: timestamp,
     updatedAt: timestamp,
     attempts: 0,
@@ -187,8 +198,48 @@ export function removeSyncQueueEntry(id: string): void {
   writeSyncQueue(readSyncQueue().filter((op) => op.id !== id));
 }
 
+export function acknowledgeSync(entry: SyncQueueEntry, result?: VersionedRecord): void {
+  const queue = readSyncQueue().filter((op) => op.id !== entry.id);
+  if (result) {
+    for (const op of queue) {
+      if (op.table === entry.table && op.recordId === entry.recordId && op.payload) {
+        op.payload = {
+          ...(op.payload as Record<string, unknown>),
+          serverUpdatedAt: result.serverUpdatedAt || result.updatedAt,
+        };
+      }
+    }
+    const items = readLocalArray<VersionedRecord>(entry.localKey);
+    const pending = queue.some((op) => op.table === entry.table && op.recordId === entry.recordId);
+    if (entry.table === 'config' && !pending) {
+      writeLocalJSON(entry.localKey, result);
+    } else if (entry.table !== 'config') {
+      writeLocalJSON(
+        entry.localKey,
+        items.map((item) =>
+          item.id !== entry.recordId
+            ? item
+            : pending
+              ? { ...item, serverUpdatedAt: result.serverUpdatedAt || result.updatedAt }
+              : result,
+        ),
+      );
+    }
+  }
+  writeSyncQueue(queue);
+}
+
+export const TOMBSTONES_KEY = 'bordados_deleted_records';
+
+export function rememberDeleted(localKey: string, ids: string[]): void {
+  const tombstones = JSON.parse(localStorage.getItem(TOMBSTONES_KEY) || '{}') as Record<string, string[]>;
+  tombstones[localKey] = [...new Set([...(tombstones[localKey] || []), ...ids])];
+  writeLocalJSON(TOMBSTONES_KEY, tombstones);
+}
+
 export function markSyncQueueEntryFailed(id: string, error: unknown): void {
-  const message = error instanceof Error ? error.message : 'Error de sincronización';
+  const message =
+    error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Error de sincronización';
   writeSyncQueue(
     readSyncQueue().map((op) =>
       op.id === id ? { ...op, attempts: op.attempts + 1, lastError: message, updatedAt: nowIso() } : op,
@@ -203,7 +254,9 @@ function versionOf(record: VersionedRecord): number {
 }
 
 export function mergeCloudList<T extends VersionedRecord>(localKey: string, localData: T[], cloudData: T[]): T[] {
-  const { deletes } = getPendingRecordIds(localKey);
+  const { deletes, upserts } = getPendingRecordIds(localKey);
+  const tombstones = JSON.parse(localStorage.getItem(TOMBSTONES_KEY) || '{}') as Record<string, string[]>;
+  for (const id of tombstones[localKey] || []) deletes.add(id);
   const merged = new Map<string, T>();
 
   cloudData.forEach((item) => {
@@ -213,16 +266,12 @@ export function mergeCloudList<T extends VersionedRecord>(localKey: string, loca
   localData.forEach((item) => {
     if (deletes.has(item.id)) return;
     const existing = merged.get(item.id);
-    if (!existing || versionOf(item) >= versionOf(existing) || hasPendingRecord(localKey, item.id)) {
+    if (!existing || versionOf(item) > versionOf(existing) || upserts.has(item.id)) {
       merged.set(item.id, item);
     }
   });
 
   return Array.from(merged.values());
-}
-
-function hasPendingRecord(localKey: string, recordId: string): boolean {
-  return readSyncQueue().some((op) => op.localKey === localKey && op.recordId === recordId);
 }
 
 export function mergeCloudObject<T extends Record<string, unknown>>(localKey: string, localData: T, cloudData: T): T {

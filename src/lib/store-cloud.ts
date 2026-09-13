@@ -2,7 +2,19 @@
 
 import { supabase } from './supabase';
 import { getMyTeamId } from './teams';
-import { mergeCloudList, mergeCloudObject, readLocalArray, shouldSkipCloudPull, writeLocalJSON } from './sync-queue';
+import {
+  mergeCloudList,
+  mergeCloudObject,
+  readLocalArray,
+  shouldSkipCloudPull,
+  writeLocalJSON,
+  localKeyForTable,
+  rememberDeleted,
+  type SyncTable,
+  type VersionedRecord,
+} from './sync-queue';
+import { cachedCloudRequest, invalidateCloudCache } from './cloud-cache';
+import { ACTIVE_USER_KEY, ACTIVE_TEAM_KEY } from './store';
 import type {
   Cliente,
   Proveedor,
@@ -66,6 +78,7 @@ const CAMEL_OVERRIDES: Record<string, string> = {
 function toSnake(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
+    if (key === 'serverUpdatedAt' || key === 'syncOperation') continue;
     const snakeKey = SNAKE_OVERRIDES[key] || key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
     result[snakeKey] = value;
   }
@@ -79,6 +92,7 @@ function toCamel<T>(obj: Record<string, unknown>): T {
     const camelKey = CAMEL_OVERRIDES[key] || key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
     result[camelKey] = value;
   }
+  result.serverUpdatedAt = obj.updated_at;
   return result as T;
 }
 
@@ -87,44 +101,98 @@ function toCamel<T>(obj: Record<string, unknown>): T {
 type DateFilter = { dateColumn: string; year?: number; month?: string; limit?: number };
 
 async function getAll<T>(table: string, filter?: DateFilter): Promise<T[]> {
-  let query = supabase.from(table).select('*');
-  if (filter?.year) {
-    const start = filter.month || `${filter.year}-01`;
-    const end = filter.month && /^\d{4}-\d{2}$/.test(filter.month) ? `${filter.month}-32` : `${filter.year + 1}-01`;
-    query = query.gte(filter.dateColumn, start).lt(filter.dateColumn, end);
-  }
-  query = query.order('created_at', { ascending: false });
-  if (filter?.limit) query = query.limit(filter.limit);
-  const { data, error } = await query;
-  if (error) throw error;
-  return (data || []).map((row) => toCamel<T>(row as Record<string, unknown>));
+  return cachedCloudRequest(`${table}:${JSON.stringify(filter || {})}`, async () => {
+    const owner = localStorage.getItem(ACTIVE_USER_KEY);
+    const result: T[] = [];
+    let after = '';
+    // Cursor pagination also works when the API's maximum row count is reduced.
+    while (true) {
+      let query = supabase.from(table).select('*').order('id').limit(500);
+      if (after) query = query.gt('id', after);
+      if (filter?.year) {
+        const month = filter.month ? Number(filter.month.slice(5, 7)) : 1;
+        const start = `${filter.year}-${String(month).padStart(2, '0')}-01`;
+        const end =
+          filter.month && month < 12
+            ? `${filter.year}-${String(month + 1).padStart(2, '0')}-01`
+            : `${filter.year + 1}-01-01`;
+        query = query.gte(filter.dateColumn, start).lt(filter.dateColumn, end);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      if (!data?.length) break;
+      result.push(...data.map((row) => toCamel<T>(row)));
+      after = String(data[data.length - 1].id);
+    }
+    const deleted = await getDeletedRecords();
+    if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio durante la descarga');
+    const localKey = localKeyForTable(table as SyncTable);
+    const ids = deleted.filter((row) => row.table_name === table).map((row) => row.record_id);
+    if (localKey && ids.length) rememberDeleted(localKey, ids);
+    return result;
+  });
 }
 
-async function upsertOne<T extends { id: string }>(table: string, item: T): Promise<T> {
+function getDeletedRecords(): Promise<{ table_name: string; record_id: string }[]> {
+  return cachedCloudRequest('deleted-records', async () => {
+    const rows: { table_name: string; record_id: string }[] = [];
+    let after = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from('deleted_records')
+        .select('id,table_name,record_id')
+        .gt('id', after)
+        .order('id')
+        .limit(500);
+      if (error) throw error;
+      if (!data?.length) return rows;
+      rows.push(...data);
+      after = data[data.length - 1].id;
+    }
+  });
+}
+
+export async function cloudWriteRecord<T extends VersionedRecord>(
+  table: string,
+  item: T,
+  operationId: string,
+): Promise<T> {
   const row = toSnake(item as unknown as Record<string, unknown>);
   delete row.user_id;
-  delete row.team_id; // Let DB default (current_user_team_id()) handle it
-  let { error } = await supabase.from(table).upsert(row, { onConflict: 'id' });
-  if (error && (error.message.includes('updated_at') || error.message.includes('tracking_token'))) {
-    delete row.updated_at;
-    if (table === 'pedidos' && error.message.includes('tracking_token')) delete row.tracking_token;
-    ({ error } = await supabase.from(table).upsert(row, { onConflict: 'id' }));
-  }
-  if (error && table === 'pedidos' && (error.message.includes('pagos') || error.message.includes('inventario_usado'))) {
-    delete row.pagos;
-    delete row.inventario_usado;
-    ({ error } = await supabase.from(table).upsert(row, { onConflict: 'id' }));
-  }
+  delete row.team_id;
+  const { data, error } = await supabase.rpc('sync_write_record', {
+    p_table: table,
+    p_record: row,
+    p_expected: item.serverUpdatedAt || null,
+    p_operation: operationId,
+  });
   if (error) throw error;
-  return item;
+  invalidateCloudCache();
+  return toCamel<T>(data as Record<string, unknown>);
+}
+
+async function upsertOne<T extends VersionedRecord>(table: string, item: T): Promise<T> {
+  return cloudWriteRecord(table, item, crypto.randomUUID());
 }
 
 async function deleteOne(table: string, id: string): Promise<void> {
-  const { error } = await supabase.from(table).delete().eq('id', id);
+  const { error } = await supabase.from(table).delete().eq('id', id).select('id').single();
   if (error) throw error;
+  invalidateCloudCache();
+}
+
+export async function cloudDeleteRecord(table: string, id: string, expected: string | undefined): Promise<void> {
+  const { error } = await supabase.rpc('sync_delete_record', {
+    p_table: table,
+    p_id: id,
+    p_expected: expected || null,
+  });
+  if (error) throw error;
+  invalidateCloudCache();
 }
 
 // --- Typed exports ---
+export const cloudGetFinanceEntries = () => getAll<import('./finance-entries').FinanceEntry>('finance_entries');
 
 // Clientes
 export const cloudGetClientes = () => getAll<Cliente>('clientes');
@@ -155,7 +223,7 @@ export const cloudDeleteEgreso = (id: string) => deleteOne('egresos', id);
 // Pedidos
 export const cloudGetPedidos = () => getAll<Pedido>('pedidos');
 export const cloudGetPedidosByYear = (year: number) => getAll<Pedido>('pedidos', { dateColumn: 'fecha_pedido', year });
-export const cloudGetPedidosPage = (limit = 500) => getAll<Pedido>('pedidos', { dateColumn: 'fecha_pedido', limit });
+export const cloudGetPedidosPage = () => getAll<Pedido>('pedidos');
 export const cloudUpsertPedido = (p: Pedido) => upsertOne('pedidos', p);
 export const cloudDeletePedido = (id: string) => deleteOne('pedidos', id);
 
@@ -207,7 +275,8 @@ export async function cloudGetConfig(): Promise<ConfigNegocio> {
     updatedAt: '',
   };
   const { data, error } = await supabase.from('config').select('*').maybeSingle();
-  if (error || !data) return defaultConfig;
+  if (error) throw error;
+  if (!data) return defaultConfig;
   const row = data as Record<string, unknown>;
   return {
     nombreNegocio: (row.nombre_negocio as string) || '',
@@ -223,6 +292,7 @@ export async function cloudGetConfig(): Promise<ConfigNegocio> {
     direccion: (row.direccion as string) || '',
     logoUrl: (row.logo_url as string) || '',
     updatedAt: (row.updated_at as string) || '',
+    serverUpdatedAt: (row.updated_at as string) || undefined,
   };
 }
 
@@ -276,12 +346,14 @@ export async function cloudGetNextFolio(prefix: string): Promise<string> {
 
 // Recurrentes log
 export async function cloudGetRecurrentesLog(): Promise<string[]> {
-  const { data } = await supabase.from('recurrentes_log').select('log_key');
-  return (data || []).map((r) => (r as { log_key: string }).log_key);
+  const rows = await getAll<{ logKey: string }>('recurrentes_log');
+  return rows.map((r) => r.logKey);
 }
 
 export async function cloudAddRecurrenteLog(key: string): Promise<void> {
-  const { error } = await supabase.from('recurrentes_log').upsert({ log_key: key });
+  const { error } = await supabase
+    .from('recurrentes_log')
+    .upsert({ log_key: key }, { onConflict: 'team_id,log_key', ignoreDuplicates: true });
   if (error) throw error;
 }
 
@@ -301,14 +373,8 @@ export async function cloudCreateRecurrenteEgreso(
     p_yyyy_mm: input.yyyyMm,
     p_egreso: toSnake(input.egreso as unknown as Record<string, unknown>),
   });
-  if (error) {
-    if (error.message.includes('function') || error.message.includes('does not exist')) {
-      await cloudUpsertEgreso(input.egreso);
-      await cloudAddRecurrenteLog(input.logKey);
-      return { created: true, egreso: input.egreso };
-    }
-    throw error;
-  }
+  if (error) throw error;
+  invalidateCloudCache();
   const result = data as { created?: boolean; egreso?: Record<string, unknown> } | null;
   return {
     created: Boolean(result?.created),
@@ -318,65 +384,36 @@ export async function cloudCreateRecurrenteEgreso(
 
 // Migration: push all localStorage data to Supabase
 export async function migrateLocalToCloud(): Promise<number> {
-  let count = 0;
-
-  const migrate = async <T extends { id: string }>(localKey: string, cloudUpsert: (item: T) => Promise<T>) => {
-    const raw = localStorage.getItem(localKey);
-    if (!raw) return;
-    const items: T[] = JSON.parse(raw);
-    for (const item of items) {
-      try {
-        await cloudUpsert(item);
-        count++;
-      } catch {
-        // Skip duplicates
-      }
-    }
-  };
-
-  await migrate<Cliente>('bordados_clientes', cloudUpsertCliente);
-  await migrate<Proveedor>('bordados_proveedores', cloudUpsertProveedor);
-  await migrate<Ingreso>('bordados_ingresos', cloudUpsertIngreso);
-  await migrate<Egreso>('bordados_egresos', cloudUpsertEgreso);
-  await migrate<Pedido>('bordados_pedidos', cloudUpsertPedido);
-  await migrate<Producto>('bordados_productos', cloudUpsertProducto);
-  await migrate<Cotizacion>('bordados_cotizaciones', cloudUpsertCotizacion);
-  await migrate<EgresoRecurrente>('bordados_egresos_recurrentes', cloudUpsertEgresoRecurrente);
-  await migrate<ItemInventario>('bordados_inventario', cloudUpsertItemInventario);
-  await migrate<Diseno>('bordados_disenos', cloudUpsertDiseno);
-  await migrate<PlantillaWhatsApp>('bordados_plantillas', cloudUpsertPlantilla);
-
-  const recurrentesLogRaw = localStorage.getItem('bordados_recurrentes_log');
-  if (recurrentesLogRaw) {
-    try {
-      const logKeys: string[] = JSON.parse(recurrentesLogRaw);
-      for (const key of logKeys) {
-        try {
-          await cloudAddRecurrenteLog(key);
-          count++;
-        } catch {
-          /* skip */
-        }
-      }
-    } catch {
-      /* skip invalid local log */
-    }
+  const { enqueueUpsert, enqueueRecurrenteLog, hasPendingSync } = await import('./sync-queue');
+  const { flushPendingSync } = await import('./sync-flush');
+  const { migrateLegacyFinance } = await import('./finance-entries');
+  const profile = await (await import('./roles')).getMyProfile();
+  if (profile?.role !== 'admin') throw new Error('Solo administradores pueden restaurar respaldos');
+  migrateLegacyFinance();
+  const tables: SyncTable[] = [
+    'clientes',
+    'proveedores',
+    'ingresos',
+    'egresos',
+    'pedidos',
+    'productos',
+    'cotizaciones',
+    'egresos_recurrentes',
+    'inventario',
+    'disenos',
+    'plantillas',
+    'finance_entries',
+  ];
+  for (const table of tables) {
+    for (const item of readLocalArray<VersionedRecord>(localKeyForTable(table))) enqueueUpsert(table, item);
   }
-
-  // Config
-  const configRaw = localStorage.getItem('bordados_config');
-  if (configRaw) {
-    try {
-      await cloudSaveConfig(JSON.parse(configRaw));
-      count++;
-    } catch {
-      /* skip */
-    }
-  }
-
-  // Mark as migrated
+  for (const key of readLocalArray<string>(localKeyForTable('recurrentes_log'))) enqueueRecurrenteLog(key);
+  const config = localStorage.getItem('bordados_config');
+  if (config) enqueueUpsert('config', { ...JSON.parse(config), id: 'config' });
+  const count = await flushPendingSync();
+  if (hasPendingSync())
+    throw new Error('El respaldo esta guardado localmente, pero quedan cambios pendientes en la nube');
   localStorage.setItem('bordados_cloud_migrated', '1');
-
   return count;
 }
 
@@ -384,6 +421,13 @@ export async function migrateLocalToCloud(): Promise<number> {
 // Used when logging in on a new device
 export async function pullFromCloud(opts: { replaceEmpty?: boolean } = {}): Promise<number> {
   if (shouldSkipCloudPull()) return 0;
+  const owner = localStorage.getItem(ACTIVE_USER_KEY);
+  const profile = await (await import('./roles')).getMyProfile();
+  const teamId = await getMyTeamId();
+  if (owner !== localStorage.getItem(ACTIVE_USER_KEY) || !teamId) throw new Error('Equipo no disponible');
+  localStorage.setItem(ACTIVE_TEAM_KEY, teamId);
+  if (!profile) throw new Error('No se pudo verificar el equipo');
+  const finance = profile.role === 'admin' || profile.role === 'contador';
   let count = 0;
 
   const pull = async <T extends { id: string; createdAt?: string; updatedAt?: string }>(
@@ -391,6 +435,7 @@ export async function pullFromCloud(opts: { replaceEmpty?: boolean } = {}): Prom
     localKey: string,
   ) => {
     const items = await getAll<T>(table);
+    if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
     const localItems = readLocalArray<T>(localKey);
     const merged = mergeCloudList(localKey, localItems, items);
     if (merged.length > 0 || opts.replaceEmpty) {
@@ -399,21 +444,31 @@ export async function pullFromCloud(opts: { replaceEmpty?: boolean } = {}): Prom
     count += items.length;
   };
 
-  await pull<Cliente>('clientes', 'bordados_clientes');
-  await pull<Proveedor>('proveedores', 'bordados_proveedores');
-  await pull<Ingreso>('ingresos', 'bordados_ingresos');
-  await pull<Egreso>('egresos', 'bordados_egresos');
-  await pull<Pedido>('pedidos', 'bordados_pedidos');
-  await pull<Producto>('productos', 'bordados_productos');
-  await pull<Cotizacion>('cotizaciones', 'bordados_cotizaciones');
-  await pull<EgresoRecurrente>('egresos_recurrentes', 'bordados_egresos_recurrentes');
-  await pull<ItemInventario>('inventario', 'bordados_inventario');
-  await pull<Diseno>('disenos', 'bordados_disenos');
-  await pull<PlantillaWhatsApp>('plantillas', 'bordados_plantillas');
+  const tables = [
+    'clientes',
+    'proveedores',
+    'pedidos',
+    'productos',
+    'cotizaciones',
+    'inventario',
+    'disenos',
+    'plantillas',
+  ];
+  if (finance) tables.push('ingresos', 'egresos', 'egresos_recurrentes', 'finance_entries');
+  else
+    for (const table of ['ingresos', 'egresos', 'egresos_recurrentes', 'finance_entries', 'recurrentes_log']) {
+      writeLocalJSON(localKeyForTable(table as SyncTable), []);
+    }
+  const results = await Promise.allSettled(tables.map((table) => pull(table, localKeyForTable(table as SyncTable))));
+  const failure = results.find((result) => result.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
+  if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
+  if (finance) (await import('./finance-entries')).migrateLegacyFinance();
 
   // Config — merge cloud into local so we don't overwrite fields
   // that may not exist in Supabase yet (e.g. rfc, regimenFiscal)
   const cloudConfig = await cloudGetConfig();
+  if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
   if (cloudConfig.nombreNegocio || cloudConfig.titular) {
     const localRaw = localStorage.getItem('bordados_config');
     const localConfig = localRaw ? JSON.parse(localRaw) : {};
@@ -429,7 +484,8 @@ export async function pullFromCloud(opts: { replaceEmpty?: boolean } = {}): Prom
   }
 
   // Recurrentes log
-  const log = await cloudGetRecurrentesLog();
+  const log = finance ? await cloudGetRecurrentesLog() : [];
+  if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
   if (log.length > 0 || opts.replaceEmpty) {
     writeLocalJSON('bordados_recurrentes_log', log);
   }

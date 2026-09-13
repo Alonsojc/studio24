@@ -131,33 +131,43 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const nextUser = session?.user ?? null;
-      setSessionError('');
-      if (_event === 'INITIAL_SESSION' && !bootDone) return;
-      if (!nextUser) {
-        clearSensitiveLocalData();
-        clearBootSync();
-        setCurrentUser(null);
-        setLoading(false);
-        return;
-      }
-      if (cancelled) return;
-      const sameUser = userRef.current?.id === nextUser.id;
-      if (sameUser) {
-        setCurrentUser(nextUser);
-        if (_event === 'SIGNED_IN') {
-          void syncUserSession(nextUser, 'authStateBackgroundPullFromCloud');
-        }
-        return;
-      }
-      setLoading(true);
-      if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION' || _event === 'USER_UPDATED') {
-        await syncUserSession(nextUser, 'authStatePullFromCloud');
-      }
-      if (cancelled) return;
-      setCurrentUser(nextUser);
-      setLoading(false);
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Leave the auth lock before calling Supabase APIs.
+      setTimeout(() => {
+        void (async () => {
+          if (cancelled) return;
+          const nextUser = session?.user ?? null;
+          setSessionError('');
+          if (_event === 'INITIAL_SESSION' && !bootDone) return;
+          if (!nextUser) {
+            clearSensitiveLocalData();
+            clearBootSync();
+            setCurrentUser(null);
+            setLoading(false);
+            return;
+          }
+          if (cancelled) return;
+          const sameUser = userRef.current?.id === nextUser.id;
+          if (sameUser) {
+            setCurrentUser(nextUser);
+            if (_event === 'SIGNED_IN') {
+              void syncUserSession(nextUser, 'authStateBackgroundPullFromCloud');
+            }
+            return;
+          }
+          setLoading(true);
+          if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION' || _event === 'USER_UPDATED') {
+            await syncUserSession(nextUser, 'authStatePullFromCloud');
+          }
+          if (cancelled) return;
+          setCurrentUser(nextUser);
+          setLoading(false);
+        })().catch((e) => {
+          reportError(e);
+          setSessionError(BOOT_ERROR_MESSAGE);
+          setLoading(false);
+        });
+      }, 0);
     });
 
     return () => {
@@ -177,7 +187,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (user) return <>{children}</>;
+  if (user && !sessionError) return <>{children}</>;
 
   const handleLogin = async () => {
     setError('');

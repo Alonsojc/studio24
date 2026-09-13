@@ -11,11 +11,9 @@ import {
   type TeamMember,
   type PendingInvitation,
 } from '@/lib/teams';
-import { getConfig, exportAllData, importAllData } from '@/lib/store';
-import { migrateLocalToCloud } from '@/lib/store-cloud';
+import { getConfig, exportAllData } from '@/lib/store';
+import { restoreBackup } from '@/lib/backup-restore';
 import { saveConfig } from '@/lib/store-sync';
-import { flushPendingSync } from '@/lib/sync-flush';
-import { pauseCloudPulls } from '@/lib/sync-queue';
 import { ConfigNegocio } from '@/lib/types';
 import {
   getNotifPrefs,
@@ -92,21 +90,14 @@ export default function AjustesPage() {
     const reader = new FileReader();
     reader.onload = async (ev) => {
       try {
-        pauseCloudPulls();
-        importAllData(ev.target?.result as string);
-        try {
-          await migrateLocalToCloud();
-          await flushPendingSync();
-        } catch {
-          pauseCloudPulls(5 * 60 * 1000);
-        }
+        await restoreBackup(ev.target?.result as string);
         setImported(true);
         setTimeout(() => {
           setImported(false);
           window.location.reload();
         }, 1500);
-      } catch {
-        alert('Error: El archivo no es un respaldo válido.');
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Error al restaurar el respaldo');
       }
     };
     reader.readAsText(file);
@@ -403,6 +394,7 @@ export default function AjustesPage() {
               {exported ? '¡Descargado!' : 'Descargar Respaldo'}
             </button>
             <button
+              disabled={!canEditConfig}
               onClick={() => fileRef.current?.click()}
               className={`py-3 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors border ${imported ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white text-[#0a0a0a] border-neutral-200 hover:border-[#c72a09]'}`}
             >
@@ -413,7 +405,7 @@ export default function AjustesPage() {
         </div>
 
         {/* Cloud Backups */}
-        <CloudBackups />
+        {canEditConfig && <CloudBackups />}
 
         {/* Team Management (admin only) */}
         {role === 'admin' && (
@@ -622,19 +614,11 @@ function CloudBackups() {
       return;
     }
     try {
-      const { importAllData } = await import('@/lib/store');
-      pauseCloudPulls();
-      importAllData(json);
-      try {
-        await migrateLocalToCloud();
-        await flushPendingSync();
-      } catch {
-        pauseCloudPulls(5 * 60 * 1000);
-      }
+      await restoreBackup(json);
       alert('Respaldo restaurado. La página se recargará.');
       window.location.reload();
-    } catch {
-      alert('Error: el respaldo no es válido.');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Error al restaurar el respaldo');
     }
   };
 

@@ -20,6 +20,20 @@ const FALLBACK_DSN = '';
 
 let initialized = false;
 
+export function isValidSentryDsn(dsn: string): boolean {
+  try {
+    const url = new URL(dsn);
+    return (
+      url.protocol === 'https:' &&
+      /^[a-f0-9]{32}$/i.test(url.username) &&
+      /^\/[0-9]+$/.test(url.pathname) &&
+      url.hostname.endsWith('.sentry.io')
+    );
+  } catch {
+    return false;
+  }
+}
+
 const SENSITIVE_KEY_PATTERN = /(password|secret|token|key|authorization|cookie|clabe|cuenta|rfc|email|telefono|phone)/i;
 
 export function sanitizeForTelemetry(value: unknown, depth = 0): unknown {
@@ -39,7 +53,7 @@ export function sanitizeForTelemetry(value: unknown, depth = 0): unknown {
 export function initSentry(): void {
   if (initialized || typeof window === 'undefined') return;
   const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN || FALLBACK_DSN;
-  if (!dsn) return;
+  if (!dsn || !isValidSentryDsn(dsn)) return;
 
   Sentry.init({
     dsn,

@@ -63,8 +63,6 @@ export function limpiarEgresosAutomaticosDuplicados(now = new Date()): number {
 export async function generarEgresosRecurrentes(): Promise<number> {
   if (typeof window === 'undefined') return 0;
 
-  limpiarEgresosAutomaticosDuplicados();
-
   const recurrentes = getEgresosRecurrentes().filter((r) => r.activo);
   if (recurrentes.length === 0) return 0;
 

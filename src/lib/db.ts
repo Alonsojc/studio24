@@ -31,6 +31,8 @@ function idbGet<T>(store: string, key: string): Promise<T | undefined> {
       new Promise((resolve, reject) => {
         const tx = db.transaction(store, 'readonly');
         const req = tx.objectStore(store).get(key);
+        tx.oncomplete = () => db.close();
+        tx.onabort = () => db.close();
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
       }),
@@ -43,8 +45,18 @@ function idbPut(store: string, key: string, value: unknown): Promise<void> {
       new Promise((resolve, reject) => {
         const tx = db.transaction(store, 'readwrite');
         tx.objectStore(store).put(value, key);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error);
+        };
+        tx.onabort = () => {
+          db.close();
+          reject(tx.error);
+        };
       }),
   );
 }
@@ -55,8 +67,18 @@ function idbDelete(store: string, key: string): Promise<void> {
       new Promise((resolve, reject) => {
         const tx = db.transaction(store, 'readwrite');
         tx.objectStore(store).delete(key);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error);
+        };
+        tx.onabort = () => {
+          db.close();
+          reject(tx.error);
+        };
       }),
   );
 }
@@ -67,6 +89,8 @@ function idbGetAllKeys(store: string): Promise<string[]> {
       new Promise((resolve, reject) => {
         const tx = db.transaction(store, 'readonly');
         const req = tx.objectStore(store).getAllKeys();
+        tx.oncomplete = () => db.close();
+        tx.onabort = () => db.close();
         req.onsuccess = () => resolve(req.result as string[]);
         req.onerror = () => reject(req.error);
       }),
