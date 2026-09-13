@@ -1,5 +1,14 @@
 -- Run only against an isolated database populated from migrations.
 begin;
+do $$ begin
+ assert (select proconfig @> array['search_path=""'] from pg_proc where oid='public.set_updated_at()'::regprocedure);
+end $$;
+create temporary table timestamp_probe(updated_at timestamptz);
+create trigger timestamp_probe_update before update on timestamp_probe
+ for each row execute function public.set_updated_at();
+insert into timestamp_probe values ('2000-01-01');
+update timestamp_probe set updated_at = '2001-01-01';
+do $$ begin assert (select updated_at=now() from timestamp_probe); end $$;
 do $$ declare signature text; begin
  foreach signature in array array[
   'public.sync_write_record(text,jsonb,timestamptz,text)',

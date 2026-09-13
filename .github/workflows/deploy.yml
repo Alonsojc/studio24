@@ -69,8 +69,13 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'test-anon-key' }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
           NEXT_PUBLIC_SENTRY_RELEASE: ${{ github.sha }}
-          SENTRY_UPLOAD_SOURCEMAPS: ${{ secrets.SENTRY_AUTH_TOKEN != '' && vars.SENTRY_ORG != '' && vars.SENTRY_PROJECT != '' && '1' || '0' }}
+          SENTRY_UPLOAD_SOURCEMAPS: "1"
         run: npm run build
+
+      - name: Prepare and verify Sentry sourcemaps
+        run: |
+          npx --no-install sentry-cli sourcemaps inject out/_next/static
+          node scripts/verify-sourcemaps.mjs prepared out/_next/static
 
       - name: Install Playwright Chromium
         timeout-minutes: 5
@@ -102,12 +107,12 @@ jobs:
             echo "Sentry sourcemaps disabled; set SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT to enable."
             exit 0
           fi
-          npx --yes @sentry/cli releases new "$SENTRY_RELEASE" || true
-          npx --yes @sentry/cli sourcemaps upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" --release "$SENTRY_RELEASE" out/_next/static
-          npx --yes @sentry/cli releases finalize "$SENTRY_RELEASE" || true
+          npx --no-install sentry-cli sourcemaps upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" --release "$SENTRY_RELEASE" --url-prefix '~/studio24/_next/static' --validate out/_next/static
 
       - name: Remove sourcemaps from Pages artifact
-        run: find out -name "*.map" -delete
+        run: |
+          find out -name "*.map" -delete
+          node scripts/verify-sourcemaps.mjs public out
 
       - name: Upload artifact
         if: github.event_name != 'pull_request'
