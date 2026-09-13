@@ -1,5 +1,15 @@
 -- Run only against an isolated database populated from migrations.
 begin;
+do $$ declare signature text; begin
+ foreach signature in array array[
+  'public.sync_write_record(text,jsonb,timestamptz,text)',
+  'public.sync_delete_record(text,text,timestamptz)',
+  'public.create_recurrente_egreso(text,text,text,jsonb)'
+ ] loop
+  assert not has_function_privilege('anon',signature,'EXECUTE'), 'anonymous sync execution must be revoked';
+  assert has_function_privilege('authenticated',signature,'EXECUTE'), 'signed-in sync execution must remain available';
+ end loop;
+end $$;
 insert into auth.users(id,email) values
  ('10000000-0000-0000-0000-000000000001','admin@example.invalid'),
  ('10000000-0000-0000-0000-000000000002','operator@example.invalid'),
