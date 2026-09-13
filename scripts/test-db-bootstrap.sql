@@ -18,3 +18,4 @@ grant usage on schema public,auth,storage to anon,authenticated,service_role;
 grant all on all tables in schema storage to authenticated,service_role;
 alter default privileges in schema public grant all on tables to authenticated,service_role;
 alter default privileges in schema public grant usage,select on sequences to authenticated,service_role;
+alter default privileges in schema public grant execute on functions to anon,authenticated,service_role;
