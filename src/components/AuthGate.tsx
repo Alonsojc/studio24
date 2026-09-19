@@ -68,7 +68,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     let syncInFlight: Promise<void> | null = null;
     let bootDone = false;
 
-    const prepareUserSession = async (nextUser: User) => {
+    const syncUserSession = (nextUser: User, kind: string): Promise<void> => {
+      if (syncInFlight) return syncInFlight;
       const cacheWasCleared = bindLocalDataToUser(nextUser.id);
       const hasLocalData = hasLocalBusinessData();
       const shouldWriteEmptySnapshots = cacheWasCleared || !hasLocalData;
@@ -78,27 +79,20 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         await pullFromCloud({ replaceEmpty: shouldWriteEmptySnapshots });
         markBootSynced(nextUser.id);
       };
-      const runSyncWithTimeout = () => withTimeout(runSync(), BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE);
-
-      if (canSyncInBackground) {
-        void runSyncWithTimeout().catch((e) => reportError(e, { kind: 'authBackgroundPullFromCloud' }));
-        return;
-      }
-
-      await runSyncWithTimeout();
-    };
-
-    const syncUserSession = (nextUser: User, kind: string) => {
-      if (syncInFlight) return syncInFlight;
-      syncInFlight = prepareUserSession(nextUser)
+      const running = runSync()
         .catch((e) => {
           reportError(e, { kind });
-          if (!cancelled && !userRef.current) setSessionError(BOOT_ERROR_MESSAGE);
+          if (!canSyncInBackground && !cancelled && !userRef.current) setSessionError(BOOT_ERROR_MESSAGE);
         })
         .finally(() => {
           syncInFlight = null;
         });
-      return syncInFlight;
+      syncInFlight = running;
+      if (canSyncInBackground) return Promise.resolve();
+      return withTimeout(running, BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE).catch((e) => {
+        if (!cancelled && !userRef.current) setSessionError(BOOT_ERROR_MESSAGE);
+        if (e instanceof Error && e.message === BOOT_ERROR_MESSAGE) reportError(e, { kind });
+      });
     };
 
     const boot = async () => {
