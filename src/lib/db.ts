@@ -132,6 +132,11 @@ export async function restoreFromIDB(): Promise<boolean> {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return false;
 
   try {
+    const ownerKey = 'bordados_active_user_id';
+    const owner = localStorage.getItem(ownerKey);
+    const mirroredOwner = await idbGet<string>(STORE_NAME, ownerKey);
+    // Never restore unowned legacy data or another account's cache.
+    if (!owner || mirroredOwner !== owner) return false;
     const keys = await idbGetAllKeys(STORE_NAME);
     if (keys.length === 0) return false;
 

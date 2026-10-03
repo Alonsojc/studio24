@@ -357,7 +357,7 @@ export function bindLocalDataToUser(userId: string): boolean {
     clearSensitiveLocalData();
     cleared = true;
   }
-  localStorage.setItem(ACTIVE_USER_KEY, userId);
+  safeSetItem(ACTIVE_USER_KEY, userId);
   const recovery = localStorage.getItem(RECOVERY_PREFIX + userId);
   if (recovery) {
     const snapshot = JSON.parse(recovery) as Record<string, string>;
