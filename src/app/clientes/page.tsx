@@ -14,6 +14,7 @@ import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
 import ActionMenu from '@/components/ActionMenu';
+import { useRole } from '@/components/RoleProvider';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 
 function emptyCliente(): Omit<Cliente, 'id' | 'createdAt'> {
@@ -21,6 +22,7 @@ function emptyCliente(): Omit<Cliente, 'id' | 'createdAt'> {
 }
 
 export default function ClientesPage() {
+  const { role } = useRole();
   const { data: clientesRaw, reload: reloadClientes } = useCloudStore(
     getClientes,
     cloudGetClientes,
@@ -80,6 +82,7 @@ export default function ClientesPage() {
     reload();
   };
   const handleDelete = (id: string) => {
+    if (role !== 'admin') return;
     if (confirm('Eliminar cliente?')) {
       deleteCliente(id);
       reload();
@@ -163,7 +166,9 @@ export default function ClientesPage() {
                     items={[
                       { label: 'Ver detalle', onClick: () => openDetail(c) },
                       { label: 'Editar', onClick: () => openEdit(c) },
-                      { label: 'Eliminar', onClick: () => handleDelete(c.id), danger: true },
+                      ...(role === 'admin'
+                        ? [{ label: 'Eliminar', onClick: () => handleDelete(c.id), danger: true }]
+                        : []),
                     ]}
                   />
                 </div>

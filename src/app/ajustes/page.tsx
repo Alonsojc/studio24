@@ -23,7 +23,7 @@ import {
   sendPendingInvoiceNotification,
   type NotifPrefs,
 } from '@/lib/notifications';
-import { listBackups, downloadBackup, autoBackupIfDue, testBackupRestore } from '@/lib/auto-backup';
+import { listBackups, downloadBackup, autoBackupIfDue, testBackupRestore, getBackupStatus } from '@/lib/auto-backup';
 import PageHeader from '@/components/PageHeader';
 import { inputClass, labelClass } from '@/lib/styles';
 
@@ -537,6 +537,7 @@ function CloudBackups() {
   const [loading, setLoading] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
   const [backupDone, setBackupDone] = useState(false);
+  const [backupStatus, setBackupStatus] = useState(getBackupStatus);
   const [testingRestore, setTestingRestore] = useState('');
   const [restoreChecks, setRestoreChecks] = useState<Record<string, string>>({});
 
@@ -553,11 +554,10 @@ function CloudBackups() {
 
   const handleBackupNow = async () => {
     setBackingUp(true);
-    // Force backup regardless of interval
-    localStorage.removeItem('bordados_last_backup');
-    await autoBackupIfDue();
+    const result = await autoBackupIfDue(true);
     setBackingUp(false);
-    setBackupDone(true);
+    setBackupStatus(result);
+    setBackupDone(result?.state === 'success');
     setTimeout(() => setBackupDone(false), 2000);
     loadBackups();
   };
@@ -628,7 +628,7 @@ function CloudBackups() {
         <div>
           <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Respaldos en la Nube</h3>
           <p className="text-xs text-neutral-400 mt-1">
-            Se crean automáticamente cada semana. Se guardan los últimos 4.
+            Registros del equipo · Semanal · Últimos 4. Los archivos PDF, XML y fotos no están incluidos.
           </p>
         </div>
         <button
@@ -639,6 +639,14 @@ function CloudBackups() {
           {backingUp ? 'Subiendo...' : backupDone ? '¡Listo!' : 'Respaldar ahora'}
         </button>
       </div>
+      {backupStatus && (
+        <p
+          role="status"
+          className={`mb-3 text-xs ${backupStatus.state === 'error' ? 'text-red-600' : 'text-green-700'}`}
+        >
+          {backupStatus.message} · {new Date(backupStatus.at).toLocaleString('es-MX')}
+        </p>
+      )}
       {loading ? (
         <p className="text-xs text-neutral-300 text-center py-4">Cargando...</p>
       ) : backups.length === 0 ? (

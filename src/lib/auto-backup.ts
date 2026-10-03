@@ -1,12 +1,27 @@
 'use client';
 
 import { supabase } from './supabase';
-import { exportAllData, previewImportData, type BackupPreview } from './store';
+import { ACTIVE_USER_KEY, previewImportData, type BackupPreview } from './store';
+import { exportCloudBackup } from './store-cloud';
+import { flushPendingSync } from './sync-flush';
+import { hasPendingSync } from './sync-queue';
 import { isSafeBackupFileName, validateStorageUpload } from './storage-limits';
 
 const BACKUP_KEY = 'bordados_last_backup';
 const BACKUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const BUCKET = 'backups';
+export const BACKUP_STATUS_KEY = 'bordados_backup_status';
+export interface BackupStatus {
+  state: 'success' | 'error';
+  at: string;
+  message: string;
+  source: 'cloud-team';
+}
+export function getBackupStatus(): BackupStatus | null {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem(BACKUP_STATUS_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
 
 function getLastBackup(): number {
   if (typeof window === 'undefined') return 0;
@@ -22,17 +37,20 @@ function setLastBackup(): void {
  * Keeps last 4 backups (rolling monthly).
  * Silent — never blocks UI or throws.
  */
-export async function autoBackupIfDue(): Promise<void> {
+export async function autoBackupIfDue(force = false): Promise<BackupStatus | null> {
+  const owner = localStorage.getItem(ACTIVE_USER_KEY);
   try {
     const last = getLastBackup();
-    if (Date.now() - last < BACKUP_INTERVAL_MS) return;
+    if (!force && Date.now() - last < BACKUP_INTERVAL_MS) return null;
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) throw new Error('Sesion requerida para respaldar');
 
-    const json = exportAllData();
+    await flushPendingSync();
+    if (hasPendingSync()) throw new Error('Hay cambios pendientes; sincroniza antes de respaldar el equipo');
+    const json = await exportCloudBackup();
     const date = new Date().toISOString().split('T')[0];
     const fileName = `${user.id}/${date}.json`;
 
@@ -43,11 +61,8 @@ export async function autoBackupIfDue(): Promise<void> {
       upsert: true,
     });
 
-    if (error) {
-      // Bucket might not exist — that's OK, skip silently
-      console.warn('[backup]', error.message);
-      return;
-    }
+    if (error) throw error;
+    if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio durante el respaldo');
 
     setLastBackup();
 
@@ -60,8 +75,24 @@ export async function autoBackupIfDue(): Promise<void> {
       const toDelete = files.slice(4).map((f) => `${user.id}/${f.name}`);
       await supabase.storage.from(BUCKET).remove(toDelete);
     }
-  } catch {
-    // Never crash the app for a backup failure
+    const status: BackupStatus = {
+      state: 'success',
+      at: new Date().toISOString(),
+      source: 'cloud-team',
+      message: 'Respaldo de registros del equipo confirmado en la nube',
+    };
+    localStorage.setItem(BACKUP_STATUS_KEY, JSON.stringify(status));
+    return status;
+  } catch (error) {
+    const status: BackupStatus = {
+      state: 'error',
+      at: new Date().toISOString(),
+      source: 'cloud-team',
+      message: error instanceof Error ? error.message : 'No se pudo crear el respaldo',
+    };
+    if (owner === localStorage.getItem(ACTIVE_USER_KEY))
+      localStorage.setItem(BACKUP_STATUS_KEY, JSON.stringify(status));
+    return status;
   }
 }
 

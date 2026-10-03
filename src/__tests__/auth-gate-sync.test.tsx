@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   bindLocalDataToUser: vi.fn(),
   hasLocalBusinessData: vi.fn(),
   reportError: vi.fn(),
+  preservePendingUserData: vi.fn(),
+  clearSensitiveLocalData: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -21,7 +23,9 @@ vi.mock('@/lib/sync-flush', () => ({ flushPendingSync: mocks.flushPendingSync })
 vi.mock('@/lib/store', () => ({
   bindLocalDataToUser: mocks.bindLocalDataToUser,
   hasLocalBusinessData: mocks.hasLocalBusinessData,
-  clearSensitiveLocalData: vi.fn(),
+  clearSensitiveLocalData: mocks.clearSensitiveLocalData,
+  preservePendingUserData: mocks.preservePendingUserData,
+  ACTIVE_TEAM_KEY: 'bordados_active_team_id',
 }));
 vi.mock('@/lib/sentry', () => ({ reportError: mocks.reportError }));
 vi.mock('@/lib/auth', () => ({ signIn: vi.fn(), signUp: vi.fn(), resetPassword: vi.fn() }));
@@ -34,6 +38,7 @@ describe('AuthGate background sync', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
+    localStorage.clear();
     vi.useFakeTimers();
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     container = document.createElement('div');
@@ -94,5 +99,38 @@ describe('AuthGate background sync', () => {
       kind: 'authBootstrapPullFromCloud',
     });
     expect(container.textContent).toContain('Aplicacion');
+  });
+  it('uses an existing team cache in a new tab without awaiting the cloud download', async () => {
+    sessionStorage.clear();
+    localStorage.setItem('bordados_active_team_id', 'team');
+    mocks.pullFromCloud.mockImplementation(() => new Promise(() => {}));
+    await act(async () =>
+      root.render(
+        <AuthGate>
+          <div>Aplicacion</div>
+        </AuthGate>,
+      ),
+    );
+    expect(container.textContent).toContain('Aplicacion');
+    expect(mocks.pullFromCloud).toHaveBeenCalledWith({ replaceEmpty: false, bootstrap: true });
+  });
+  it('preserves pending data before clearing a lost session', async () => {
+    mocks.pullFromCloud.mockResolvedValue(0);
+    await act(async () =>
+      root.render(
+        <AuthGate>
+          <div>Aplicacion</div>
+        </AuthGate>,
+      ),
+    );
+    await act(async () => {
+      authCallback('SIGNED_OUT', null);
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(mocks.preservePendingUserData).toHaveBeenCalledOnce();
+    expect(mocks.preservePendingUserData.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.clearSensitiveLocalData.mock.invocationCallOrder[0],
+    );
+    expect(container.textContent).not.toContain('Aplicacion');
   });
 });

@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ACTIVE_USER_KEY, KEYS, importAllData, previewImportData } from '@/lib/store';
+import {
+  ACTIVE_USER_KEY,
+  KEYS,
+  SYNC_ENTRY_PREFIX,
+  importAllData,
+  previewImportData,
+  preservePendingUserData,
+  clearSensitiveLocalData,
+  bindLocalDataToUser,
+  exportAllData,
+} from '@/lib/store';
 import {
   enqueueUpsert,
   enqueueDelete,
@@ -28,6 +38,45 @@ beforeEach(() => {
 });
 
 describe('durable synchronization', () => {
+  it('keeps independent operation keys instead of replacing a shared queue snapshot', () => {
+    enqueueUpsert('clientes', { id: 'tab-a' });
+    enqueueUpsert('clientes', { id: 'tab-b' });
+    const keys = Object.keys(localStorage).filter((key) => key.startsWith(SYNC_ENTRY_PREFIX));
+    expect(keys).toHaveLength(2);
+    expect(readSyncQueue().map((entry) => entry.recordId)).toEqual(['tab-a', 'tab-b']);
+    expect(JSON.parse(exportAllData()).syncQueue).toHaveLength(2);
+  });
+  it('quarantines expired-session changes and restores only the same user', () => {
+    writeLocalJSON(KEYS.clientes, [{ id: 'pending' }]);
+    enqueueUpsert('clientes', { id: 'pending' });
+    preservePendingUserData();
+    clearSensitiveLocalData();
+    bindLocalDataToUser('another-user');
+    expect(readSyncQueue()).toEqual([]);
+    expect(readLocalArray(KEYS.clientes)).toEqual([]);
+    bindLocalDataToUser('owner');
+    expect(readSyncQueue()).toHaveLength(1);
+    expect(readLocalArray(KEYS.clientes)).toEqual([{ id: 'pending' }]);
+  });
+  it('migrates the legacy queue without duplicating operations', () => {
+    localStorage.setItem(
+      'bordados_sync_queue',
+      JSON.stringify([
+        {
+          id: 'legacy',
+          table: 'clientes',
+          localKey: KEYS.clientes,
+          action: 'upsert',
+          recordId: 'old',
+          createdAt: '2026-01-01',
+          attempts: 0,
+        },
+      ]),
+    );
+    expect(readSyncQueue()).toHaveLength(1);
+    expect(readSyncQueue()).toHaveLength(1);
+    expect(localStorage.getItem('bordados_sync_queue')).toBeNull();
+  });
   it('does not acknowledge a newer save while the earlier request is running', async () => {
     let finish!: (value: unknown) => void;
     const started = new Promise<void>((resolve) =>

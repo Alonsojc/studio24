@@ -31,6 +31,8 @@ interface FacturaPendiente {
   matchDesc?: string;
   deducibilidad?: ResultadoDeducibilidad;
   status: 'pending' | 'matched' | 'new' | 'attach' | 'done' | 'error';
+  error?: string;
+  retryStatus?: 'pending' | 'matched' | 'new' | 'attach';
 }
 
 export default function FacturasPage() {
@@ -215,7 +217,7 @@ export default function FacturasPage() {
 
   const processAll = async () => {
     setProcessing(true);
-    const updated = [...facturas];
+    const updated = facturas.map((f) => (f.status === 'error' ? { ...f, status: f.retryStatus || 'new' } : f));
     // Re-read fresh data to avoid overwriting UUIDs set in a previous session
     const freshIngresos = getIngresos();
     const freshEgresos = getEgresos();
@@ -275,7 +277,12 @@ export default function FacturasPage() {
             attachPdf = uploaded.pdfPath;
           } catch (err) {
             console.warn('No se pudo subir el archivo de factura', err);
-            updated[i] = { ...current2, status: 'error' };
+            updated[i] = {
+              ...current2,
+              retryStatus: 'attach',
+              status: 'error',
+              error: err instanceof Error ? err.message : 'No se pudieron subir los archivos. Reintenta.',
+            };
             continue;
           }
           if (current2.tipo === 'ingreso') {
@@ -317,8 +324,13 @@ export default function FacturasPage() {
           xmlUrl = uploaded.xmlPath;
           pdfUrl = uploaded.pdfPath;
         } catch (err) {
-          // Non-fatal: the factura still gets linked; files just aren't stored.
-          console.warn('No se pudo subir el archivo de factura', err);
+          updated[i] = {
+            ...updated[i],
+            retryStatus: updated[i].matchId ? 'matched' : 'new',
+            status: 'error',
+            error: err instanceof Error ? err.message : 'No se pudieron subir los archivos. Reintenta.',
+          };
+          continue;
         }
 
         const afterCheck = updated[i];
@@ -402,8 +414,13 @@ export default function FacturasPage() {
           }
         }
         updated[i] = { ...updated[i], status: 'done' };
-      } catch {
-        updated[i] = { ...updated[i], status: 'error' };
+      } catch (err) {
+        updated[i] = {
+          ...updated[i],
+          retryStatus: updated[i].matchId ? 'matched' : 'new',
+          status: 'error',
+          error: err instanceof Error ? err.message : 'No se pudo guardar la factura.',
+        };
       }
     }
 
@@ -582,6 +599,11 @@ export default function FacturasPage() {
               </div>
 
               {/* Match info */}
+              {f.status === 'error' && (
+                <p role="alert" className="mt-3 text-xs text-red-600">
+                  {f.error || 'No se pudo completar la factura.'}
+                </p>
+              )}
               {f.status === 'matched' && f.matchDesc && (
                 <div className="mt-3 bg-green-50 rounded-xl p-3">
                   <p className="text-xs text-green-700">
