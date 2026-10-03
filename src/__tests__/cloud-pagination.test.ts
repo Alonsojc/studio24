@@ -54,3 +54,13 @@ it('uses complete dates and a non-inclusive next-year bound', async () => {
     ['lt', 'fecha', '2027-01-01'],
   ]);
 });
+it('uses a server timestamp watermark on subsequent unfiltered downloads', async () => {
+  source([{ id: 'a', updated_at: '2026-10-03T12:00:00.000Z' } as { id: string }]);
+  await cloudGetClientes();
+  invalidateCloudCache();
+  await cloudGetClientes();
+  invalidateCloudCache();
+  api.filters.length = 0;
+  await cloudGetClientes();
+  expect(api.filters).toContainEqual(['gte', 'updated_at', '2026-10-03T12:00:00.000Z']);
+});

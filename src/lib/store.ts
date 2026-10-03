@@ -14,7 +14,14 @@ import {
   Diseno,
   PlantillaWhatsApp,
 } from './types';
-import { clearStudioDB, mirrorToIDB, removeFromIDB } from './db';
+import {
+  clearStudioDB,
+  mirrorToIDB,
+  removeFromIDB,
+  saveUserRecovery,
+  readUserRecovery,
+  deleteUserRecovery,
+} from './db';
 
 export const KEYS = {
   clientes: 'bordados_clientes',
@@ -48,6 +55,35 @@ const KEEP_AFTER_CLEAR = new Set(['bordados_seeded']);
 
 export const ACTIVE_USER_KEY = 'bordados_active_user_id';
 export const ACTIVE_TEAM_KEY = 'bordados_active_team_id';
+export const SYNC_ENTRY_PREFIX = 'bordados_sync_entry_';
+const RECOVERY_PREFIX = 'studio24_recovery_';
+export function storageKeys(): string[] {
+  const keys: string[] = [];
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
+export async function preservePendingUserData(): Promise<void> {
+  const owner = localStorage.getItem(ACTIVE_USER_KEY);
+  if (!owner) return;
+  const keys = storageKeys().filter((key) => key.startsWith('bordados_'));
+  if (
+    !keys.some((key) => key.startsWith(SYNC_ENTRY_PREFIX)) &&
+    !JSON.parse(localStorage.getItem(EXTRA_BACKUP_KEYS.syncQueue) || '[]').length
+  )
+    return;
+  const snapshot = Object.fromEntries(keys.map((key) => [key, localStorage.getItem(key)]));
+  // Quarantine pending data before logout; restore only for the same authenticated user.
+  const raw = JSON.stringify(snapshot);
+  try {
+    localStorage.setItem(RECOVERY_PREFIX + owner, raw);
+  } catch {
+    await saveUserRecovery(owner, raw);
+  }
+}
 
 export function hasLocalBusinessData(): boolean {
   if (typeof window === 'undefined') return false;
@@ -209,6 +245,10 @@ export function exportAllData(): string {
     if (raw) data[key] = JSON.parse(raw);
   });
   data['config'] = getConfig();
+  const operations = storageKeys()
+    .filter((key) => key.startsWith(SYNC_ENTRY_PREFIX))
+    .map((key) => JSON.parse(localStorage.getItem(key)!));
+  data.syncQueue = [...((data.syncQueue as unknown[]) || []), ...operations];
   return JSON.stringify(data, null, 2);
 }
 
@@ -277,6 +317,9 @@ export function previewImportData(json: string): BackupPreview {
 
 export function importAllData(json: string): void {
   const { data } = parseAndValidateBackup(json);
+  storageKeys()
+    .filter((key) => key.startsWith('bordados_pull_cursor_'))
+    .forEach((key) => localStorage.removeItem(key));
   Object.entries(KEYS).forEach(([key, storageKey]) => {
     if (data[key] !== undefined) safeSetItem(storageKey, JSON.stringify(data[key]));
   });
@@ -292,12 +335,19 @@ export function clearAllData(): void {
     localStorage.removeItem(key);
     removeFromIDB(key);
   });
+  storageKeys()
+    .filter((key) => key.startsWith(SYNC_ENTRY_PREFIX) || key.startsWith('bordados_pull_cursor_'))
+    .forEach((key) => {
+      localStorage.removeItem(key);
+      removeFromIDB(key);
+    });
   // Keep seeded flag so demo data doesn't reload
   localStorage.setItem('bordados_seeded', '1');
 }
 
 export function clearSensitiveLocalData(): void {
   if (typeof window === 'undefined') return;
+  const owner = localStorage.getItem(ACTIVE_USER_KEY);
   sessionStorage.removeItem('studio24:before-restore');
   const keysToRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -307,19 +357,31 @@ export function clearSensitiveLocalData(): void {
     }
   }
   keysToRemove.forEach((key) => localStorage.removeItem(key));
-  clearStudioDB();
+  clearStudioDB(owner);
   localStorage.setItem('bordados_seeded', '1');
 }
 
-export function bindLocalDataToUser(userId: string): boolean {
+export async function bindLocalDataToUser(userId: string): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   const activeUserId = localStorage.getItem(ACTIVE_USER_KEY);
   let cleared = false;
   if (activeUserId && activeUserId !== userId) {
+    await preservePendingUserData();
     clearSensitiveLocalData();
     cleared = true;
   }
-  localStorage.setItem(ACTIVE_USER_KEY, userId);
+  safeSetItem(ACTIVE_USER_KEY, userId);
+  const recovery =
+    localStorage.getItem(RECOVERY_PREFIX + userId) || (await readUserRecovery(userId).catch(() => undefined));
+  if (recovery) {
+    const snapshot = JSON.parse(recovery) as Record<string, string>;
+    for (const [key, value] of Object.entries(snapshot)) {
+      if (key.startsWith('bordados_') && value !== null) safeSetItem(key, value);
+    }
+    localStorage.removeItem(RECOVERY_PREFIX + userId);
+    await deleteUserRecovery(userId).catch(() => {});
+    cleared = false;
+  }
   return cleared;
 }
 

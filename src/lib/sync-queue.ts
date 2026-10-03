@@ -1,6 +1,7 @@
 'use client';
 
-import { EXTRA_BACKUP_KEYS, KEYS, safeSetItem, type StoreStorageKey } from './store';
+import { EXTRA_BACKUP_KEYS, KEYS, SYNC_ENTRY_PREFIX, storageKeys, safeSetItem, type StoreStorageKey } from './store';
+import { removeFromIDB } from './db';
 
 export type SyncTable =
   | 'clientes'
@@ -64,8 +65,10 @@ export function localKeyForTable(table: SyncTable): string {
   return TABLE_TO_LOCAL_KEY[table];
 }
 
+let lastTimestamp = 0;
 function nowIso(): string {
-  return new Date().toISOString();
+  lastTimestamp = Math.max(Date.now(), lastTimestamp + 1);
+  return new Date(lastTimestamp).toISOString();
 }
 
 function operationId(table: SyncTable, recordId: string, action: SyncAction): string {
@@ -84,12 +87,26 @@ function parseQueue(raw: string | null): SyncQueueEntry[] {
 
 export function readSyncQueue(): SyncQueueEntry[] {
   if (typeof window === 'undefined') return [];
-  return parseQueue(localStorage.getItem(SYNC_QUEUE_KEY));
+  const legacy = parseQueue(localStorage.getItem(SYNC_QUEUE_KEY));
+  for (const entry of legacy) {
+    const key = SYNC_ENTRY_PREFIX + entry.id;
+    if (!localStorage.getItem(key)) safeSetItem(key, JSON.stringify(entry));
+  }
+  if (legacy.length) {
+    localStorage.removeItem(SYNC_QUEUE_KEY);
+    removeFromIDB(SYNC_QUEUE_KEY);
+  }
+  const entries: SyncQueueEntry[] = [];
+  for (const key of storageKeys()) {
+    if (!key.startsWith(SYNC_ENTRY_PREFIX)) continue;
+    const raw = localStorage.getItem(key);
+    if (raw) entries.push(JSON.parse(raw));
+  }
+  return entries.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
-function writeSyncQueue(queue: SyncQueueEntry[]): void {
-  if (typeof window === 'undefined') return;
-  safeSetItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
+function writeEntry(entry: SyncQueueEntry): void {
+  safeSetItem(SYNC_ENTRY_PREFIX + entry.id, JSON.stringify(entry));
   window.dispatchEvent(new Event('studio24:sync-queue'));
 }
 
@@ -116,7 +133,8 @@ export function getPendingRecordIds(localKey: string): { upserts: Set<string>; d
 export function enqueueUpsert<T extends VersionedRecord>(table: SyncTable, item: T): void {
   const localKey = localKeyForTable(table);
   const timestamp = nowIso();
-  const previous = readSyncQueue().find((op) => op.table === table && op.recordId === item.id);
+  const sameRecord = readSyncQueue().filter((op) => op.table === table && op.recordId === item.id);
+  const previous = sameRecord.at(-1);
   if (previous?.action === 'recurrente_egreso') {
     throw new Error('Espera a que el gasto recurrente termine de sincronizar antes de editarlo');
   }
@@ -134,9 +152,10 @@ export function enqueueUpsert<T extends VersionedRecord>(table: SyncTable, item:
     updatedAt: timestamp,
     attempts: 0,
   };
-  const queue = readSyncQueue().filter((op) => !(op.table === table && op.recordId === item.id));
-  queue.push(entry);
-  writeSyncQueue(queue);
+  writeEntry(entry);
+  for (const op of sameRecord) {
+    if (op.lastError?.includes('CONFLICT')) removeSyncQueueEntry(op.id);
+  }
 }
 
 export function enqueueDelete(table: SyncTable, recordId: string): void {
@@ -153,9 +172,7 @@ export function enqueueDelete(table: SyncTable, recordId: string): void {
     updatedAt: timestamp,
     attempts: 0,
   };
-  const queue = readSyncQueue().filter((op) => !(op.table === table && op.recordId === recordId));
-  queue.push(entry);
-  writeSyncQueue(queue);
+  writeEntry(entry);
 }
 
 export function enqueueRecurrenteLog(logKey: string): void {
@@ -171,9 +188,7 @@ export function enqueueRecurrenteLog(logKey: string): void {
     updatedAt: timestamp,
     attempts: 0,
   };
-  const queue = readSyncQueue().filter((op) => op.id !== entry.id);
-  queue.push(entry);
-  writeSyncQueue(queue);
+  writeEntry(entry);
 }
 
 export function enqueueRecurrenteEgreso(payload: unknown, egresoId: string): void {
@@ -189,17 +204,30 @@ export function enqueueRecurrenteEgreso(payload: unknown, egresoId: string): voi
     updatedAt: timestamp,
     attempts: 0,
   };
-  const queue = readSyncQueue().filter((op) => op.id !== entry.id);
-  queue.push(entry);
-  writeSyncQueue(queue);
+  writeEntry(entry);
 }
 
 export function removeSyncQueueEntry(id: string): void {
-  writeSyncQueue(readSyncQueue().filter((op) => op.id !== id));
+  localStorage.removeItem(SYNC_ENTRY_PREFIX + id);
+  removeFromIDB(SYNC_ENTRY_PREFIX + id);
+  window.dispatchEvent(new Event('studio24:sync-queue'));
 }
 
 export function acknowledgeSync(entry: SyncQueueEntry, result?: VersionedRecord): void {
-  const queue = readSyncQueue().filter((op) => op.id !== entry.id);
+  const queue = readSyncQueue().filter((op) => {
+    if (op.id === entry.id) return false;
+    const earlier = op.createdAt < entry.createdAt || (op.createdAt === entry.createdAt && op.id < entry.id);
+    if (
+      (result || entry.action === 'delete') &&
+      earlier &&
+      op.table === entry.table &&
+      op.recordId === entry.recordId
+    ) {
+      removeSyncQueueEntry(op.id);
+      return false;
+    }
+    return true;
+  });
   if (result) {
     for (const op of queue) {
       if (op.table === entry.table && op.recordId === entry.recordId && op.payload) {
@@ -207,6 +235,7 @@ export function acknowledgeSync(entry: SyncQueueEntry, result?: VersionedRecord)
           ...(op.payload as Record<string, unknown>),
           serverUpdatedAt: result.serverUpdatedAt || result.updatedAt,
         };
+        writeEntry(op);
       }
     }
     const items = readLocalArray<VersionedRecord>(entry.localKey);
@@ -226,7 +255,7 @@ export function acknowledgeSync(entry: SyncQueueEntry, result?: VersionedRecord)
       );
     }
   }
-  writeSyncQueue(queue);
+  removeSyncQueueEntry(entry.id);
 }
 
 export const TOMBSTONES_KEY = 'bordados_deleted_records';
@@ -240,11 +269,8 @@ export function rememberDeleted(localKey: string, ids: string[]): void {
 export function markSyncQueueEntryFailed(id: string, error: unknown): void {
   const message =
     error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Error de sincronización';
-  writeSyncQueue(
-    readSyncQueue().map((op) =>
-      op.id === id ? { ...op, attempts: op.attempts + 1, lastError: message, updatedAt: nowIso() } : op,
-    ),
-  );
+  const entry = readSyncQueue().find((op) => op.id === id);
+  if (entry) writeEntry({ ...entry, attempts: entry.attempts + 1, lastError: message, updatedAt: nowIso() });
 }
 
 function versionOf(record: VersionedRecord): number {

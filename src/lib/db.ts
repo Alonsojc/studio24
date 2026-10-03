@@ -8,9 +8,62 @@ const STORE_NAME = 'keyval';
 // nuevas viven en Supabase Storage (ver src/lib/photos.ts).
 const PHOTOS_STORE = 'photos';
 
+async function recoveryStore<T>(owner: string, action: 'read' | 'write' | 'delete', value?: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let expired = false;
+    let transaction: IDBTransaction | undefined;
+    const timer = setTimeout(() => {
+      expired = true;
+      transaction?.abort();
+      reject(new Error('El almacenamiento de recuperacion no responde'));
+    }, 4000);
+    const request = indexedDB.open('studio24_pending_recovery', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('users');
+    request.onerror = () => {
+      clearTimeout(timer);
+      reject(request.error);
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      if (expired) {
+        db.close();
+        return;
+      }
+      const tx = db.transaction('users', action === 'read' ? 'readonly' : 'readwrite');
+      transaction = tx;
+      const store = tx.objectStore('users');
+      const operation =
+        action === 'read' ? store.get(owner) : action === 'write' ? store.put(value, owner) : store.delete(owner);
+      tx.oncomplete = () => {
+        clearTimeout(timer);
+        db.close();
+        resolve(operation.result as T);
+      };
+      tx.onabort = () => {
+        clearTimeout(timer);
+        db.close();
+        reject(tx.error);
+      };
+      tx.onerror = () => {
+        clearTimeout(timer);
+        db.close();
+        reject(tx.error);
+      };
+    };
+  });
+}
+export const saveUserRecovery = (owner: string, value: string) => recoveryStore<void>(owner, 'write', value);
+export const readUserRecovery = (owner: string) => recoveryStore<string | undefined>(owner, 'read');
+export const deleteUserRecovery = (owner: string) => recoveryStore<void>(owner, 'delete');
+
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    const owner = localStorage.getItem('bordados_active_user_id');
+    if (!owner) {
+      reject(new Error('Sesion requerida para abrir cache local'));
+      return;
+    }
+    const req = indexedDB.open(`${DB_NAME}_${owner}`, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -118,9 +171,9 @@ export function removeFromIDB(key: string): void {
  * Drop all local IndexedDB data owned by the app. This is used on logout or
  * account switch so cached customer/financial records cannot leak users.
  */
-export function clearStudioDB(): void {
+export function clearStudioDB(owner?: string | null): void {
   if (typeof indexedDB === 'undefined') return;
-  const req = indexedDB.deleteDatabase(DB_NAME);
+  const req = indexedDB.deleteDatabase(owner ? `${DB_NAME}_${owner}` : DB_NAME);
   req.onerror = () => {};
 }
 
@@ -132,11 +185,18 @@ export async function restoreFromIDB(): Promise<boolean> {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return false;
 
   try {
+    const ownerKey = 'bordados_active_user_id';
+    const owner = localStorage.getItem(ownerKey);
+    const mirroredOwner = await idbGet<string>(STORE_NAME, ownerKey);
+    // Never restore unowned legacy data or another account's cache.
+    if (!owner || mirroredOwner !== owner) return false;
     const keys = await idbGetAllKeys(STORE_NAME);
     if (keys.length === 0) return false;
 
     // Check if localStorage has any bordados_ keys
-    const hasLocalData = keys.some((k) => localStorage.getItem(k as string) !== null);
+    const hasLocalData = keys.some(
+      (k) => k !== ownerKey && k.startsWith('bordados_') && localStorage.getItem(k as string) !== null,
+    );
     if (hasLocalData) {
       // localStorage has data — mirror it to IDB (in case IDB is stale)
       for (const key of keys) {

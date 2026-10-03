@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ACTIVE_USER_KEY, KEYS, importAllData, previewImportData } from '@/lib/store';
+import {
+  ACTIVE_USER_KEY,
+  KEYS,
+  SYNC_ENTRY_PREFIX,
+  importAllData,
+  previewImportData,
+  preservePendingUserData,
+  clearSensitiveLocalData,
+  bindLocalDataToUser,
+  exportAllData,
+} from '@/lib/store';
 import {
   enqueueUpsert,
   enqueueDelete,
@@ -28,6 +38,45 @@ beforeEach(() => {
 });
 
 describe('durable synchronization', () => {
+  it('keeps independent operation keys instead of replacing a shared queue snapshot', () => {
+    enqueueUpsert('clientes', { id: 'tab-a' });
+    enqueueUpsert('clientes', { id: 'tab-b' });
+    const keys = Object.keys(localStorage).filter((key) => key.startsWith(SYNC_ENTRY_PREFIX));
+    expect(keys).toHaveLength(2);
+    expect(readSyncQueue().map((entry) => entry.recordId)).toEqual(['tab-a', 'tab-b']);
+    expect(JSON.parse(exportAllData()).syncQueue).toHaveLength(2);
+  });
+  it('quarantines expired-session changes and restores only the same user', async () => {
+    writeLocalJSON(KEYS.clientes, [{ id: 'pending' }]);
+    enqueueUpsert('clientes', { id: 'pending' });
+    await preservePendingUserData();
+    clearSensitiveLocalData();
+    await bindLocalDataToUser('another-user');
+    expect(readSyncQueue()).toEqual([]);
+    expect(readLocalArray(KEYS.clientes)).toEqual([]);
+    await bindLocalDataToUser('owner');
+    expect(readSyncQueue()).toHaveLength(1);
+    expect(readLocalArray(KEYS.clientes)).toEqual([{ id: 'pending' }]);
+  });
+  it('migrates the legacy queue without duplicating operations', () => {
+    localStorage.setItem(
+      'bordados_sync_queue',
+      JSON.stringify([
+        {
+          id: 'legacy',
+          table: 'clientes',
+          localKey: KEYS.clientes,
+          action: 'upsert',
+          recordId: 'old',
+          createdAt: '2026-01-01',
+          attempts: 0,
+        },
+      ]),
+    );
+    expect(readSyncQueue()).toHaveLength(1);
+    expect(readSyncQueue()).toHaveLength(1);
+    expect(localStorage.getItem('bordados_sync_queue')).toBeNull();
+  });
   it('does not acknowledge a newer save while the earlier request is running', async () => {
     let finish!: (value: unknown) => void;
     const started = new Promise<void>((resolve) =>
@@ -61,6 +110,24 @@ describe('durable synchronization', () => {
     await expect(flushPendingSync()).rejects.toThrow('CONFLICT');
     expect(readSyncQueue()).toHaveLength(1);
     expect(readSyncQueue()[0]).toMatchObject({ recordId: 'one', attempts: 1, lastError: 'CONFLICT: newer' });
+    cloud.write.mockClear();
+    await flushPendingSync();
+    expect(cloud.write).not.toHaveBeenCalled();
+    expect(readSyncQueue()).toHaveLength(1);
+  });
+  it('supersedes an older failed write when a newer edit succeeds', async () => {
+    writeLocalJSON(KEYS.clientes, [{ id: 'one', nombre: 'New' }]);
+    enqueueUpsert('clientes', { id: 'one', nombre: 'Old' });
+    enqueueUpsert('clientes', { id: 'one', nombre: 'New' });
+    cloud.write
+      .mockRejectedValueOnce(new Error('Temporary network failure'))
+      .mockResolvedValueOnce({ id: 'one', nombre: 'New', serverUpdatedAt: 'v2' });
+    await expect(flushPendingSync()).rejects.toThrow('Temporary');
+    expect(readSyncQueue()).toHaveLength(0);
+    expect(readLocalArray(KEYS.clientes)).toEqual([{ id: 'one', nombre: 'New', serverUpdatedAt: 'v2' }]);
+    cloud.write.mockClear();
+    await flushPendingSync();
+    expect(cloud.write).not.toHaveBeenCalled();
   });
   it('keeps a pending local record even when the cloud clock is newer', () => {
     const local = { id: 'one', updatedAt: '2026-01-01', nombre: 'Pending' };
@@ -68,6 +135,17 @@ describe('durable synchronization', () => {
     expect(mergeCloudList(KEYS.clientes, [local], [{ ...local, updatedAt: '2027-01-01', nombre: 'Remote' }])).toEqual([
       local,
     ]);
+  });
+  it('does not retry an older failed write after its newer deletion is confirmed', async () => {
+    enqueueUpsert('clientes', { id: 'deleted', nombre: 'Old' });
+    enqueueDelete('clientes', 'deleted');
+    cloud.write.mockRejectedValueOnce(new Error('Temporary network failure'));
+    cloud.remove.mockResolvedValueOnce(undefined);
+    await expect(flushPendingSync()).rejects.toThrow('Temporary');
+    expect(readSyncQueue()).toHaveLength(0);
+    cloud.write.mockClear();
+    await flushPendingSync();
+    expect(cloud.write).not.toHaveBeenCalled();
   });
   it('does not resurrect cached deletions on subsequent pulls', () => {
     rememberDeleted(KEYS.clientes, ['one']);

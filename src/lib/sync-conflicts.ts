@@ -55,11 +55,11 @@ export async function resolveConflict(
   if (choice === 'local' && !remote)
     throw new Error('El registro fue eliminado. Conserva la copia local en un respaldo antes de descartarla.');
   // Keep a per-operation recovery copy before resolving an explicit user choice.
-  if (!readSyncQueue().some((op) => op.id === entry.id))
-    throw new Error('Hay un cambio local mas reciente. Vuelve a revisarlo.');
-  localStorage.setItem(`bordados_conflict_backup_${id}`, JSON.stringify(entry));
+  const sameRecord = readSyncQueue().filter((op) => op.table === entry.table && op.recordId === entry.recordId);
+  if (sameRecord.at(-1)?.id !== entry.id) throw new Error('Hay un cambio local mas reciente. Vuelve a revisarlo.');
+  for (const op of sameRecord) localStorage.setItem(`bordados_conflict_backup_${op.id}`, JSON.stringify(op));
+  for (const op of sameRecord) removeSyncQueueEntry(op.id);
   if (choice === 'cloud') {
-    removeSyncQueueEntry(entry.id);
     if (entry.table === 'config') writeLocalJSON(entry.localKey, remote || {});
     else {
       const items = readLocalArray<VersionedRecord>(entry.localKey).filter((item) => item.id !== entry.recordId);
@@ -68,7 +68,6 @@ export async function resolveConflict(
       writeLocalJSON(entry.localKey, items);
     }
   } else {
-    removeSyncQueueEntry(entry.id);
     const item = { ...(entry.payload as VersionedRecord), serverUpdatedAt: remote!.serverUpdatedAt };
     if (entry.action === 'delete') {
       writeLocalJSON(entry.localKey, [

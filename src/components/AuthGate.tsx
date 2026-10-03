@@ -5,7 +5,13 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { signIn, signUp, resetPassword } from '@/lib/auth';
 import { pullFromCloud } from '@/lib/store-cloud';
-import { bindLocalDataToUser, clearSensitiveLocalData, hasLocalBusinessData } from '@/lib/store';
+import {
+  ACTIVE_TEAM_KEY,
+  bindLocalDataToUser,
+  clearSensitiveLocalData,
+  hasLocalBusinessData,
+  preservePendingUserData,
+} from '@/lib/store';
 import { reportError } from '@/lib/sentry';
 import { flushPendingSync } from '@/lib/sync-flush';
 
@@ -68,15 +74,19 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     let syncInFlight: Promise<void> | null = null;
     let bootDone = false;
 
-    const syncUserSession = (nextUser: User, kind: string): Promise<void> => {
+    const syncUserSession = async (nextUser: User, kind: string): Promise<void> => {
       if (syncInFlight) return syncInFlight;
-      const cacheWasCleared = bindLocalDataToUser(nextUser.id);
+      const cacheWasCleared = await bindLocalDataToUser(nextUser.id);
+      if (syncInFlight) return syncInFlight;
       const hasLocalData = hasLocalBusinessData();
       const shouldWriteEmptySnapshots = cacheWasCleared || !hasLocalData;
-      const canSyncInBackground = !cacheWasCleared && hasLocalData && hasBootSync(nextUser.id);
+      const canSyncInBackground =
+        !cacheWasCleared &&
+        hasLocalData &&
+        (hasBootSync(nextUser.id) || Boolean(localStorage.getItem(ACTIVE_TEAM_KEY)));
       const runSync = async () => {
         await flushPendingSync().catch((e) => reportError(e, { kind: 'authBootstrapFlushPendingSync' }));
-        await pullFromCloud({ replaceEmpty: shouldWriteEmptySnapshots });
+        await pullFromCloud({ replaceEmpty: shouldWriteEmptySnapshots, bootstrap: true });
         markBootSynced(nextUser.id);
       };
       const running = runSync()
@@ -134,10 +144,17 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           setSessionError('');
           if (_event === 'INITIAL_SESSION' && !bootDone) return;
           if (!nextUser) {
-            clearSensitiveLocalData();
-            clearBootSync();
             setCurrentUser(null);
             setLoading(false);
+            try {
+              await preservePendingUserData();
+            } catch (error) {
+              reportError(error, { kind: 'pendingRecoveryFailed' });
+              setSessionError('No se pudo conservar el respaldo de cambios pendientes.');
+            } finally {
+              clearSensitiveLocalData();
+              clearBootSync();
+            }
             return;
           }
           if (cancelled) return;

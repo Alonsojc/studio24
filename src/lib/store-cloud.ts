@@ -100,14 +100,30 @@ function toCamel<T>(obj: Record<string, unknown>): T {
 
 type DateFilter = { dateColumn: string; year?: number; month?: string; limit?: number };
 
-async function getAll<T>(table: string, filter?: DateFilter): Promise<T[]> {
-  return cachedCloudRequest(`${table}:${JSON.stringify(filter || {})}`, async () => {
+async function getAll<T>(table: string, filter?: DateFilter, forceFull = false): Promise<T[]> {
+  return cachedCloudRequest(`${table}:${JSON.stringify(filter || {})}:${forceFull}`, async () => {
     const owner = localStorage.getItem(ACTIVE_USER_KEY);
+    const team = localStorage.getItem(ACTIVE_TEAM_KEY);
+    const localKey = localKeyForTable(table as SyncTable);
+    const cursorKey = `bordados_pull_cursor_${owner}:${team}:${table}`;
+    // Advance only to versions already known before this request. Concurrent
+    // changes during cursor pagination must remain eligible for the next pull.
+    const startingVersions = localKey
+      ? readLocalArray<VersionedRecord>(localKey)
+          .map((row) => row.serverUpdatedAt || '')
+          .filter(Boolean)
+          .sort()
+      : [];
+    const since =
+      !forceFull && !filter && table !== 'recurrentes_log' && localKey && localStorage.getItem(localKey) !== null
+        ? localStorage.getItem(cursorKey)
+        : null;
     const result: T[] = [];
     let after = '';
     // Cursor pagination also works when the API's maximum row count is reduced.
     while (true) {
       let query = supabase.from(table).select('*').order('id').limit(500);
+      if (since) query = query.gte('updated_at', since);
       if (after) query = query.gt('id', after);
       if (filter?.year) {
         const month = filter.month ? Number(filter.month.slice(5, 7)) : 1;
@@ -126,11 +142,54 @@ async function getAll<T>(table: string, filter?: DateFilter): Promise<T[]> {
     }
     const deleted = await getDeletedRecords();
     if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio durante la descarga');
-    const localKey = localKeyForTable(table as SyncTable);
     const ids = deleted.filter((row) => row.table_name === table).map((row) => row.record_id);
     if (localKey && ids.length) rememberDeleted(localKey, ids);
+    if (!filter && table !== 'recurrentes_log' && localKey) {
+      const incoming = result as VersionedRecord[];
+      const merged = mergeCloudList(localKey, readLocalArray<VersionedRecord>(localKey), incoming);
+      writeLocalJSON(localKey, merged);
+      if (startingVersions.length) localStorage.setItem(cursorKey, startingVersions[startingVersions.length - 1]);
+      if (since) return merged as T[];
+    }
     return result;
   });
+}
+
+/** Fresh cloud export, never a local cache advertised as a team backup. */
+export async function exportCloudBackup(): Promise<string> {
+  invalidateCloudCache();
+  const profile = await (await import('./roles')).getMyProfile();
+  if (profile?.role !== 'admin') throw new Error('Solo administradores pueden respaldar el equipo');
+  const teamId = await getMyTeamId();
+  if (!teamId) throw new Error('Equipo no disponible');
+  const owner = localStorage.getItem(ACTIVE_USER_KEY);
+  const tables: SyncTable[] = [
+    'clientes',
+    'proveedores',
+    'ingresos',
+    'egresos',
+    'pedidos',
+    'productos',
+    'cotizaciones',
+    'egresos_recurrentes',
+    'inventario',
+    'disenos',
+    'plantillas',
+    'finance_entries',
+  ];
+  const { KEYS } = await import('./store');
+  const snapshot: Record<string, unknown> = {};
+  await Promise.all(
+    tables.map(async (table) => {
+      const key = Object.entries(KEYS).find(([, value]) => value === localKeyForTable(table))?.[0];
+      if (key) snapshot[key] = await getAll(table, undefined, true);
+    }),
+  );
+  snapshot.config = await cloudGetConfig();
+  snapshot.recurrentesLog = await cloudGetRecurrentesLog();
+  if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio durante el respaldo');
+  snapshot.backupMetadata = { source: 'cloud-team', teamId, createdAt: new Date().toISOString(), schemaVersion: 1 };
+  return JSON.stringify(snapshot);
 }
 
 function getDeletedRecords(): Promise<{ table_name: string; record_id: string }[]> {
@@ -419,7 +478,7 @@ export async function migrateLocalToCloud(): Promise<number> {
 
 // Pull from cloud: download all Supabase data into localStorage
 // Used when logging in on a new device
-export async function pullFromCloud(opts: { replaceEmpty?: boolean } = {}): Promise<number> {
+export async function pullFromCloud(opts: { replaceEmpty?: boolean; bootstrap?: boolean } = {}): Promise<number> {
   if (shouldSkipCloudPull()) return 0;
   const owner = localStorage.getItem(ACTIVE_USER_KEY);
   const profile = await (await import('./roles')).getMyProfile();
@@ -444,17 +503,13 @@ export async function pullFromCloud(opts: { replaceEmpty?: boolean } = {}): Prom
     count += items.length;
   };
 
-  const tables = [
-    'clientes',
-    'proveedores',
-    'pedidos',
-    'productos',
-    'cotizaciones',
-    'inventario',
-    'disenos',
-    'plantillas',
-  ];
-  if (finance) tables.push('ingresos', 'egresos', 'egresos_recurrentes', 'finance_entries');
+  const tables = opts.bootstrap
+    ? []
+    : ['clientes', 'proveedores', 'pedidos', 'productos', 'cotizaciones', 'inventario', 'disenos', 'plantillas'];
+  if (finance)
+    tables.push(
+      ...(opts.bootstrap ? ['egresos_recurrentes'] : ['ingresos', 'egresos', 'egresos_recurrentes', 'finance_entries']),
+    );
   else
     for (const table of ['ingresos', 'egresos', 'egresos_recurrentes', 'finance_entries', 'recurrentes_log']) {
       writeLocalJSON(localKeyForTable(table as SyncTable), []);
@@ -463,7 +518,12 @@ export async function pullFromCloud(opts: { replaceEmpty?: boolean } = {}): Prom
   const failure = results.find((result) => result.status === 'rejected');
   if (failure?.status === 'rejected') throw failure.reason;
   if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
-  if (finance) (await import('./finance-entries')).migrateLegacyFinance();
+  if (finance) {
+    // Fetch the canonical entries before migrating legacy marks, even on a light boot.
+    if (opts.bootstrap) await pull('finance_entries', localKeyForTable('finance_entries'));
+    const migrated = (await import('./finance-entries')).migrateLegacyFinance();
+    if (migrated > 0) await (await import('./sync-flush')).flushPendingSync();
+  }
 
   // Config — merge cloud into local so we don't overwrite fields
   // that may not exist in Supabase yet (e.g. rfc, regimenFiscal)
