@@ -38,3 +38,24 @@ it('does not claim a cloud backup includes unsynchronized changes', async () => 
   expect(api.export).not.toHaveBeenCalled();
   expect(api.upload).not.toHaveBeenCalled();
 });
+it('returns a failure even if local status storage is unavailable', async () => {
+  api.upload.mockResolvedValue({ error: new Error('Storage unavailable') });
+  const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new DOMException('Full', 'QuotaExceededError');
+  });
+  try {
+    expect((await autoBackupIfDue(true))?.message).toBe('Storage unavailable');
+  } finally {
+    spy.mockRestore();
+  }
+});
+it('returns cloud success even if persisting the confirmation fails', async () => {
+  const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new DOMException('Full', 'QuotaExceededError');
+  });
+  try {
+    expect((await autoBackupIfDue(true))?.state).toBe('success');
+  } finally {
+    spy.mockRestore();
+  }
+});

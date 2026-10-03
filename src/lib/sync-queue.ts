@@ -133,7 +133,8 @@ export function getPendingRecordIds(localKey: string): { upserts: Set<string>; d
 export function enqueueUpsert<T extends VersionedRecord>(table: SyncTable, item: T): void {
   const localKey = localKeyForTable(table);
   const timestamp = nowIso();
-  const previous = readSyncQueue().findLast((op) => op.table === table && op.recordId === item.id);
+  const sameRecord = readSyncQueue().filter((op) => op.table === table && op.recordId === item.id);
+  const previous = sameRecord.at(-1);
   if (previous?.action === 'recurrente_egreso') {
     throw new Error('Espera a que el gasto recurrente termine de sincronizar antes de editarlo');
   }
@@ -152,6 +153,9 @@ export function enqueueUpsert<T extends VersionedRecord>(table: SyncTable, item:
     attempts: 0,
   };
   writeEntry(entry);
+  for (const op of sameRecord) {
+    if (op.lastError?.includes('CONFLICT')) removeSyncQueueEntry(op.id);
+  }
 }
 
 export function enqueueDelete(table: SyncTable, recordId: string): void {

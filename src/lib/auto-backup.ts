@@ -29,7 +29,16 @@ function getLastBackup(): number {
 }
 
 function setLastBackup(): void {
-  localStorage.setItem(BACKUP_KEY, String(Date.now()));
+  try {
+    localStorage.setItem(BACKUP_KEY, String(Date.now()));
+  } catch {}
+}
+
+function persistStatus(owner: string | null, status: BackupStatus): void {
+  try {
+    if (owner === localStorage.getItem(ACTIVE_USER_KEY))
+      localStorage.setItem(BACKUP_STATUS_KEY, JSON.stringify(status));
+  } catch {}
 }
 
 /**
@@ -38,8 +47,9 @@ function setLastBackup(): void {
  * Silent — never blocks UI or throws.
  */
 export async function autoBackupIfDue(force = false): Promise<BackupStatus | null> {
-  const owner = localStorage.getItem(ACTIVE_USER_KEY);
+  let owner: string | null = null;
   try {
+    owner = localStorage.getItem(ACTIVE_USER_KEY);
     const last = getLastBackup();
     if (!force && Date.now() - last < BACKUP_INTERVAL_MS) return null;
 
@@ -81,7 +91,7 @@ export async function autoBackupIfDue(force = false): Promise<BackupStatus | nul
       source: 'cloud-team',
       message: 'Respaldo de registros del equipo confirmado en la nube',
     };
-    localStorage.setItem(BACKUP_STATUS_KEY, JSON.stringify(status));
+    persistStatus(owner, status);
     return status;
   } catch (error) {
     const status: BackupStatus = {
@@ -90,8 +100,7 @@ export async function autoBackupIfDue(force = false): Promise<BackupStatus | nul
       source: 'cloud-team',
       message: error instanceof Error ? error.message : 'No se pudo crear el respaldo',
     };
-    if (owner === localStorage.getItem(ACTIVE_USER_KEY))
-      localStorage.setItem(BACKUP_STATUS_KEY, JSON.stringify(status));
+    persistStatus(owner, status);
     return status;
   }
 }
