@@ -110,6 +110,10 @@ describe('durable synchronization', () => {
     await expect(flushPendingSync()).rejects.toThrow('CONFLICT');
     expect(readSyncQueue()).toHaveLength(1);
     expect(readSyncQueue()[0]).toMatchObject({ recordId: 'one', attempts: 1, lastError: 'CONFLICT: newer' });
+    cloud.write.mockClear();
+    await flushPendingSync();
+    expect(cloud.write).not.toHaveBeenCalled();
+    expect(readSyncQueue()).toHaveLength(1);
   });
   it('keeps a pending local record even when the cloud clock is newer', () => {
     const local = { id: 'one', updatedAt: '2026-01-01', nombre: 'Pending' };

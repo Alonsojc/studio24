@@ -59,7 +59,7 @@ async function drain(): Promise<number> {
   let synced = 0;
   let lastError: unknown;
   while (owner === localStorage.getItem(ACTIVE_USER_KEY)) {
-    const entry = readSyncQueue().find((op) => !tried.has(op.id));
+    const entry = readSyncQueue().find((op) => !tried.has(op.id) && !op.lastError?.includes('CONFLICT'));
     if (!entry) break;
     tried.add(entry.id);
     try {
