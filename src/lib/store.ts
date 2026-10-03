@@ -305,6 +305,9 @@ export function previewImportData(json: string): BackupPreview {
 
 export function importAllData(json: string): void {
   const { data } = parseAndValidateBackup(json);
+  storageKeys()
+    .filter((key) => key.startsWith('bordados_pull_cursor_'))
+    .forEach((key) => localStorage.removeItem(key));
   Object.entries(KEYS).forEach(([key, storageKey]) => {
     if (data[key] !== undefined) safeSetItem(storageKey, JSON.stringify(data[key]));
   });

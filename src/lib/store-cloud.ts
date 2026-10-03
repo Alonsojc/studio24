@@ -106,6 +106,14 @@ async function getAll<T>(table: string, filter?: DateFilter, forceFull = false):
     const team = localStorage.getItem(ACTIVE_TEAM_KEY);
     const localKey = localKeyForTable(table as SyncTable);
     const cursorKey = `bordados_pull_cursor_${owner}:${team}:${table}`;
+    // Advance only to versions already known before this request. Concurrent
+    // changes during cursor pagination must remain eligible for the next pull.
+    const startingVersions = localKey
+      ? readLocalArray<VersionedRecord>(localKey)
+          .map((row) => row.serverUpdatedAt || '')
+          .filter(Boolean)
+          .sort()
+      : [];
     const since =
       !forceFull && !filter && table !== 'recurrentes_log' && localKey && localStorage.getItem(localKey) !== null
         ? localStorage.getItem(cursorKey)
@@ -140,11 +148,7 @@ async function getAll<T>(table: string, filter?: DateFilter, forceFull = false):
       const incoming = result as VersionedRecord[];
       const merged = mergeCloudList(localKey, readLocalArray<VersionedRecord>(localKey), incoming);
       writeLocalJSON(localKey, merged);
-      const versions = incoming
-        .map((row) => row.serverUpdatedAt || '')
-        .filter(Boolean)
-        .sort();
-      if (versions.length) localStorage.setItem(cursorKey, versions[versions.length - 1]);
+      if (startingVersions.length) localStorage.setItem(cursorKey, startingVersions[startingVersions.length - 1]);
       if (since) return merged as T[];
     }
     return result;
