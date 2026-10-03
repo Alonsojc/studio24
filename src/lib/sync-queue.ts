@@ -216,7 +216,7 @@ export function removeSyncQueueEntry(id: string): void {
 export function acknowledgeSync(entry: SyncQueueEntry, result?: VersionedRecord): void {
   const queue = readSyncQueue().filter((op) => {
     if (op.id === entry.id) return false;
-    const earlier = op.createdAt < entry.createdAt || (op.createdAt === entry.createdAt && op.id < entry.id);
+    const earlier = op.createdAt < entry.createdAt;
     if (
       (result || entry.action === 'delete') &&
       earlier &&
@@ -228,9 +228,21 @@ export function acknowledgeSync(entry: SyncQueueEntry, result?: VersionedRecord)
     }
     return true;
   });
+  if (result || entry.action === 'delete') {
+    for (const op of queue) {
+      if (op.table === entry.table && op.recordId === entry.recordId && op.createdAt === entry.createdAt) {
+        // Equal timestamps across tabs are concurrent, not ordered by their random IDs.
+        markSyncQueueEntryFailed(
+          op.id,
+          new Error('CONFLICT: cambios simultaneos en otra pestana. Revisa ambas versiones.'),
+        );
+      }
+    }
+  }
   if (result) {
     for (const op of queue) {
       if (op.table === entry.table && op.recordId === entry.recordId && op.payload) {
+        if (op.createdAt === entry.createdAt) continue;
         op.payload = {
           ...(op.payload as Record<string, unknown>),
           serverUpdatedAt: result.serverUpdatedAt || result.updatedAt,
