@@ -10,7 +10,12 @@ const PHOTOS_STORE = 'photos';
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    const owner = localStorage.getItem('bordados_active_user_id');
+    if (!owner) {
+      reject(new Error('Sesion requerida para abrir cache local'));
+      return;
+    }
+    const req = indexedDB.open(`${DB_NAME}_${owner}`, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -118,9 +123,9 @@ export function removeFromIDB(key: string): void {
  * Drop all local IndexedDB data owned by the app. This is used on logout or
  * account switch so cached customer/financial records cannot leak users.
  */
-export function clearStudioDB(): void {
+export function clearStudioDB(owner?: string | null): void {
   if (typeof indexedDB === 'undefined') return;
-  const req = indexedDB.deleteDatabase(DB_NAME);
+  const req = indexedDB.deleteDatabase(owner ? `${DB_NAME}_${owner}` : DB_NAME);
   req.onerror = () => {};
 }
 
@@ -141,7 +146,9 @@ export async function restoreFromIDB(): Promise<boolean> {
     if (keys.length === 0) return false;
 
     // Check if localStorage has any bordados_ keys
-    const hasLocalData = keys.some((k) => localStorage.getItem(k as string) !== null);
+    const hasLocalData = keys.some(
+      (k) => k !== ownerKey && k.startsWith('bordados_') && localStorage.getItem(k as string) !== null,
+    );
     if (hasLocalData) {
       // localStorage has data — mirror it to IDB (in case IDB is stale)
       for (const key of keys) {

@@ -335,6 +335,7 @@ export function clearAllData(): void {
 
 export function clearSensitiveLocalData(): void {
   if (typeof window === 'undefined') return;
+  const owner = localStorage.getItem(ACTIVE_USER_KEY);
   sessionStorage.removeItem('studio24:before-restore');
   const keysToRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -344,7 +345,7 @@ export function clearSensitiveLocalData(): void {
     }
   }
   keysToRemove.forEach((key) => localStorage.removeItem(key));
-  clearStudioDB();
+  clearStudioDB(owner);
   localStorage.setItem('bordados_seeded', '1');
 }
 
