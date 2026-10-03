@@ -213,7 +213,12 @@ export function acknowledgeSync(entry: SyncQueueEntry, result?: VersionedRecord)
   const queue = readSyncQueue().filter((op) => {
     if (op.id === entry.id) return false;
     const earlier = op.createdAt < entry.createdAt || (op.createdAt === entry.createdAt && op.id < entry.id);
-    if (result && earlier && op.table === entry.table && op.recordId === entry.recordId) {
+    if (
+      (result || entry.action === 'delete') &&
+      earlier &&
+      op.table === entry.table &&
+      op.recordId === entry.recordId
+    ) {
       removeSyncQueueEntry(op.id);
       return false;
     }

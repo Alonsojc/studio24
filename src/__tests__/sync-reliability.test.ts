@@ -136,6 +136,17 @@ describe('durable synchronization', () => {
       local,
     ]);
   });
+  it('does not retry an older failed write after its newer deletion is confirmed', async () => {
+    enqueueUpsert('clientes', { id: 'deleted', nombre: 'Old' });
+    enqueueDelete('clientes', 'deleted');
+    cloud.write.mockRejectedValueOnce(new Error('Temporary network failure'));
+    cloud.remove.mockResolvedValueOnce(undefined);
+    await expect(flushPendingSync()).rejects.toThrow('Temporary');
+    expect(readSyncQueue()).toHaveLength(0);
+    cloud.write.mockClear();
+    await flushPendingSync();
+    expect(cloud.write).not.toHaveBeenCalled();
+  });
   it('does not resurrect cached deletions on subsequent pulls', () => {
     rememberDeleted(KEYS.clientes, ['one']);
     expect(mergeCloudList(KEYS.clientes, [{ id: 'one' }], [])).toEqual([]);
