@@ -60,13 +60,15 @@ export function apartadoStatuses(entries: FinanceEntry[]): ApartadoStatusMap {
 }
 
 // Legacy marks have no amount/date evidence; preserve the mark without inventing either.
-export function migrateLegacyFinance(): void {
+export function migrateLegacyFinance(): number {
   const entries = getFinanceEntries();
+  let migrated = 0;
   const add = (kind: FinanceEntry['kind'], period: string, amount: number, separated: boolean) => {
     if (entries.some((entry) => entry.kind === kind && entry.period === period)) return;
     const entry: FinanceEntry = { id: financeId(kind, period), kind, period, amount, separated, separatedAt: null };
     entries.push(entry);
     enqueueUpsert('finance_entries', entry);
+    migrated++;
   };
   const marks = JSON.parse(localStorage.getItem(EXTRA_BACKUP_KEYS.apartadosUtilidad) || '{}');
   for (const [period, value] of Object.entries(marks)) {
@@ -84,4 +86,5 @@ export function migrateLegacyFinance(): void {
     )
       add('perdida', String(loss.year), loss.monto, false);
   writeLocalJSON(KEYS.financeEntries, entries);
+  return migrated;
 }

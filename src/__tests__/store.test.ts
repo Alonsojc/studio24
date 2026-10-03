@@ -282,8 +282,8 @@ describe('Backup y Restore', () => {
     expect(localStorage.getItem('bordados_seeded')).toBe('1');
   });
 
-  it('bindLocalDataToUser limpia cache al cambiar de usuario', () => {
-    bindLocalDataToUser('u1');
+  it('bindLocalDataToUser limpia cache al cambiar de usuario', async () => {
+    await bindLocalDataToUser('u1');
     addCliente({
       id: 'c1',
       nombre: 'Usuario 1',
@@ -294,14 +294,14 @@ describe('Backup y Restore', () => {
       notas: '',
       createdAt: '2026-01-01T00:00:00Z',
     });
-    const cleared = bindLocalDataToUser('u2');
+    const cleared = await bindLocalDataToUser('u2');
     expect(cleared).toBe(true);
     expect(getClientes()).toHaveLength(0);
     expect(localStorage.getItem(ACTIVE_USER_KEY)).toBe('u2');
   });
 
-  it('bindLocalDataToUser conserva cache cuando el usuario no cambia', () => {
-    bindLocalDataToUser('u1');
+  it('bindLocalDataToUser conserva cache cuando el usuario no cambia', async () => {
+    await bindLocalDataToUser('u1');
     addCliente({
       id: 'c1',
       nombre: 'Usuario 1',
@@ -312,7 +312,7 @@ describe('Backup y Restore', () => {
       notas: '',
       createdAt: '2026-01-01T00:00:00Z',
     });
-    const cleared = bindLocalDataToUser('u1');
+    const cleared = await bindLocalDataToUser('u1');
     expect(cleared).toBe(false);
     expect(getClientes()).toHaveLength(1);
     expect(localStorage.getItem(ACTIVE_USER_KEY)).toBe('u1');

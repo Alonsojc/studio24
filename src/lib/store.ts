@@ -14,7 +14,14 @@ import {
   Diseno,
   PlantillaWhatsApp,
 } from './types';
-import { clearStudioDB, mirrorToIDB, removeFromIDB } from './db';
+import {
+  clearStudioDB,
+  mirrorToIDB,
+  removeFromIDB,
+  saveUserRecovery,
+  readUserRecovery,
+  deleteUserRecovery,
+} from './db';
 
 export const KEYS = {
   clientes: 'bordados_clientes',
@@ -59,7 +66,7 @@ export function storageKeys(): string[] {
   return keys;
 }
 
-export function preservePendingUserData(): void {
+export async function preservePendingUserData(): Promise<void> {
   const owner = localStorage.getItem(ACTIVE_USER_KEY);
   if (!owner) return;
   const keys = storageKeys().filter((key) => key.startsWith('bordados_'));
@@ -70,7 +77,12 @@ export function preservePendingUserData(): void {
     return;
   const snapshot = Object.fromEntries(keys.map((key) => [key, localStorage.getItem(key)]));
   // Quarantine pending data before logout; restore only for the same authenticated user.
-  safeSetItem(RECOVERY_PREFIX + owner, JSON.stringify(snapshot));
+  const raw = JSON.stringify(snapshot);
+  try {
+    localStorage.setItem(RECOVERY_PREFIX + owner, raw);
+  } catch {
+    await saveUserRecovery(owner, raw);
+  }
 }
 
 export function hasLocalBusinessData(): boolean {
@@ -349,23 +361,25 @@ export function clearSensitiveLocalData(): void {
   localStorage.setItem('bordados_seeded', '1');
 }
 
-export function bindLocalDataToUser(userId: string): boolean {
+export async function bindLocalDataToUser(userId: string): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   const activeUserId = localStorage.getItem(ACTIVE_USER_KEY);
   let cleared = false;
   if (activeUserId && activeUserId !== userId) {
-    preservePendingUserData();
+    await preservePendingUserData();
     clearSensitiveLocalData();
     cleared = true;
   }
   safeSetItem(ACTIVE_USER_KEY, userId);
-  const recovery = localStorage.getItem(RECOVERY_PREFIX + userId);
+  const recovery =
+    localStorage.getItem(RECOVERY_PREFIX + userId) || (await readUserRecovery(userId).catch(() => undefined));
   if (recovery) {
     const snapshot = JSON.parse(recovery) as Record<string, string>;
     for (const [key, value] of Object.entries(snapshot)) {
       if (key.startsWith('bordados_') && value !== null) safeSetItem(key, value);
     }
     localStorage.removeItem(RECOVERY_PREFIX + userId);
+    await deleteUserRecovery(userId).catch(() => {});
     cleared = false;
   }
   return cleared;

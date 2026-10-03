@@ -46,15 +46,15 @@ describe('durable synchronization', () => {
     expect(readSyncQueue().map((entry) => entry.recordId)).toEqual(['tab-a', 'tab-b']);
     expect(JSON.parse(exportAllData()).syncQueue).toHaveLength(2);
   });
-  it('quarantines expired-session changes and restores only the same user', () => {
+  it('quarantines expired-session changes and restores only the same user', async () => {
     writeLocalJSON(KEYS.clientes, [{ id: 'pending' }]);
     enqueueUpsert('clientes', { id: 'pending' });
-    preservePendingUserData();
+    await preservePendingUserData();
     clearSensitiveLocalData();
-    bindLocalDataToUser('another-user');
+    await bindLocalDataToUser('another-user');
     expect(readSyncQueue()).toEqual([]);
     expect(readLocalArray(KEYS.clientes)).toEqual([]);
-    bindLocalDataToUser('owner');
+    await bindLocalDataToUser('owner');
     expect(readSyncQueue()).toHaveLength(1);
     expect(readLocalArray(KEYS.clientes)).toEqual([{ id: 'pending' }]);
   });
@@ -114,6 +114,20 @@ describe('durable synchronization', () => {
     await flushPendingSync();
     expect(cloud.write).not.toHaveBeenCalled();
     expect(readSyncQueue()).toHaveLength(1);
+  });
+  it('supersedes an older failed write when a newer edit succeeds', async () => {
+    writeLocalJSON(KEYS.clientes, [{ id: 'one', nombre: 'New' }]);
+    enqueueUpsert('clientes', { id: 'one', nombre: 'Old' });
+    enqueueUpsert('clientes', { id: 'one', nombre: 'New' });
+    cloud.write
+      .mockRejectedValueOnce(new Error('Temporary network failure'))
+      .mockResolvedValueOnce({ id: 'one', nombre: 'New', serverUpdatedAt: 'v2' });
+    await expect(flushPendingSync()).rejects.toThrow('Temporary');
+    expect(readSyncQueue()).toHaveLength(0);
+    expect(readLocalArray(KEYS.clientes)).toEqual([{ id: 'one', nombre: 'New', serverUpdatedAt: 'v2' }]);
+    cloud.write.mockClear();
+    await flushPendingSync();
+    expect(cloud.write).not.toHaveBeenCalled();
   });
   it('keeps a pending local record even when the cloud clock is newer', () => {
     const local = { id: 'one', updatedAt: '2026-01-01', nombre: 'Pending' };

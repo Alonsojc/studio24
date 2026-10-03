@@ -210,7 +210,15 @@ export function removeSyncQueueEntry(id: string): void {
 }
 
 export function acknowledgeSync(entry: SyncQueueEntry, result?: VersionedRecord): void {
-  const queue = readSyncQueue().filter((op) => op.id !== entry.id);
+  const queue = readSyncQueue().filter((op) => {
+    if (op.id === entry.id) return false;
+    const earlier = op.createdAt < entry.createdAt || (op.createdAt === entry.createdAt && op.id < entry.id);
+    if (result && earlier && op.table === entry.table && op.recordId === entry.recordId) {
+      removeSyncQueueEntry(op.id);
+      return false;
+    }
+    return true;
+  });
   if (result) {
     for (const op of queue) {
       if (op.table === entry.table && op.recordId === entry.recordId && op.payload) {

@@ -518,7 +518,12 @@ export async function pullFromCloud(opts: { replaceEmpty?: boolean; bootstrap?: 
   const failure = results.find((result) => result.status === 'rejected');
   if (failure?.status === 'rejected') throw failure.reason;
   if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
-  if (finance && !opts.bootstrap) (await import('./finance-entries')).migrateLegacyFinance();
+  if (finance) {
+    // Fetch the canonical entries before migrating legacy marks, even on a light boot.
+    if (opts.bootstrap) await pull('finance_entries', localKeyForTable('finance_entries'));
+    const migrated = (await import('./finance-entries')).migrateLegacyFinance();
+    if (migrated > 0) await (await import('./sync-flush')).flushPendingSync();
+  }
 
   // Config — merge cloud into local so we don't overwrite fields
   // that may not exist in Supabase yet (e.g. rfc, regimenFiscal)

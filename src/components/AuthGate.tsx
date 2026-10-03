@@ -74,9 +74,10 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     let syncInFlight: Promise<void> | null = null;
     let bootDone = false;
 
-    const syncUserSession = (nextUser: User, kind: string): Promise<void> => {
+    const syncUserSession = async (nextUser: User, kind: string): Promise<void> => {
       if (syncInFlight) return syncInFlight;
-      const cacheWasCleared = bindLocalDataToUser(nextUser.id);
+      const cacheWasCleared = await bindLocalDataToUser(nextUser.id);
+      if (syncInFlight) return syncInFlight;
       const hasLocalData = hasLocalBusinessData();
       const shouldWriteEmptySnapshots = cacheWasCleared || !hasLocalData;
       const canSyncInBackground =
@@ -143,11 +144,17 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           setSessionError('');
           if (_event === 'INITIAL_SESSION' && !bootDone) return;
           if (!nextUser) {
-            preservePendingUserData();
-            clearSensitiveLocalData();
-            clearBootSync();
             setCurrentUser(null);
             setLoading(false);
+            try {
+              await preservePendingUserData();
+            } catch (error) {
+              reportError(error, { kind: 'pendingRecoveryFailed' });
+              setSessionError('No se pudo conservar el respaldo de cambios pendientes.');
+            } finally {
+              clearSensitiveLocalData();
+              clearBootSync();
+            }
             return;
           }
           if (cancelled) return;

@@ -133,4 +133,22 @@ describe('AuthGate background sync', () => {
     );
     expect(container.textContent).not.toContain('Aplicacion');
   });
+  it('hides the signed-out application and cleans data even if recovery fails', async () => {
+    mocks.pullFromCloud.mockResolvedValue(0);
+    mocks.preservePendingUserData.mockRejectedValueOnce(new Error('Storage full'));
+    await act(async () =>
+      root.render(
+        <AuthGate>
+          <div>Aplicacion</div>
+        </AuthGate>,
+      ),
+    );
+    await act(async () => {
+      authCallback('SIGNED_OUT', null);
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(container.textContent).not.toContain('Aplicacion');
+    expect(mocks.clearSensitiveLocalData).toHaveBeenCalledOnce();
+    expect(mocks.reportError).toHaveBeenCalledWith(expect.any(Error), { kind: 'pendingRecoveryFailed' });
+  });
 });

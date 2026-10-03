@@ -8,6 +8,54 @@ const STORE_NAME = 'keyval';
 // nuevas viven en Supabase Storage (ver src/lib/photos.ts).
 const PHOTOS_STORE = 'photos';
 
+async function recoveryStore<T>(owner: string, action: 'read' | 'write' | 'delete', value?: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let expired = false;
+    let transaction: IDBTransaction | undefined;
+    const timer = setTimeout(() => {
+      expired = true;
+      transaction?.abort();
+      reject(new Error('El almacenamiento de recuperacion no responde'));
+    }, 4000);
+    const request = indexedDB.open('studio24_pending_recovery', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('users');
+    request.onerror = () => {
+      clearTimeout(timer);
+      reject(request.error);
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      if (expired) {
+        db.close();
+        return;
+      }
+      const tx = db.transaction('users', action === 'read' ? 'readonly' : 'readwrite');
+      transaction = tx;
+      const store = tx.objectStore('users');
+      const operation =
+        action === 'read' ? store.get(owner) : action === 'write' ? store.put(value, owner) : store.delete(owner);
+      tx.oncomplete = () => {
+        clearTimeout(timer);
+        db.close();
+        resolve(operation.result as T);
+      };
+      tx.onabort = () => {
+        clearTimeout(timer);
+        db.close();
+        reject(tx.error);
+      };
+      tx.onerror = () => {
+        clearTimeout(timer);
+        db.close();
+        reject(tx.error);
+      };
+    };
+  });
+}
+export const saveUserRecovery = (owner: string, value: string) => recoveryStore<void>(owner, 'write', value);
+export const readUserRecovery = (owner: string) => recoveryStore<string | undefined>(owner, 'read');
+export const deleteUserRecovery = (owner: string) => recoveryStore<void>(owner, 'delete');
+
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const owner = localStorage.getItem('bordados_active_user_id');
