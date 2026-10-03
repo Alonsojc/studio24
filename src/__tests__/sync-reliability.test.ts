@@ -19,6 +19,7 @@ import {
   writeLocalJSON,
   mergeCloudList,
   rememberDeleted,
+  acknowledgeSync,
 } from '@/lib/sync-queue';
 import { flushPendingSync } from '@/lib/sync-flush';
 import { cachedCloudRequest, invalidateCloudCache } from '@/lib/cloud-cache';
@@ -143,6 +144,51 @@ describe('durable synchronization', () => {
     cloud.remove.mockResolvedValueOnce(undefined);
     await expect(flushPendingSync()).rejects.toThrow('Temporary');
     expect(readSyncQueue()).toHaveLength(0);
+    cloud.write.mockClear();
+    await flushPendingSync();
+    expect(cloud.write).not.toHaveBeenCalled();
+  });
+  it.each(['Old', 'New'])(
+    'requires explicit resolution for tied cross-tab timestamps, first payload %s',
+    async (first) => {
+      writeLocalJSON(KEYS.clientes, [{ id: 'one', nombre: 'New' }]);
+      enqueueUpsert('clientes', { id: 'one', nombre: 'Old', serverUpdatedAt: 'v1' });
+      enqueueUpsert('clientes', { id: 'one', nombre: 'New', serverUpdatedAt: 'v1' });
+      const entries = readSyncQueue();
+      for (const entry of entries) localStorage.removeItem(SYNC_ENTRY_PREFIX + entry.id);
+      for (const [index, entry] of entries.entries()) {
+        const nombre = index === 0 ? first : first === 'Old' ? 'New' : 'Old';
+        const id = index === 0 ? 'a-first' : 'b-second';
+        localStorage.setItem(
+          SYNC_ENTRY_PREFIX + id,
+          JSON.stringify({
+            ...entry,
+            id,
+            createdAt: '2026-10-03T12:00:00.000Z',
+            payload: { id: 'one', nombre, serverUpdatedAt: 'v1' },
+          }),
+        );
+      }
+      cloud.write.mockResolvedValueOnce({ id: 'one', nombre: first, serverUpdatedAt: 'v2' });
+      expect(await flushPendingSync()).toBe(1);
+      expect(cloud.write).toHaveBeenCalledOnce();
+      expect(readSyncQueue()).toHaveLength(1);
+      expect(readSyncQueue()[0].lastError).toContain('CONFLICT');
+      expect(readSyncQueue()[0].payload).toMatchObject({ serverUpdatedAt: 'v1' });
+      cloud.write.mockClear();
+      await flushPendingSync();
+      expect(cloud.write).not.toHaveBeenCalled();
+    },
+  );
+  it('preserves a tied write as a conflict after confirming deletion', async () => {
+    enqueueUpsert('clientes', { id: 'one', serverUpdatedAt: 'v1' });
+    enqueueDelete('clientes', 'one');
+    const [write, deletion] = readSyncQueue();
+    const tiedDeletion = { ...deletion, createdAt: write.createdAt };
+    localStorage.setItem(SYNC_ENTRY_PREFIX + deletion.id, JSON.stringify(tiedDeletion));
+    acknowledgeSync(tiedDeletion);
+    expect(readSyncQueue()).toHaveLength(1);
+    expect(readSyncQueue()[0].lastError).toContain('CONFLICT');
     cloud.write.mockClear();
     await flushPendingSync();
     expect(cloud.write).not.toHaveBeenCalled();
