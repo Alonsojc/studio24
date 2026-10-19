@@ -1,6 +1,14 @@
 'use client';
 
-import { EXTRA_BACKUP_KEYS, KEYS, SYNC_ENTRY_PREFIX, storageKeys, safeSetItem, type StoreStorageKey } from './store';
+import {
+  EXTRA_BACKUP_KEYS,
+  KEYS,
+  SYNC_ENTRY_PREFIX,
+  CUSTOMER_COMMAND_PREFIX,
+  storageKeys,
+  safeSetItem,
+  type StoreStorageKey,
+} from './store';
 import { removeFromIDB } from './db';
 
 export type SyncTable =
@@ -111,7 +119,8 @@ function writeEntry(entry: SyncQueueEntry): void {
 }
 
 export function hasPendingSync(): boolean {
-  return readSyncQueue().length > 0;
+  if (typeof window === 'undefined') return false;
+  return readSyncQueue().length > 0 || storageKeys().some((key) => key.startsWith(CUSTOMER_COMMAND_PREFIX));
 }
 
 export function hasPendingForLocalKey(localKey: string): boolean {

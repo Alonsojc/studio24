@@ -38,6 +38,8 @@ export const KEYS = {
   disenos: 'bordados_disenos',
   plantillas: 'bordados_plantillas',
   financeEntries: 'bordados_finance_entries',
+  customerAdvances: 'bordados_customer_advances',
+  customerMovements: 'bordados_customer_movements',
 } as const;
 
 export const EXTRA_BACKUP_KEYS = {
@@ -56,6 +58,7 @@ const KEEP_AFTER_CLEAR = new Set(['bordados_seeded']);
 export const ACTIVE_USER_KEY = 'bordados_active_user_id';
 export const ACTIVE_TEAM_KEY = 'bordados_active_team_id';
 export const SYNC_ENTRY_PREFIX = 'bordados_sync_entry_';
+export const CUSTOMER_COMMAND_PREFIX = 'bordados_customer_command_';
 const RECOVERY_PREFIX = 'studio24_recovery_';
 export function storageKeys(): string[] {
   const keys: string[] = [];
@@ -71,7 +74,7 @@ export async function preservePendingUserData(): Promise<void> {
   if (!owner) return;
   const keys = storageKeys().filter((key) => key.startsWith('bordados_'));
   if (
-    !keys.some((key) => key.startsWith(SYNC_ENTRY_PREFIX)) &&
+    !keys.some((key) => key.startsWith(SYNC_ENTRY_PREFIX) || key.startsWith(CUSTOMER_COMMAND_PREFIX)) &&
     !JSON.parse(localStorage.getItem(EXTRA_BACKUP_KEYS.syncQueue) || '[]').length
   )
     return;
@@ -249,6 +252,9 @@ export function exportAllData(): string {
     .filter((key) => key.startsWith(SYNC_ENTRY_PREFIX))
     .map((key) => JSON.parse(localStorage.getItem(key)!));
   data.syncQueue = [...((data.syncQueue as unknown[]) || []), ...operations];
+  data.customerCommands = storageKeys()
+    .filter((key) => key.startsWith(CUSTOMER_COMMAND_PREFIX))
+    .map((key) => JSON.parse(localStorage.getItem(key)!));
   return JSON.stringify(data, null, 2);
 }
 
@@ -321,6 +327,8 @@ export function importAllData(json: string): void {
     .filter((key) => key.startsWith('bordados_pull_cursor_'))
     .forEach((key) => localStorage.removeItem(key));
   Object.entries(KEYS).forEach(([key, storageKey]) => {
+    // Financial ledgers are restored from the authoritative cloud, never replayed.
+    if (['customerAdvances', 'customerMovements'].includes(key)) return;
     if (data[key] !== undefined) safeSetItem(storageKey, JSON.stringify(data[key]));
   });
   Object.entries(EXTRA_BACKUP_KEYS).forEach(([key, storageKey]) => {

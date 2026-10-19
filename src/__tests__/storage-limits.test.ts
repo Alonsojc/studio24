@@ -11,6 +11,10 @@ describe('límites de Storage', () => {
   it('rechaza tipos no permitidos', () => {
     expect(() => validateStorageUpload('photos', new Blob(['x'], { type: 'text/html' }))).toThrow('Tipo');
     expect(() => validateStorageUpload('facturas', new Blob(['x'], { type: 'image/png' }))).toThrow('Tipo');
+    expect(() => validateStorageUpload('customer-receipts', new Blob(['x'], { type: 'text/html' }))).toThrow('Tipo');
+    expect(() =>
+      validateStorageUpload('customer-receipts', new Blob(['x'], { type: 'application/pdf' })),
+    ).not.toThrow();
   });
 
   it('rechaza archivos demasiado grandes', () => {

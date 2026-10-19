@@ -27,11 +27,13 @@
     "date-fns": "^4.1.0",
     "html2canvas-pro": "^2.0.2",
     "jspdf": "^4.2.1",
+    "lucide-react": "1.59.0",
     "next": "16.3.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "write-excel-file": "4.1.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
@@ -43,6 +45,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "fflate": "0.8.3",
     "husky": "^9.1.7",
     "jsdom": "^29.0.2",
     "lint-staged": "^16.4.0",

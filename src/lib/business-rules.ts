@@ -12,6 +12,16 @@ export function calculatePedidoPaidAmount(pedido: Pick<Pedido, 'montoPagado' | '
   return Math.round(pagos.reduce((sum, pago) => sum + Math.max(0, pago.monto || 0), 0) * 100) / 100;
 }
 
+export function calculatePedidoCreditApplied(pedido: Pick<Pedido, 'pagos'>): number {
+  return (
+    Math.round(
+      (pedido.pagos || [])
+        .filter((pago) => pago.origen === 'saldo_cliente')
+        .reduce((sum, pago) => sum + pago.monto, 0) * 100,
+    ) / 100
+  );
+}
+
 export function calculateEstadoPago(montoTotal: number, montoPagado: number): EstadoPago {
   if (montoTotal > 0 && montoPagado >= montoTotal) return 'pagado';
   if (montoPagado > 0) return 'parcial';
@@ -72,21 +82,27 @@ export function hasIngresoForPedido(ingresos: Pick<Ingreso, 'pedidoId'>[], pedid
 
 export function canCreateIngresoForPedido(
   role: UserRole,
-  pedido: Pick<Pedido, 'id' | 'estado' | 'estadoPago' | 'montoPagado' | 'montoTotal'>,
+  pedido: Pick<Pedido, 'id' | 'estado' | 'estadoPago' | 'montoPagado' | 'montoTotal' | 'pagos'>,
   ingresos: Pick<Ingreso, 'pedidoId'>[],
 ): boolean {
   if (role !== 'admin' && role !== 'contador') return false;
   if (pedido.estado === 'cancelado') return false;
   if (pedido.montoTotal <= 0) return false;
+  if (calculatePedidoCreditApplied(pedido) >= pedido.montoTotal) return false;
   if (hasIngresoForPedido(ingresos, pedido.id)) return false;
   return pedido.estadoPago === 'pagado' || pedido.montoPagado >= pedido.montoTotal;
 }
 
 export function buildIngresoFromPedido(
-  pedido: Pick<Pedido, 'id' | 'clienteId' | 'descripcion' | 'concepto' | 'montoTotal'>,
+  pedido: Pick<Pedido, 'id' | 'clienteId' | 'descripcion' | 'concepto' | 'montoTotal' | 'pagos'>,
   opts: { id: string; conFactura: boolean; numeroFactura?: string; now?: Date },
 ): Ingreso {
-  const iva = opts.conFactura ? calcIVA(pedido.montoTotal) : 0;
+  const credit = calculatePedidoCreditApplied(pedido);
+  const cash = Math.round((pedido.montoTotal - credit) * 100) / 100;
+  if (cash <= 0) throw new Error('El pedido ya esta cubierto por adelantos registrados');
+  // Credit already entered cash when received. Only the additional collection is new.
+  const monto = credit > 0 && opts.conFactura ? Math.round((cash / 1.16) * 100) / 100 : cash;
+  const iva = opts.conFactura ? (credit > 0 ? Math.round((cash - monto) * 100) / 100 : calcIVA(monto)) : 0;
   const now = opts.now ?? new Date();
   return {
     id: opts.id,
@@ -95,13 +111,16 @@ export function buildIngresoFromPedido(
     pedidoId: pedido.id,
     descripcion: pedido.descripcion,
     concepto: pedido.concepto,
-    monto: pedido.montoTotal,
+    monto,
     iva,
-    montoTotal: pedido.montoTotal + iva,
+    montoTotal: Math.round((monto + iva) * 100) / 100,
     formaPago: 'transferencia',
     factura: opts.conFactura,
     numeroFactura: opts.conFactura ? opts.numeroFactura || '' : '',
-    notas: 'Generado desde pedido',
+    notas:
+      credit > 0
+        ? `Cobro adicional del pedido; ${credit.toFixed(2)} cubiertos con adelantos ya registrados`
+        : 'Generado desde pedido',
     createdAt: now.toISOString(),
   };
 }

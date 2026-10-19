@@ -3,6 +3,9 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Wallet } from 'lucide-react';
 import { v4 as uuid } from 'uuid';
 import { getClientes, getIngresos, getPedidos } from '@/lib/store';
 import { cloudGetClientes, cloudGetIngresos, cloudGetPedidos } from '@/lib/store-cloud';
@@ -22,6 +25,7 @@ function emptyCliente(): Omit<Cliente, 'id' | 'createdAt'> {
 }
 
 export default function ClientesPage() {
+  const router = useRouter();
   const { role } = useRole();
   const { data: clientesRaw, reload: reloadClientes } = useCloudStore(
     getClientes,
@@ -165,6 +169,10 @@ export default function ClientesPage() {
                   <ActionMenu
                     items={[
                       { label: 'Ver detalle', onClick: () => openDetail(c) },
+                      {
+                        label: 'Cuenta y movimientos',
+                        onClick: () => router.push(`/clientes/cuenta?cliente=${encodeURIComponent(c.id)}`),
+                      },
                       { label: 'Editar', onClick: () => openEdit(c) },
                       ...(role === 'admin'
                         ? [{ label: 'Eliminar', onClick: () => handleDelete(c.id), danger: true }]
@@ -235,6 +243,14 @@ export default function ClientesPage() {
                 <p className="text-sm text-neutral-500">{selectedCliente.notas}</p>
               </div>
             )}
+
+            <Link
+              href={`/clientes/cuenta?cliente=${encodeURIComponent(selectedCliente.id)}`}
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-neutral-200 px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+            >
+              <Wallet size={17} />
+              Cuenta y movimientos
+            </Link>
 
             {/* Pedidos del cliente */}
             {(() => {

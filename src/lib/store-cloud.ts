@@ -95,6 +95,7 @@ function toCamel<T>(obj: Record<string, unknown>): T {
   result.serverUpdatedAt = obj.updated_at;
   return result as T;
 }
+export { toCamel as fromCloudRecord };
 
 // --- Generic CRUD ---
 
@@ -187,6 +188,14 @@ export async function exportCloudBackup(): Promise<string> {
   );
   snapshot.config = await cloudGetConfig();
   snapshot.recurrentesLog = await cloudGetRecurrentesLog();
+  const ledger = await cloudGetCustomerCreditLedger();
+  snapshot.customerAdvances = ledger.advances;
+  snapshot.customerMovements = ledger.movements;
+  for (const key of ['pedidos', 'ingresos', 'clientes'] as const) {
+    const rows = new Map((snapshot[key] as VersionedRecord[]).map((row) => [row.id, row]));
+    for (const row of ledger[key]) rows.set(row.id, row);
+    snapshot[key] = [...rows.values()];
+  }
   if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio durante el respaldo');
   snapshot.backupMetadata = { source: 'cloud-team', teamId, createdAt: new Date().toISOString(), schemaVersion: 1 };
   return JSON.stringify(snapshot);
@@ -252,6 +261,23 @@ export async function cloudDeleteRecord(table: string, id: string, expected: str
 
 // --- Typed exports ---
 export const cloudGetFinanceEntries = () => getAll<import('./finance-entries').FinanceEntry>('finance_entries');
+export async function cloudGetCustomerCreditLedger() {
+  const owner = localStorage.getItem(ACTIVE_USER_KEY);
+  const { data, error } = await supabase.rpc('get_customer_credit_ledger').abortSignal(AbortSignal.timeout(20000));
+  if (error) throw error;
+  if (owner !== localStorage.getItem(ACTIVE_USER_KEY))
+    throw new Error('La sesion cambio al consultar el historial de saldos');
+  const raw = data as Record<string, Record<string, unknown>[]>;
+  if (!raw || !['advances', 'movements', 'pedidos', 'ingresos', 'clientes'].every((key) => Array.isArray(raw[key])))
+    throw new Error('No se pudo verificar el historial de saldos en la nube');
+  return {
+    advances: raw.advances.map((row) => toCamel<import('./customer-accounts').CustomerAdvance>(row)),
+    movements: raw.movements.map((row) => toCamel<import('./customer-accounts').CustomerMovement>(row)),
+    pedidos: raw.pedidos.map((row) => toCamel<Pedido>(row)),
+    ingresos: raw.ingresos.map((row) => toCamel<Ingreso>(row)),
+    clientes: raw.clientes.map((row) => toCamel<Cliente>(row)),
+  };
+}
 
 // Clientes
 export const cloudGetClientes = () => getAll<Cliente>('clientes');
@@ -510,10 +536,13 @@ export async function pullFromCloud(opts: { replaceEmpty?: boolean; bootstrap?: 
     tables.push(
       ...(opts.bootstrap ? ['egresos_recurrentes'] : ['ingresos', 'egresos', 'egresos_recurrentes', 'finance_entries']),
     );
-  else
+  else {
     for (const table of ['ingresos', 'egresos', 'egresos_recurrentes', 'finance_entries', 'recurrentes_log']) {
       writeLocalJSON(localKeyForTable(table as SyncTable), []);
     }
+    writeLocalJSON('bordados_customer_advances', []);
+    writeLocalJSON('bordados_customer_movements', []);
+  }
   const results = await Promise.allSettled(tables.map((table) => pull(table, localKeyForTable(table as SyncTable))));
   const failure = results.find((result) => result.status === 'rejected');
   if (failure?.status === 'rejected') throw failure.reason;

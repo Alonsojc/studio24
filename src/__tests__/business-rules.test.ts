@@ -151,4 +151,43 @@ describe('reglas de negocio de pedidos e ingresos', () => {
       factura: true,
     });
   });
+  it('does not generate a second income when a deposit fully paid the order', () => {
+    const prepaid: Pedido = {
+      ...pedido,
+      pagos: [
+        {
+          id: 'credit',
+          origen: 'saldo_cliente',
+          anticipoId: 'deposit',
+          monto: 1500,
+          formaPago: 'otro',
+          fecha: '2026-10-01',
+          referencia: '',
+          createdAt: '',
+        },
+      ],
+    };
+    expect(canCreateIngresoForPedido('admin', prepaid, [])).toBe(false);
+    expect(() => buildIngresoFromPedido(prepaid, { id: 'duplicate', conFactura: false })).toThrow('ya esta cubierto');
+  });
+  it('generates only the additional collection for a partly prepaid order', () => {
+    const partlyPrepaid: Pedido = {
+      ...pedido,
+      pagos: [
+        {
+          id: 'credit',
+          origen: 'saldo_cliente',
+          monto: 1000,
+          formaPago: 'otro',
+          fecha: '2026-10-01',
+          referencia: '',
+          createdAt: '',
+        },
+      ],
+    };
+    expect(buildIngresoFromPedido(partlyPrepaid, { id: 'cash-only', conFactura: false }).montoTotal).toBe(500);
+    const invoiced = buildIngresoFromPedido(partlyPrepaid, { id: 'cash-only', conFactura: true });
+    expect(invoiced.montoTotal).toBe(500);
+    expect(invoiced.monto + invoiced.iva).toBe(500);
+  });
 });

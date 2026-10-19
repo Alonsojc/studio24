@@ -88,6 +88,8 @@ export interface PagoPedido {
   formaPago: FormaPago;
   monto: number;
   referencia: string;
+  origen?: 'saldo_cliente';
+  anticipoId?: string;
   createdAt: string;
   updatedAt?: string;
 }
