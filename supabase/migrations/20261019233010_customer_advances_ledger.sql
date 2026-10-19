@@ -164,6 +164,11 @@ begin
       end if;
       v_amount:=v_income.monto_total; v_date:=v_income.fecha::date; v_income_id:=v_income.id;
       if v_date > (clock_timestamp() at time zone 'America/Mexico_City')::date then raise exception 'El ingreso tiene una fecha futura'; end if;
+      -- Re-linking a cancelled receipt must not add the same money to periods
+      -- before the previous cancellation. Its original cash date stays intact.
+      select greatest(v_date,max(m.fecha)) into v_date
+        from public.customer_account_movements m join public.customer_advances a on a.id=m.advance_id
+        where a.team_id=v_team and a.ingreso_id=v_income_id;
     elsif v_source='new' then
       v_amount:=(p_data->>'amount')::numeric;
       if v_amount is null or not(v_amount>0 and v_amount<=999999999999.99 and v_amount=round(v_amount,2)) then

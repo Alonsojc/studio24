@@ -6,6 +6,7 @@ Desde Clientes, abrir "Cuenta y movimientos". Administracion y contabilidad pued
 
 - Nuevo cobro: crea un ingreso y un adelanto en la misma transaccion. Confirmar que el dinero no esta registrado en Ingresos ni en los pagos de un pedido.
 - Ingreso existente: vincula un ingreso positivo de la misma clienta, sin pedido y sin otro adelanto vigente. No crea otro cobro.
+- Al volver a vincular un ingreso cuyo adelanto se anulo, la nueva disponibilidad no se fecha antes de su ultimo movimiento anterior. La fecha original del ingreso no cambia y los cortes historicos no duplican ese dinero.
 - Aplicar saldo: consume un adelanto hasta el menor entre disponible y pendiente del pedido. Un adelanto puede pagar varios pedidos; varios adelantos pueden pagar un pedido.
 - Revertir aplicacion: conserva ambos movimientos y devuelve el importe al adelanto. No registra una devolucion de efectivo.
 - Anular captura: requiere motivo y todas las aplicaciones revertidas. Si era nuevo cobro, pone su ingreso en cero; si era ingreso existente, lo conserva. No permite anular un ingreso con factura. No es un flujo de reembolso.

@@ -76,6 +76,11 @@ do $$ declare result jsonb; failed boolean; count_before int; begin
  assert failed, 'generating a whole-sale income would duplicate credit cash';
  perform public.customer_account_command('cancel','23000000-0000-0000-0000-000000000002','{"clienteId":"credit-client","advanceId":"21000000-0000-0000-0000-000000000002","fecha":"2026-10-04","notas":"Desvincular captura"}');
  assert (select monto_total=500 from public.ingresos where id='credit-existing-income'), 'cancelling a linked existing advance must preserve the original receipt';
+ perform public.customer_account_command('receive','21000000-0000-0000-0000-000000000007','{"clienteId":"credit-client","source":"existing","ingresoId":"credit-existing-income","fecha":"2026-10-03"}');
+ assert (select fecha>='2026-10-04'::date from public.customer_advances where id='21000000-0000-0000-0000-000000000007'), 'relinking must not precede the cancellation of its previous advance';
+ assert (select sum(case when m.kind in ('deposit','reverse_application') then m.amount else -m.amount end)=500
+   from public.customer_account_movements m join public.customer_advances a on a.id=m.advance_id
+   where a.ingreso_id='credit-existing-income' and m.fecha<'2026-10-04'), 'relinking must not double the historical balance of the same receipt';
  perform public.customer_account_command('receive','21000000-0000-0000-0000-000000000005','{"clienteId":"credit-client","source":"new","amount":100,"fecha":"2026-10-04","formaPago":"efectivo"}');
  perform public.customer_account_command('cancel','23000000-0000-0000-0000-000000000003','{"clienteId":"credit-client","advanceId":"21000000-0000-0000-0000-000000000005","fecha":"2026-10-04","notas":"Error de captura, no fue un cobro real"}');
  assert (select monto_total=0 from public.ingresos where id=(select ingreso_id from public.customer_advances where id='21000000-0000-0000-0000-000000000005'));
@@ -113,7 +118,7 @@ do $$ declare failed boolean:=false; begin
 end $$;
 select set_config('request.jwt.claim.sub','20000000-0000-0000-0000-000000000004',true);
 do $$ begin
- assert jsonb_array_length(public.get_customer_account('credit-client')->'advances')=4;
+ assert jsonb_array_length(public.get_customer_account('credit-client')->'advances')=5;
  perform public.customer_account_command('apply','22000000-0000-0000-0000-000000000006','{"clienteId":"credit-client","advanceId":"21000000-0000-0000-0000-000000000001","pedidoId":"credit-order-1","amount":100,"fecha":"2026-10-04"}');
  assert (select monto_pagado=100 from public.pedidos where id='credit-order-1'), 'accountant can apply credit atomically despite ordinary order write restrictions';
 end $$;
