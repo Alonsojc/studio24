@@ -97,8 +97,52 @@ try {
     (await sql("select monto_pagado from public.pedidos where id='concurrent-order-3'")).stdout.trim(),
     '700',
   );
+  const receiptsForOrder = await Promise.allSettled(
+    [1, 2].map((index) =>
+      sql(
+        authenticated(`do $receipt$ begin perform public.sync_write_record('ingresos',
+        jsonb_build_object('id','concurrent-cash-'||${index},'cliente_id','${client}','pedido_id','concurrent-order-3',
+          'descripcion','Cobro adicional','concepto','otro','monto',300,'monto_total',300,'fecha','2026-10-03'),
+        null,'concurrent-cash-operation-'||${index}); end $receipt$`),
+      ),
+    ),
+  );
+  assert.equal(
+    receiptsForOrder.filter((result) => result.status === 'fulfilled').length,
+    1,
+    'stale clients cannot both collect the remaining cash on a credit-backed order',
+  );
+  assert.equal(
+    (await sql("select sum(monto_total) from public.ingresos where pedido_id='concurrent-order-3'")).stdout.trim(),
+    '300',
+  );
+  await sql(authenticated(`update public.ingresos set monto=250,monto_total=250 where pedido_id='concurrent-order-3'`));
+  assert.equal(
+    (await sql("select sum(monto_total) from public.ingresos where pedido_id='concurrent-order-3'")).stdout.trim(),
+    '250',
+    'updating the existing receipt must exclude its old amount from the aggregate',
+  );
+  // Prove the aggregate guard independently of the one-income-per-order index.
+  // This schema change and both synthetic rows are rolled back in the local DB.
+  await sql(`begin;
+    drop index public.ingresos_team_pedido_unique;
+    set local role authenticated;
+    select set_config('request.jwt.claim.sub','${actor}',true);
+    do $aggregate$ declare failed boolean:=false; begin
+      perform public.sync_write_record('ingresos',jsonb_build_object('id','aggregate-extra-cash',
+        'cliente_id','${client}','pedido_id','concurrent-order-3','descripcion','Cobro adicional',
+        'concepto','otro','monto',50,'monto_total',50,'fecha','2026-10-03'),null,'aggregate-extra-operation');
+      begin
+        perform public.sync_write_record('ingresos',jsonb_build_object('id','aggregate-excess-cash',
+          'cliente_id','${client}','pedido_id','concurrent-order-3','descripcion','Cobro excesivo',
+          'concepto','otro','monto',1,'monto_total',1,'fecha','2026-10-03'),null,'aggregate-excess-operation');
+      exception when others then failed:=sqlerrm like 'CONFLICT:%'; end;
+      assert failed, 'aggregate cash plus credit may not exceed the order even without the unique index';
+      update public.ingresos set monto=250,monto_total=250 where pedido_id='concurrent-order-3' and id<>'aggregate-extra-cash';
+    end $aggregate$;
+    rollback;`);
   console.log(
-    'Customer credit concurrency: duplicate receipt retry, double spend and order overpayment checks passed.',
+    'Customer credit concurrency: receipt retries, double spending, order overpayment and concurrent cash receipts passed.',
   );
 } finally {
   await sql(

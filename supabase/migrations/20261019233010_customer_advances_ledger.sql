@@ -277,7 +277,7 @@ revoke all on function app_private.order_has_customer_credit(text) from public,a
 grant execute on function app_private.order_has_customer_credit(text) to authenticated;
 create function app_private.guard_customer_credit() returns trigger
 language plpgsql security invoker set search_path='' as $$
-declare v_old jsonb; v_new jsonb; v_credit numeric; v_paid numeric;
+declare v_old jsonb; v_new jsonb; v_credit numeric; v_paid numeric; v_other_income numeric;
 begin
   if current_user not in ('authenticated','anon') then
     if tg_op='DELETE' then return old; else return new; end if;
@@ -299,7 +299,10 @@ begin
       perform pg_advisory_xact_lock(hashtextextended(new.team_id::text||':pedidos:'||new.pedido_id,0));
       select coalesce(sum(case when kind='apply' then amount else -amount end),0) into v_credit
         from public.customer_account_movements where team_id=new.team_id and pedido_id=new.pedido_id and kind in ('apply','reverse_application');
-      if v_credit>0 and new.monto_total>(select monto_total from public.pedidos where id=new.pedido_id and team_id=new.team_id)-v_credit then
+      select coalesce(sum(i.monto_total),0) into v_other_income from public.ingresos i
+        where i.team_id=new.team_id and i.pedido_id=new.pedido_id
+        and i.id is distinct from case when tg_op='UPDATE' then old.id else new.id end;
+      if v_credit>0 and v_other_income+new.monto_total>(select monto_total from public.pedidos where id=new.pedido_id and team_id=new.team_id)-v_credit then
         raise exception 'CONFLICT: este pedido usa saldo a favor; registra solo el cobro adicional';
       end if;
     end if;
