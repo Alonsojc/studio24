@@ -74,6 +74,19 @@ export const movementLabel: Record<CustomerMovementKind, string> = {
   cancel: 'Adelanto anulado',
 };
 export const toCents = (amount: number) => Math.round(amount * 100);
+export function customerAccountToday(now = new Date()): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Mexico_City',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts(now)
+      .map(({ type, value }) => [type, value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
 export const movementCredit = (movement: CustomerMovement) =>
   ['deposit', 'reverse_application'].includes(movement.kind);
 export const movementDelta = (movement: CustomerMovement) =>

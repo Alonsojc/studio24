@@ -22,12 +22,13 @@ import {
   advanceBalance,
   accountBalance,
   buildCustomerStatement,
+  customerAccountToday,
   movementLabel,
   pendingOrderAmount,
 } from '@/lib/customer-accounts';
 import { accountFileName, advanceFolio } from '@/lib/customer-account-export';
 import { useCustomerAccount } from '@/lib/useCustomerAccount';
-import { formatCurrency, formatDate, formaPagoLabel, todayString } from '@/lib/helpers';
+import { formatCurrency, formatDate, formaPagoLabel } from '@/lib/helpers';
 import { btnPrimary, inputClass, labelClass } from '@/lib/styles';
 import CustomerAccountForm, { type AccountEditor } from './CustomerAccountForm';
 import { openCustomerReceipt } from '@/lib/customer-receipts';
@@ -253,7 +254,7 @@ export default function CustomerAccountView({ clienteId, pedidoId = '' }: { clie
             type="date"
             className={`${inputClass} max-w-48`}
             value={from}
-            max={to || todayString()}
+            max={to || customerAccountToday()}
             onChange={(event) => setFrom(event.target.value)}
           />
         </div>
@@ -267,7 +268,7 @@ export default function CustomerAccountView({ clienteId, pedidoId = '' }: { clie
             className={`${inputClass} max-w-48`}
             value={to}
             min={from}
-            max={todayString()}
+            max={customerAccountToday()}
             onChange={(event) => setTo(event.target.value)}
           />
         </div>

@@ -5,13 +5,14 @@ import Modal from '@/components/Modal';
 import {
   advanceBalance,
   availableIncomes,
+  customerAccountToday,
   pendingOrderAmount,
   type CustomerAccount,
   type CustomerCommand,
   type CustomerMovement,
 } from '@/lib/customer-accounts';
 import { advanceFolio } from '@/lib/customer-account-export';
-import { formaPagoLabel, formatCurrency, todayString } from '@/lib/helpers';
+import { formaPagoLabel, formatCurrency } from '@/lib/helpers';
 import { btnPrimary, btnSecondary, inputClass, labelClass } from '@/lib/styles';
 import type { FormaPago } from '@/lib/types';
 
@@ -47,7 +48,7 @@ export default function CustomerAccountForm({
   const [source, setSource] = useState<'new' | 'existing'>('new');
   const [incomeId, setIncomeId] = useState('');
   const [amount, setAmount] = useState('');
-  const [fecha, setFecha] = useState(todayString());
+  const [fecha, setFecha] = useState(customerAccountToday());
   const [formaPago, setFormaPago] = useState<FormaPago>('transferencia');
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
@@ -261,7 +262,7 @@ export default function CustomerAccountForm({
                 className={inputClass}
                 type="date"
                 value={fecha}
-                max={todayString()}
+                max={customerAccountToday()}
                 onChange={(event) => setFecha(event.target.value)}
                 required
                 disabled={busy}

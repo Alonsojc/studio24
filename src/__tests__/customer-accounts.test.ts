@@ -4,6 +4,7 @@ import {
   advanceBalance,
   availableIncomes,
   buildCustomerStatement,
+  customerAccountToday,
   loadCustomerAccount,
   newCustomerCommand,
   pendingCustomerCommands,
@@ -72,6 +73,11 @@ beforeEach(() => {
   api.rpc.mockImplementation(() => ({ abortSignal: () => api.response() }));
 });
 describe('customer account math and statements', () => {
+  it('uses the same Mexico City business date as SQL after midnight UTC', () => {
+    expect(customerAccountToday(new Date('2026-10-19T23:59:59Z'))).toBe('2026-10-19');
+    expect(customerAccountToday(new Date('2026-10-20T00:05:00Z'))).toBe('2026-10-19');
+    expect(customerAccountToday(new Date('2026-10-20T06:00:00Z'))).toBe('2026-10-20');
+  });
   it('traces applications and reversals without adding cash twice', () => {
     const account = accountFixture();
     expect(accountBalance(account.movements)).toBe(3800);
