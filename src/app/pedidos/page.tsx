@@ -3,6 +3,8 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { Wallet } from 'lucide-react';
 import { v4 as uuid } from 'uuid';
 import { getPedidos, getClientes, getIngresos } from '@/lib/store';
 import { cloudGetPedidosPage, cloudGetClientes, cloudGetIngresosByYear } from '@/lib/store-cloud';
@@ -25,6 +27,7 @@ import {
   buildPedidoPayment,
   calculateEstadoPago,
   calculatePedidoPaidAmount,
+  calculatePedidoCreditApplied,
   calculatePedidoTotal,
   canCreateIngresoForPedido,
 } from '@/lib/business-rules';
@@ -154,7 +157,7 @@ export default function PedidosPage() {
   const openEdit = (p: Pedido) => {
     setEditingId(p.id);
     setForm({ ...p, pagos: p.pagos || [], inventarioUsado: p.inventarioUsado || [] });
-    setFormSnapshot(JSON.stringify(p));
+    setFormSnapshot(JSON.stringify({ ...p, pagos: p.pagos || [], inventarioUsado: p.inventarioUsado || [] }));
     setFormError(null);
     setPaymentAmount('');
     setPaymentReferencia('');
@@ -1010,7 +1013,9 @@ export default function PedidosPage() {
                   step="0.01"
                   min="0"
                   value={calculatePedidoPaidAmount(form) || ''}
+                  readOnly={calculatePedidoCreditApplied(form) > 0}
                   onChange={(e) => {
+                    if (calculatePedidoCreditApplied(form) > 0) return;
                     const montoPagado = parseFloat(e.target.value) || 0;
                     setForm({
                       ...form,
@@ -1049,7 +1054,7 @@ export default function PedidosPage() {
                   {(form.pagos || []).map((pago) => (
                     <div key={pago.id} className="flex items-center justify-between text-xs">
                       <span className="text-neutral-500">
-                        {formatDate(pago.fecha)} · {pago.formaPago}
+                        {formatDate(pago.fecha)} · {pago.origen === 'saldo_cliente' ? 'Saldo a favor' : pago.formaPago}
                         {pago.referencia ? ` · ${pago.referencia}` : ''}
                       </span>
                       <span className="font-bold text-[#0a0a0a]">{formatCurrency(pago.monto)}</span>
@@ -1058,6 +1063,22 @@ export default function PedidosPage() {
                 </div>
               ) : (
                 <p className="text-xs text-neutral-300 mb-3">Sin pagos detallados todavía</p>
+              )}
+              {editingId && role === 'admin' && form.clienteId && (
+                <Link
+                  href={`/clientes/cuenta?cliente=${encodeURIComponent(form.clienteId)}&pedido=${encodeURIComponent(editingId)}`}
+                  onClick={(event) => {
+                    if (
+                      JSON.stringify(form) !== formSnapshot &&
+                      !confirm('Hay cambios sin guardar en el pedido. ¿Continuar a la cuenta de la clienta?')
+                    )
+                      event.preventDefault();
+                  }}
+                  className="mb-4 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-[#c72a09]"
+                >
+                  <Wallet size={16} />
+                  Aplicar saldo a favor
+                </Link>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr] gap-2">
                 <input

@@ -1,4 +1,8 @@
 export const STORAGE_LIMITS = {
+  'customer-receipts': {
+    maxBytes: 10 * 1024 * 1024,
+    mimeTypes: ['application/pdf', 'image/jpeg', 'image/png'],
+  },
   backups: {
     maxBytes: 5 * 1024 * 1024,
     mimeTypes: ['application/json', 'text/plain'],

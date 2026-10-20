@@ -14,3 +14,5 @@ for file in supabase/migrations/*.sql; do
   psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$file"
 done
 psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-reliability.sql
+psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-customer-accounts.sql
+node scripts/test-customer-concurrency.mjs

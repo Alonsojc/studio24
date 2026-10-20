@@ -45,7 +45,12 @@ export default function Modal({ open, onClose, title, children, dirty }: ModalPr
         if (e.target === overlayRef.current) safeClose();
       }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-3 sm:mx-4 max-h-[90dvh] overflow-y-auto">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-3 sm:mx-4 max-h-[90dvh] overflow-y-auto"
+      >
         <div className="flex items-center justify-between px-5 sm:px-6 py-4 sm:py-5 border-b border-neutral-100 sticky top-0 bg-white z-10">
           <h2 className="text-sm font-bold tracking-[0.05em] text-[#0a0a0a] uppercase">{title}</h2>
           <button
