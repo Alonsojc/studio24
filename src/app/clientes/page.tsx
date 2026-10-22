@@ -4,8 +4,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Wallet } from 'lucide-react';
+import { Plus, Wallet } from 'lucide-react';
 import { v4 as uuid } from 'uuid';
 import { getClientes, getIngresos, getPedidos } from '@/lib/store';
 import { cloudGetClientes, cloudGetIngresos, cloudGetPedidos } from '@/lib/store-cloud';
@@ -25,7 +24,6 @@ function emptyCliente(): Omit<Cliente, 'id' | 'createdAt'> {
 }
 
 export default function ClientesPage() {
-  const router = useRouter();
   const { role } = useRole();
   const { data: clientesRaw, reload: reloadClientes } = useCloudStore(
     getClientes,
@@ -116,7 +114,7 @@ export default function ClientesPage() {
         }
       />
 
-      <div className="mb-8">
+      <div className="mb-5">
         <div className="relative max-w-md">
           <svg
             className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-300"
@@ -155,24 +153,41 @@ export default function ClientesPage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
           {filtered.map((c) => {
             const total = clienteTotal(c.id);
             const count = clienteIngresos(c.id).length;
+            const accountHref = `/clientes/cuenta?cliente=${encodeURIComponent(c.id)}`;
             return (
-              <div
+              <article
                 key={c.id}
-                onClick={() => openDetail(c)}
-                className="bg-white rounded-2xl border border-neutral-100 p-6 hover:border-neutral-300 transition-all cursor-pointer group relative"
+                aria-label={c.nombre}
+                className="flex min-w-0 flex-col bg-white rounded-lg border border-neutral-200 p-3.5 hover:border-neutral-300 transition-colors"
               >
-                <div className="absolute top-4 right-4">
+                <div className="flex min-w-0 items-start gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openDetail(c)}
+                    aria-label={`Ver detalle de ${c.nombre}`}
+                    className="flex min-w-0 flex-1 items-start gap-2.5 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c72a09]"
+                  >
+                    {c.logo ? (
+                      <img src={c.logo} alt="" className="w-8 h-8 shrink-0 rounded-md object-cover" />
+                    ) : (
+                      <span className="w-8 h-8 shrink-0 rounded-md bg-[#0a0a0a] text-white flex items-center justify-center text-xs font-bold">
+                        {c.nombre.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="min-w-0">
+                      <span className="block break-words text-sm font-bold leading-5 text-[#0a0a0a]">{c.nombre}</span>
+                      <span className="mt-0.5 block break-all text-xs leading-4 text-neutral-500">
+                        {c.telefono || c.email || 'Sin contacto'}
+                      </span>
+                    </span>
+                  </button>
                   <ActionMenu
                     items={[
                       { label: 'Ver detalle', onClick: () => openDetail(c) },
-                      {
-                        label: 'Cuenta y movimientos',
-                        onClick: () => router.push(`/clientes/cuenta?cliente=${encodeURIComponent(c.id)}`),
-                      },
                       { label: 'Editar', onClick: () => openEdit(c) },
                       ...(role === 'admin'
                         ? [{ label: 'Eliminar', onClick: () => handleDelete(c.id), danger: true }]
@@ -180,25 +195,33 @@ export default function ClientesPage() {
                     ]}
                   />
                 </div>
-                {c.logo ? (
-                  <img src={c.logo} alt={c.nombre} className="w-10 h-10 rounded-xl object-cover mb-3" />
-                ) : (
-                  <div className="w-10 h-10 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center text-sm font-black mb-3">
-                    {c.nombre.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <h3 className="font-bold text-[#0a0a0a] group-hover:text-[#c72a09] transition-colors">{c.nombre}</h3>
-                {c.telefono && <p className="text-xs text-neutral-400 mt-1">{c.telefono}</p>}
-                {c.email && <p className="text-xs text-neutral-400">{c.email}</p>}
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-neutral-50">
-                  <p className="text-[10px] text-neutral-300 uppercase tracking-wide font-bold">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 mt-auto pt-1.5">
+                  <p className="text-[11px] text-neutral-500">
                     {count} ventas &middot;{' '}
                     {clientePedidos(c.id).filter((p) => p.estado !== 'entregado' && p.estado !== 'cancelado').length}{' '}
                     pedidos activos
                   </p>
-                  <p className="text-sm font-black text-green-600">{formatCurrency(total)}</p>
+                  <p className="text-sm font-bold text-green-600 tabular-nums">{formatCurrency(total)}</p>
                 </div>
-              </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 pt-1 border-t border-neutral-100">
+                  <Link
+                    href={accountHref}
+                    className="inline-flex min-h-10 items-center gap-1.5 rounded-sm text-xs font-semibold text-neutral-700 hover:text-[#c72a09] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c72a09]"
+                  >
+                    <Wallet size={15} aria-hidden="true" />
+                    Cuenta y movimientos
+                  </Link>
+                  {(role === 'admin' || role === 'contador') && (
+                    <Link
+                      href={`${accountHref}&accion=adelanto`}
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-sm text-xs font-semibold text-[#c72a09] hover:text-[#a82207] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c72a09]"
+                    >
+                      <Plus size={15} aria-hidden="true" />
+                      Registrar adelanto
+                    </Link>
+                  )}
+                </div>
+              </article>
             );
           })}
         </div>

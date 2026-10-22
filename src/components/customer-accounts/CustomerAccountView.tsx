@@ -39,12 +39,23 @@ const commandButton =
   'inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-40';
 const cell = 'px-4 py-3 text-sm align-top';
 
-export default function CustomerAccountView({ clienteId, pedidoId = '' }: { clienteId: string; pedidoId?: string }) {
+export default function CustomerAccountView({
+  clienteId,
+  pedidoId = '',
+  initialAction,
+}: {
+  clienteId: string;
+  pedidoId?: string;
+  initialAction?: 'receive';
+}) {
   const { role } = useRole();
   const state = useCustomerAccount(clienteId);
   const { account, confirmed, refreshing, busy, error, pending } = state;
+  const canManageAccount = role === 'admin' || role === 'contador';
   const [tab, setTab] = useState<'advances' | 'movements' | 'orders'>('advances');
-  const [editor, setEditor] = useState<AccountEditor | null>(null);
+  const [editor, setEditor] = useState<AccountEditor | null>(() =>
+    initialAction === 'receive' && canManageAccount && !pending.length ? { action: 'receive' } : null,
+  );
   const [expanded, setExpanded] = useState<string | null>(null);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -54,7 +65,7 @@ export default function CustomerAccountView({ clienteId, pedidoId = '' }: { clie
   const statement = validRange ? buildCustomerStatement(account, from, to) : null;
   const available = accountBalance(account.movements);
   const reverseIds = new Set(account.movements.map((movement) => movement.reversesId).filter(Boolean));
-  const canMove = confirmed && !busy && !pending.length && (role === 'admin' || role === 'contador');
+  const canMove = confirmed && !busy && !pending.length && canManageAccount;
   const openEditor = (next: AccountEditor) => {
     setExportError('');
     setEditor(next);
@@ -547,6 +558,7 @@ export default function CustomerAccountView({ clienteId, pedidoId = '' }: { clie
           account={account}
           clienteId={clienteId}
           busy={busy}
+          disabled={!canManageAccount || (!confirmed && !pending.length)}
           error={error}
           pendingCommand={pending[0]}
           onRetry={state.retry}

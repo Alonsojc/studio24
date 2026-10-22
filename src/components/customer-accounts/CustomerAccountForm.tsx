@@ -27,6 +27,7 @@ interface Props {
   account: CustomerAccount;
   clienteId: string;
   busy: boolean;
+  disabled?: boolean;
   error: string;
   pendingCommand?: CustomerCommand;
   onRetry: (command: CustomerCommand) => Promise<boolean>;
@@ -38,6 +39,7 @@ export default function CustomerAccountForm({
   account,
   clienteId,
   busy,
+  disabled = false,
   error,
   pendingCommand,
   onRetry,
@@ -75,7 +77,7 @@ export default function CustomerAccountForm({
   );
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (busy) return;
+    if (busy || disabled) return;
     if (pendingCommand) {
       if (await onRetry(pendingCommand)) onClose();
       return;
@@ -106,7 +108,15 @@ export default function CustomerAccountForm({
       dirty={!pendingCommand && Boolean(amount || reference || notes || receipt)}
     >
       <form onSubmit={(event) => void submit(event)} className="space-y-4">
-        <fieldset disabled={busy || Boolean(pendingCommand)} className="space-y-4">
+        {account.cliente && (
+          <p className="break-words text-sm font-semibold text-neutral-700">{account.cliente.nombre}</p>
+        )}
+        {disabled && (
+          <p role="status" className="text-xs text-neutral-500">
+            Esperando la confirmacion de la cuenta...
+          </p>
+        )}
+        <fieldset disabled={busy || disabled || Boolean(pendingCommand)} className="space-y-4">
           {editor.action === 'receive' && (
             <>
               <div className="flex border-b border-neutral-200" aria-label="Origen del adelanto">
@@ -355,7 +365,7 @@ export default function CustomerAccountForm({
           <button type="button" className={btnSecondary} disabled={busy} onClick={onClose}>
             Cancelar
           </button>
-          <button type="submit" className={`${btnPrimary} disabled:opacity-50`} disabled={busy}>
+          <button type="submit" className={`${btnPrimary} disabled:opacity-50`} disabled={busy || disabled}>
             {busy ? 'Confirmando...' : pendingCommand ? 'Reintentar confirmacion' : 'Confirmar movimiento'}
           </button>
         </div>
