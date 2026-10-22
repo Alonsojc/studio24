@@ -93,7 +93,13 @@ jobs:
           PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: "60000"
         # The configured headless project uses this same Chromium headless shell.
         # Skip the separate headed browser download; retain all OS dependencies.
-        run: npx playwright install --with-deps --only-shell chromium
+        run: |
+          # Avoid stalled Azure mirror downloads. Existing APT sources retain
+          # Ubuntu's Signed-By keyring and package integrity verification.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            echo 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          fi
+          npx playwright install --with-deps --only-shell chromium
 
       - name: Playwright tests
         env:
