@@ -189,33 +189,38 @@ export async function restoreFromIDB(): Promise<boolean> {
     const owner = localStorage.getItem(ownerKey);
     const mirroredOwner = await idbGet<string>(STORE_NAME, ownerKey);
     // Never restore unowned legacy data or another account's cache.
-    if (!owner || mirroredOwner !== owner) return false;
-    const keys = await idbGetAllKeys(STORE_NAME);
+    if (!owner || mirroredOwner !== owner || localStorage.getItem(ownerKey) !== owner) return false;
+    const keys = (await idbGetAllKeys(STORE_NAME)).filter((key) => key !== ownerKey && key.startsWith('bordados_'));
     if (keys.length === 0) return false;
+    if (localStorage.getItem(ownerKey) !== owner) return false;
 
     // Check if localStorage has any bordados_ keys
-    const hasLocalData = keys.some(
-      (k) => k !== ownerKey && k.startsWith('bordados_') && localStorage.getItem(k as string) !== null,
-    );
+    const hasLocalData = keys.some((key) => localStorage.getItem(key) !== null);
     if (hasLocalData) {
       // localStorage has data — mirror it to IDB (in case IDB is stale)
       for (const key of keys) {
-        const local = localStorage.getItem(key as string);
+        if (localStorage.getItem(ownerKey) !== owner) return false;
+        const local = localStorage.getItem(key);
         if (local) {
-          await idbPut(STORE_NAME, key as string, local);
+          await idbPut(STORE_NAME, key, local);
         }
       }
       return false;
     }
 
     // localStorage empty, IDB has data → restore
+    let restored = false;
     for (const key of keys) {
-      const value = await idbGet<string>(STORE_NAME, key as string);
-      if (value) {
-        localStorage.setItem(key as string, value);
+      const value = await idbGet<string>(STORE_NAME, key);
+      if (localStorage.getItem(ownerKey) !== owner) return false;
+      // A cloud response or another tab may have written newer data while IDB was read.
+      if (value && localStorage.getItem(key) === null) {
+        localStorage.setItem(key, value);
+        window.dispatchEvent(new CustomEvent('studio24:local-change', { detail: key }));
+        restored = true;
       }
     }
-    return true;
+    return restored;
   } catch {
     return false;
   }
