@@ -9,6 +9,7 @@ import {
   emptyCollections,
   daysOverdue,
   collectionWhatsApp,
+  collectionAccountPath,
   saveCollectionFollowup,
   type CollectionRow,
   type CollectionPage,
@@ -31,16 +32,19 @@ function CollectionActions({
   edit: (row: CollectionRow) => void;
 }) {
   const whatsapp = collectionWhatsApp(row);
+  const account = collectionAccountPath(row);
   return (
     <div className="flex gap-1 md:justify-end">
-      <Link
-        href={`/clientes/cuenta?cliente=${encodeURIComponent(row.clienteId)}`}
-        title="Cuenta y estado de cuenta"
-        aria-label={`Cuenta de ${row.clienteNombre}`}
-        className="p-3 rounded-lg hover:bg-neutral-100"
-      >
-        <Wallet size={17} />
-      </Link>
+      {account && (
+        <Link
+          href={account}
+          title="Cuenta y estado de cuenta"
+          aria-label={`Cuenta de ${row.clienteNombre}`}
+          className="p-3 rounded-lg hover:bg-neutral-100"
+        >
+          <Wallet size={17} />
+        </Link>
+      )}
       {whatsapp && (
         <a
           href={whatsapp}
@@ -178,15 +182,17 @@ export default function CollectionsPage() {
           <tbody>
             {data.rows.map((row) => {
               const late = daysOverdue(row.paymentDueDate, today);
+              const account = collectionAccountPath(row);
               return (
                 <tr key={row.id} className="border-b border-neutral-100 align-top">
                   <td className="py-4 px-3 max-w-xs">
-                    <Link
-                      href={`/clientes/cuenta?cliente=${encodeURIComponent(row.clienteId)}`}
-                      className="font-semibold hover:underline"
-                    >
-                      {row.clienteNombre || 'Sin cliente'}
-                    </Link>
+                    {account ? (
+                      <Link href={account} className="font-semibold hover:underline">
+                        {row.clienteNombre}
+                      </Link>
+                    ) : (
+                      <span className="font-semibold text-amber-800">Cliente no disponible</span>
+                    )}
                     <p className="text-xs text-neutral-500 mt-1 break-words">{row.descripcion}</p>
                     <div className="md:hidden text-xs text-neutral-500 mt-3 space-y-1">
                       <p>
@@ -252,7 +258,7 @@ export default function CollectionsPage() {
           className="space-y-4"
         >
           <p className="text-sm font-semibold">
-            {editing?.clienteNombre} · {editing?.descripcion}
+            {editing?.clienteNombre || 'Cliente no disponible'} · {editing?.descripcion}
           </p>
           <div>
             <label htmlFor="collection-due" className={labelClass}>

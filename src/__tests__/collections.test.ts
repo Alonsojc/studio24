@@ -1,6 +1,13 @@
 import { expect, it, vi } from 'vitest';
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
-import { collectionWhatsApp, daysOverdue, type CollectionRow } from '@/lib/collections';
+import { collectionAccountPath, collectionWhatsApp, daysOverdue, type CollectionRow } from '@/lib/collections';
+it('does not link an order to a missing customer account', () => {
+  expect(collectionAccountPath({ clienteId: 'deleted-client', clienteNombre: null })).toBeNull();
+  expect(collectionAccountPath({ clienteId: 'deleted-client', clienteNombre: ' ' })).toBeNull();
+  expect(collectionAccountPath({ clienteId: 'client&2', clienteNombre: 'Ana' })).toBe(
+    '/clientes/cuenta?cliente=client%262',
+  );
+});
 it('counts business date boundaries without timezone or daylight-saving shifts', () => {
   expect(daysOverdue('2026-10-20', '2026-10-22')).toBe(2);
   expect(daysOverdue('2026-10-22', '2026-10-22')).toBe(0);
