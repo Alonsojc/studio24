@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
-import { getIngresos, getEgresos, getClientes } from '@/lib/store';
+import { getIngresos, getEgresos, getClientes, getItems } from '@/lib/store';
 import { cloudGetIngresosByYear, cloudGetEgresosByYear, cloudGetClientes } from '@/lib/store-cloud';
-import { useCloudStore } from '@/lib/useCloudStore';
+import { useCloudStore, useCloudResource } from '@/lib/useCloudStore';
+import { cloudGetAdvanceReport } from '@/lib/store-cloud';
+import { operatingReport, type AdvanceReportMonth } from '@/lib/operating-report';
 import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
 import { calcApartadoUtilidad } from '@/lib/utilidad';
 import PageHeader from '@/components/PageHeader';
@@ -71,6 +73,17 @@ export default function ReportesPage() {
   const { data: clientesList } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
   const totalClientes = clientesList.length;
   const { data: financeEntries } = useCloudStore(getFinanceEntries, cloudGetFinanceEntries, 'bordados_finance_entries');
+  const advanceKey = `bordados_advance_report:${year}`;
+  const advanceReport = useCloudResource(
+    () => getItems<AdvanceReportMonth>(advanceKey),
+    () => cloudGetAdvanceReport(year),
+    advanceKey,
+    [year],
+  );
+  const periodStart = `${year}-${String(mesInicio + 1).padStart(2, '0')}-01`;
+  const periodEnd = mesFin === 11 ? `${year + 1}-01-01` : `${year}-${String(mesFin + 2).padStart(2, '0')}-01`;
+  const operation = operatingReport(ingresos, egresos, advanceReport.data, periodStart, periodEnd);
+  const annualOperation = operatingReport(ingresos, egresos, advanceReport.data, `${year}-01-01`, `${year + 1}-01-01`);
   const apartadoStatus = apartadoStatuses(financeEntries);
   const apartadoDetail = (period: string, kind: ApartadoKind) => {
     const entry = financeEntries.find((item) => item.period === period && item.kind === kind && item.separated);
@@ -95,23 +108,16 @@ export default function ReportesPage() {
     const m = parseInt(fecha.substring(5, 7), 10) - 1;
     return y === year && m >= mesInicio && m <= mesFin;
   };
-  const inSelectedYear = (fecha: string) => parseInt(fecha.substring(0, 4), 10) === year;
   const ingresosYear = ingresos.filter((i) => inRange(i.fecha));
   const egresosYear = egresos.filter((e) => inRange(e.fecha));
-  const ingresosAnuales = ingresos.filter((i) => inSelectedYear(i.fecha));
-  const egresosAnuales = egresos.filter((e) => inSelectedYear(e.fecha));
   // Exclude soloFiscal egresos from business reports (they only count in Fiscal)
   const egresosNegocio = egresosYear.filter((e) => !e.soloFiscal);
-  const egresosNegocioAnuales = egresosAnuales.filter((e) => !e.soloFiscal);
 
   const totalIngresosYear = ingresosYear.reduce((s, i) => s + i.montoTotal, 0);
   const totalEgresosYear = egresosNegocio.reduce((s, e) => s + e.montoTotal, 0);
   const gananciaYear = totalIngresosYear - totalEgresosYear;
-  const totalIngresosAnual = ingresosAnuales.reduce((s, i) => s + i.montoTotal, 0);
-  const totalEgresosAnual = egresosNegocioAnuales.reduce((s, e) => s + e.montoTotal, 0);
-  const gananciaAnual = totalIngresosAnual - totalEgresosAnual;
-  const apartadoPeriodo = calcApartadoUtilidad(gananciaYear);
-  const apartadoAnual = calcApartadoUtilidad(gananciaAnual);
+  const apartadoPeriodo = calcApartadoUtilidad(operation.operatingResult);
+  const apartadoAnual = calcApartadoUtilidad(annualOperation.operatingResult);
   const ivaCobradoYear = ingresosYear.filter((i) => i.factura).reduce((s, i) => s + i.iva, 0);
   const ivaPagadoYear = egresosYear.filter((e) => e.factura).reduce((s, e) => s + e.iva, 0);
   const facturadoIngresos = ingresosYear.filter((i) => i.factura).reduce((s, i) => s + i.montoTotal, 0);
@@ -122,15 +128,12 @@ export default function ReportesPage() {
     const ms = String(idx + 1).padStart(2, '0');
     const ing = ingresosYear.filter((i) => i.fecha.substring(5, 7) === ms).reduce((s, i) => s + i.montoTotal, 0);
     const eg = egresosNegocio.filter((e) => e.fecha.substring(5, 7) === ms).reduce((s, e) => s + e.montoTotal, 0);
-    return { name, Ingresos: ing, Egresos: eg, Ganancia: ing - eg };
+    return { name, Ingresos: ing, Egresos: eg, Flujo: ing - eg };
   });
   const monthlyUtilityData = monthNames.map((name, idx) => {
     const ms = String(idx + 1).padStart(2, '0');
-    const ing = ingresosAnuales.filter((i) => i.fecha.substring(5, 7) === ms).reduce((s, i) => s + i.montoTotal, 0);
-    const eg = egresosNegocioAnuales
-      .filter((e) => e.fecha.substring(5, 7) === ms)
-      .reduce((s, e) => s + e.montoTotal, 0);
-    const utilidad = ing - eg;
+    const next = idx === 11 ? `${year + 1}-01-01` : `${year}-${String(idx + 2).padStart(2, '0')}-01`;
+    const utilidad = operatingReport(ingresos, egresos, advanceReport.data, `${year}-${ms}-01`, next).operatingResult;
     return { name, key: `${year}-${ms}`, ...calcApartadoUtilidad(utilidad) };
   });
   const annualStatusKey = `${year}-anual`;
@@ -238,9 +241,9 @@ export default function ReportesPage() {
           color="red"
         />
         <StatCard
-          label={`Ganancia ${mesInicio === 0 && mesFin === 11 ? 'Anual' : `${monthNames[mesInicio]}–${monthNames[mesFin]}`}`}
+          label={`Flujo de caja ${mesInicio === 0 && mesFin === 11 ? 'Anual' : `${monthNames[mesInicio]}–${monthNames[mesFin]}`}`}
           value={formatCurrency(gananciaYear)}
-          subtitle={gananciaYear >= 0 ? 'Positiva' : 'Negativa'}
+          subtitle="Cobros menos pagos, incluido IVA"
           color={gananciaYear >= 0 ? 'green' : 'red'}
         />
         <StatCard
@@ -250,11 +253,28 @@ export default function ReportesPage() {
         />
       </div>
 
-      <div className="bg-white rounded-2xl border border-neutral-100 p-6 mb-8">
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-5 border-y border-neutral-200 py-5 mb-8">
+        <div>
+          <p className="text-xs text-neutral-500">Adelantos recibidos en el periodo</p>
+          <p className="text-xl font-bold mt-1">{formatCurrency(operation.receivedAdvances)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-neutral-500">Saldo de adelantos por aplicar al cierre</p>
+          <p className="text-xl font-bold mt-1">{formatCurrency(operation.availableAdvances)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-neutral-500">Adelantos en pedidos por entregar al cierre</p>
+          <p className="text-xl font-bold mt-1">{formatCurrency(operation.assignedAdvances)}</p>
+        </div>
+      </section>
+      <div className="border-y border-neutral-200 py-6 mb-8">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
           <div>
             <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">Apartado de utilidad</h3>
             <p className="text-xs text-neutral-400 mt-1">Reinversión 10% · Donación 2% no fiscal · Disponible 88%</p>
+            <p className="text-xs text-neutral-500 mt-1">
+              Resultado de cobros sin IVA; adelantos reconocidos al entregar el pedido.
+            </p>
           </div>
           <span className="px-3 py-1 rounded-lg bg-neutral-100 text-[10px] font-bold text-neutral-500 uppercase">
             {periodLabel}
@@ -308,7 +328,7 @@ export default function ReportesPage() {
             <tbody>
               {monthlyUtilityData.map((m) => {
                 const status = apartadoStatus[m.key] || {};
-                const disabled = m.utilidad <= 0;
+                const disabled = m.utilidad <= 0 || advanceReport.syncing || Boolean(advanceReport.error);
                 return (
                   <tr key={m.key} className="border-b border-neutral-50">
                     <td className="py-3 font-bold text-[#0a0a0a]">{m.name}</td>
@@ -358,7 +378,7 @@ export default function ReportesPage() {
                     <StatusButton
                       active={apartadoStatus[annualStatusKey]?.reinversion}
                       title={apartadoDetail(annualStatusKey, 'reinversion')}
-                      disabled={apartadoAnual.utilidad <= 0}
+                      disabled={apartadoAnual.utilidad <= 0 || advanceReport.syncing || Boolean(advanceReport.error)}
                       onClick={() => toggleApartado(annualStatusKey, 'reinversion')}
                     >
                       Reinversión anual
@@ -366,7 +386,7 @@ export default function ReportesPage() {
                     <StatusButton
                       active={apartadoStatus[annualStatusKey]?.donacion}
                       title={apartadoDetail(annualStatusKey, 'donacion')}
-                      disabled={apartadoAnual.utilidad <= 0}
+                      disabled={apartadoAnual.utilidad <= 0 || advanceReport.syncing || Boolean(advanceReport.error)}
                       onClick={() => toggleApartado(annualStatusKey, 'donacion')}
                     >
                       Donación anual
@@ -405,7 +425,7 @@ export default function ReportesPage() {
               <Legend wrapperStyle={{ fontSize: '12px' }} />
               <Bar dataKey="Ingresos" fill="#16a34a" radius={[6, 6, 0, 0]} />
               <Bar dataKey="Egresos" fill="#dc2626" radius={[6, 6, 0, 0]} />
-              <Line type="monotone" dataKey="Ganancia" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="Flujo" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -530,7 +550,7 @@ export default function ReportesPage() {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm font-bold text-white">Margen</span>
+              <span className="text-sm font-bold text-white">Flujo / cobros</span>
               <span className="text-lg font-black text-white">
                 {totalIngresosYear > 0 ? `${((gananciaYear / totalIngresosYear) * 100).toFixed(1)}%` : '—'}
               </span>

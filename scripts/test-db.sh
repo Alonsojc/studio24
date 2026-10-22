@@ -16,3 +16,4 @@ done
 psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-reliability.sql
 psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-customer-accounts.sql
 node scripts/test-customer-concurrency.mjs
+psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-operations.sql

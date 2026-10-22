@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { Wallet } from 'lucide-react';
 import { signOut } from '@/lib/auth';
 import { useRole } from './RoleProvider';
 import { getVisibleGroups, canAccess, roleLabel, roleColor } from '@/lib/roles';
@@ -119,6 +120,7 @@ const navGroups: NavGroup[] = [
   {
     label: 'FINANZAS',
     items: [
+      { href: '/cobranza', label: 'Cobranza', icon: <Wallet size={16} /> },
       {
         href: '/ingresos',
         label: 'Ingresos',

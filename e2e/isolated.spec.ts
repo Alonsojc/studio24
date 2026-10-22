@@ -28,6 +28,18 @@ async function isolate(page: Page, role: 'admin' | 'operador' | 'contador' = 'ad
     else if (table === 'profiles') data = { id, email: user.email, role, nombre: 'Prueba' };
     else if (table === 'team_members') data = { role, team_id: 'team-test' };
     else if (table === 'config') data = { nombre_negocio: 'Studio 24 Test', updated_at: version };
+    else if (table === 'get_order_summary') data = { activeCount: 0, activeTotal: 0, statuses: {}, payments: {} };
+    else if (table === 'get_collections')
+      data = { rows: [], total: 0, totalPending: 0, overduePending: 0, overdueCount: 0, followupCount: 0 };
+    else if (table === 'get_advance_report')
+      data = Array.from({ length: 12 }, (_, index) => ({
+        month: `2026-${String(index + 1).padStart(2, '0')}`,
+        received: 0,
+        receivedNet: 0,
+        appliedNet: 0,
+        available: 0,
+        assigned: 0,
+      }));
     else if (table === 'finance_entries' && !url.searchParams.has('id'))
       data = [
         { id: 'finance-test', kind: 'donacion', period: '2026-09', amount: 20, separated: true, updated_at: version },
@@ -51,7 +63,12 @@ async function isolate(page: Page, role: 'admin' | 'operador' | 'contador' = 'ad
       const body = route.request().postDataJSON();
       data = { ...body.p_record, updated_at: new Date().toISOString() };
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'content-range': '0-0/0', 'access-control-expose-headers': 'content-range' },
+      body: JSON.stringify(data),
+    });
   });
   // Tests never send events or writes to external systems.
   await page.route('**/*.sentry.io/**', (route) => route.fulfill({ status: 200, body: '{}' }));
@@ -136,4 +153,205 @@ test('conflicts remain visible and require an explicit choice', async ({ page },
   await page.getByRole('button', { name: 'Usar nube' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('bordados_sync_queue') || '[]').length)).toBe(0);
+});
+
+test('a cold financial query failure does not display unconfirmed zero balances', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => localStorage.removeItem('bordados_egresos'));
+  await page.route('**/rest/v1/egresos?*', (route) =>
+    route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"isolated outage"}' }),
+  );
+  await page.goto('egresos');
+  await expect(page.getByText(/Datos sin confirmar/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reintentar consulta' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^egresos$/i })).toBeHidden();
+});
+
+test('collections includes delivered debts and prepares a WhatsApp draft on mobile', async ({ page }, testInfo) => {
+  await login(page);
+  await page.route('**/rest/v1/rpc/get_collections', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        total: 1,
+        totalPending: 600,
+        overduePending: 600,
+        overdueCount: 1,
+        followupCount: 1,
+        rows: [
+          {
+            id: 'collection-order',
+            cliente_id: 'client',
+            cliente_nombre: 'Clienta de prueba',
+            cliente_telefono: '4441234567',
+            descripcion: 'Uniformes entregados',
+            estado: 'entregado',
+            monto_total: 1000,
+            monto_pagado: 400,
+            pending: 600,
+            payment_due_date: '2026-10-01',
+            next_followup_date: '2026-10-10',
+            collection_notes: 'Confirmar fecha de pago',
+            pagos: [],
+            fecha_pedido: '2026-09-01',
+            updated_at: version,
+          },
+        ],
+      }),
+    }),
+  );
+  await page.goto('cobranza');
+  await expect(page.getByRole('heading', { name: 'Cobranza' })).toBeVisible();
+  await expect(page.getByText('Uniformes entregados')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'WhatsApp a Clienta de prueba' })).toHaveAttribute(
+    'href',
+    /wa.me\/524441234567/,
+  );
+  await page.getByRole('button', { name: 'Seguimiento de Uniformes entregados' }).click();
+  await expect(page.getByLabel('Vencimiento de pago')).toHaveValue('2026-10-01');
+  await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await page.screenshot({ path: testInfo.outputPath('collections-desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: 'Abrir menú' })).toHaveCount(1);
+  await expect(page.getByRole('link', { name: 'WhatsApp a Clienta de prueba' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Seguimiento de Uniformes entregados' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('collections-mobile.png'), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('order pagination requests only the selected server page and preserves global totals', async ({ page }) => {
+  await login(page);
+  const offsets: number[] = [];
+  await page.route('**/rest/v1/pedidos?*', async (route) => {
+    const url = new URL(route.request().url());
+    const offset = Number(url.searchParams.get('offset') || 0);
+    offsets.push(offset);
+    const rows = Array.from({ length: Math.min(50, 52 - offset) }, (_, index) => ({
+      id: `order-${offset + index}`,
+      cliente_id: '',
+      descripcion: `Pedido paginado ${offset + index + 1}`,
+      piezas: 1,
+      precio_unitario: 1000,
+      monto_total: 1000,
+      monto_pagado: 0,
+      pagos: [],
+      estado: 'pendiente',
+      estado_pago: 'pendiente',
+      urgente: false,
+      fecha_pedido: '2026-10-01',
+      updated_at: version,
+    }));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: {
+        'content-range': `${offset}-${offset + rows.length - 1}/52`,
+        'access-control-expose-headers': 'content-range',
+      },
+      body: JSON.stringify(rows),
+    });
+  });
+  await page.route('**/rest/v1/rpc/get_order_summary', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        activeCount: 52,
+        activeTotal: 52000,
+        statuses: { pendiente: 52 },
+        payments: { pendiente: { count: 52, total: 52000, paid: 0 } },
+      }),
+    }),
+  );
+  await page.goto('pedidos');
+  await page.getByRole('button', { name: 'Lista', exact: true }).click();
+  await expect(page.getByText('1–50 de 52')).toBeVisible();
+  expect(offsets).not.toContain(50);
+  await page.getByRole('button', { name: 'Página siguiente' }).click();
+  await expect(page.getByText('51–52 de 52')).toBeVisible();
+  await expect(page.getByText('Pedido paginado 52', { exact: true })).toBeVisible();
+  expect(offsets).toContain(50);
+});
+
+test('reports reserve only earned net receipts and show outstanding advances separately', async ({
+  page,
+}, testInfo) => {
+  await login(page);
+  const year = new Date().getFullYear();
+  const fecha = `${year}-10-02`;
+  const income = [
+    {
+      id: 'advance-income',
+      descripcion: 'Adelanto',
+      fecha,
+      monto: 1000,
+      monto_total: 1000,
+      iva: 0,
+      factura: false,
+      concepto: 'otro',
+    },
+    {
+      id: 'sale-income',
+      descripcion: 'Venta',
+      fecha,
+      monto: 500,
+      monto_total: 500,
+      iva: 0,
+      factura: false,
+      concepto: 'otro',
+    },
+  ];
+  const expense = [
+    {
+      id: 'expense',
+      descripcion: 'Materiales',
+      fecha,
+      monto: 100,
+      monto_total: 116,
+      iva: 16,
+      factura: true,
+      categoria: 'insumos',
+    },
+  ];
+  for (const [table, rows] of [
+    ['ingresos', income],
+    ['egresos', expense],
+  ] as const) {
+    await page.route(`**/rest/v1/${table}?*`, async (route) => {
+      const url = new URL(route.request().url());
+      const after = url.searchParams.get('id')?.replace(/^gt\./, '') || '';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(rows.filter((row) => row.id > after)),
+      });
+    });
+  }
+  await page.route('**/rest/v1/rpc/get_advance_report', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        Array.from({ length: 12 }, (_, index) => ({
+          month: `${year}-${String(index + 1).padStart(2, '0')}`,
+          received: index === 9 ? 1000 : 0,
+          receivedNet: index === 9 ? 1000 : 0,
+          appliedNet: 0,
+          available: index >= 9 ? 1000 : 0,
+          assigned: 0,
+        })),
+      ),
+    }),
+  );
+  await page.goto('reportes');
+  await expect(page.getByText('Adelantos recibidos en el periodo')).toBeVisible();
+  await expect(page.getByText('$1,500.00', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('$400.00', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('$40.00', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('$8.00', { exact: true }).first()).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('operating-report-desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: testInfo.outputPath('operating-report-mobile.png'), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

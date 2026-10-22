@@ -1,5 +1,5 @@
 import { beforeEach, it, expect, vi } from 'vitest';
-import { cloudGetClientes, cloudGetEgresosByYear } from '@/lib/store-cloud';
+import { cloudGetClientes, cloudGetEgresosByYear, dashboardBounds, cloudGetActivePedidos } from '@/lib/store-cloud';
 import { invalidateCloudCache } from '@/lib/cloud-cache';
 
 const api = vi.hoisted(() => ({ from: vi.fn(), filters: [] as unknown[][] }));
@@ -63,4 +63,43 @@ it('uses a server timestamp watermark on subsequent unfiltered downloads', async
   api.filters.length = 0;
   await cloudGetClientes();
   expect(api.filters).toContainEqual(['gte', 'updated_at', '2026-10-03T12:00:00.000Z']);
+});
+
+it('reconciles a cached active order delivered on another device', async () => {
+  const old = { id: 'order', estado: 'en_maquina', serverUpdatedAt: '2026-10-01T12:00:00Z' };
+  localStorage.setItem('bordados_pedidos', JSON.stringify([old]));
+  api.from.mockImplementation((table: string) => {
+    let ids = false;
+    let after = '';
+    const query = {
+      select: () => query,
+      order: () => query,
+      limit: () => query,
+      not: () => query,
+      in: () => {
+        ids = true;
+        return query;
+      },
+      gt: (_column: string, value: string) => {
+        after = value;
+        return query;
+      },
+      then: (accept: (result: unknown) => unknown) =>
+        Promise.resolve({
+          data:
+            table === 'pedidos' && ids && !after
+              ? [{ id: 'order', estado: 'entregado', updated_at: '2026-10-22T12:00:00Z' }]
+              : [],
+          error: null,
+        }).then(accept),
+    };
+    return query;
+  });
+  expect(await cloudGetActivePedidos()).toMatchObject([{ id: 'order', estado: 'entregado' }]);
+});
+
+it('limits the default dashboard to this month and its comparison period, including January', () => {
+  expect(dashboardBounds('mes', new Date(2026, 0, 20))).toMatchObject({ dateFrom: '2025-12-01', dateTo: '2026-02-01' });
+  expect(dashboardBounds('año', new Date(2026, 4, 1))).toMatchObject({ dateFrom: '2025-01-01', dateTo: '2027-01-01' });
+  expect(dashboardBounds('todo')).toBeUndefined();
 });

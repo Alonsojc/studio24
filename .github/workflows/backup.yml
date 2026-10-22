@@ -1,0 +1,39 @@
+name: Encrypted business backup
+
+on:
+  schedule:
+    - cron: '23 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio24-business-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Export, encrypt and verify records and evidence
+        env:
+          SUPABASE_BACKUP_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_BACKUP_KEY: ${{ secrets.SUPABASE_BACKUP_KEY }}
+          STUDIO24_BACKUP_PASSPHRASE: ${{ secrets.STUDIO24_BACKUP_PASSPHRASE }}
+        run: node scripts/business-backup.mjs create backup/studio24.enc
+      - name: Keep encrypted off-site copy
+        uses: actions/upload-artifact@v6
+        with:
+          name: studio24-encrypted-${{ github.run_id }}
+          path: backup/studio24.enc
+          if-no-files-found: error
+          retention-days: 14

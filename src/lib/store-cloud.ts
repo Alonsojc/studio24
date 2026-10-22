@@ -99,7 +99,22 @@ export { toCamel as fromCloudRecord };
 
 // --- Generic CRUD ---
 
-type DateFilter = { dateColumn: string; year?: number; month?: string; limit?: number };
+type DateFilter = {
+  dateColumn: string;
+  year?: number;
+  month?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  activeOnly?: boolean;
+};
+
+function matchesCloudFilter(row: Record<string, unknown>, filter: DateFilter): boolean {
+  if (filter.activeOnly && ['entregado', 'cancelado'].includes(String(row.estado))) return false;
+  const column = filter.dateColumn.replace(/_([a-z])/g, (_, char) => char.toUpperCase());
+  const date = String(row[column] || '');
+  if (filter.year && !date.startsWith(filter.month || `${filter.year}-`)) return false;
+  return (!filter.dateFrom || date >= filter.dateFrom) && (!filter.dateTo || date < filter.dateTo);
+}
 
 async function getAll<T>(table: string, filter?: DateFilter, forceFull = false): Promise<T[]> {
   return cachedCloudRequest(`${table}:${JSON.stringify(filter || {})}:${forceFull}`, async () => {
@@ -126,6 +141,9 @@ async function getAll<T>(table: string, filter?: DateFilter, forceFull = false):
       let query = supabase.from(table).select('*').order('id').limit(500);
       if (since) query = query.gte('updated_at', since);
       if (after) query = query.gt('id', after);
+      if (filter?.activeOnly) query = query.not('estado', 'in', '(entregado,cancelado)');
+      if (filter?.dateFrom) query = query.gte(filter.dateColumn, filter.dateFrom);
+      if (filter?.dateTo) query = query.lt(filter.dateColumn, filter.dateTo);
       if (filter?.year) {
         const month = filter.month ? Number(filter.month.slice(5, 7)) : 1;
         const start = `${filter.year}-${String(month).padStart(2, '0')}-01`;
@@ -141,8 +159,38 @@ async function getAll<T>(table: string, filter?: DateFilter, forceFull = false):
       result.push(...data.map((row) => toCamel<T>(row)));
       after = String(data[data.length - 1].id);
     }
+    // A cached row may leave the selected month or active queue on another
+    // device. Fetch those versions too, so a filtered pull cannot leave ghosts.
+    if (filter && localKey) {
+      const seen = new Set((result as VersionedRecord[]).map((row) => row.id));
+      const missing = readLocalArray<VersionedRecord & Record<string, unknown>>(localKey).filter(
+        (row) => row.serverUpdatedAt && !seen.has(row.id) && matchesCloudFilter(row, filter),
+      );
+      for (let offset = 0; offset < missing.length; offset += 100) {
+        const ids = missing.slice(offset, offset + 100).map((row) => row.id);
+        const returned = new Set<string>();
+        let cursor = '';
+        while (true) {
+          let query = supabase.from(table).select('*').in('id', ids).order('id').limit(500);
+          if (cursor) query = query.gt('id', cursor);
+          const { data, error } = await query;
+          if (error) throw error;
+          if (!data?.length) break;
+          for (const row of data) returned.add(row.id);
+          result.push(...data.map((row) => toCamel<T>(row)));
+          cursor = String(data[data.length - 1].id);
+        }
+        if (owner !== localStorage.getItem(ACTIVE_USER_KEY) || team !== localStorage.getItem(ACTIVE_TEAM_KEY))
+          throw new Error('La sesion cambio durante la descarga');
+        rememberDeleted(
+          localKey,
+          ids.filter((id) => !returned.has(id)),
+        );
+      }
+    }
     const deleted = await getDeletedRecords();
-    if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio durante la descarga');
+    if (owner !== localStorage.getItem(ACTIVE_USER_KEY) || team !== localStorage.getItem(ACTIVE_TEAM_KEY))
+      throw new Error('La sesion cambio durante la descarga');
     const ids = deleted.filter((row) => row.table_name === table).map((row) => row.record_id);
     if (localKey && ids.length) rememberDeleted(localKey, ids);
     if (!filter && table !== 'recurrentes_log' && localKey) {
@@ -261,6 +309,12 @@ export async function cloudDeleteRecord(table: string, id: string, expected: str
 
 // --- Typed exports ---
 export const cloudGetFinanceEntries = () => getAll<import('./finance-entries').FinanceEntry>('finance_entries');
+export async function cloudGetAdvanceReport(year: number): Promise<import('./operating-report').AdvanceReportMonth[]> {
+  const { data, error } = await supabase.rpc('get_advance_report', { p_year: year });
+  if (error) throw error;
+  if (!Array.isArray(data) || data.length !== 12) throw new Error('Resumen de adelantos sin confirmar');
+  return data;
+}
 export async function cloudGetCustomerCreditLedger() {
   const owner = localStorage.getItem(ACTIVE_USER_KEY);
   const { data, error } = await supabase.rpc('get_customer_credit_ledger').abortSignal(AbortSignal.timeout(20000));
@@ -309,6 +363,31 @@ export const cloudDeleteEgreso = (id: string) => deleteOne('egresos', id);
 export const cloudGetPedidos = () => getAll<Pedido>('pedidos');
 export const cloudGetPedidosByYear = (year: number) => getAll<Pedido>('pedidos', { dateColumn: 'fecha_pedido', year });
 export const cloudGetPedidosPage = () => getAll<Pedido>('pedidos');
+export const cloudGetActivePedidos = () => getAll<Pedido>('pedidos', { dateColumn: 'fecha_pedido', activeOnly: true });
+
+export function dashboardBounds(period: 'mes' | 'año' | 'todo', now = new Date()): DateFilter | undefined {
+  if (period === 'todo') return undefined;
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  if (period === 'año') return { dateColumn: 'fecha', dateFrom: `${year - 1}-01-01`, dateTo: `${year + 1}-01-01` };
+  const from = new Date(year, month - 1, 1);
+  const to = new Date(year, month + 1, 1);
+  const date = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-01`;
+  return { dateColumn: 'fecha', dateFrom: date(from), dateTo: date(to) };
+}
+async function dashboardEntries<T>(table: 'ingresos' | 'egresos', period: 'mes' | 'año' | 'todo'): Promise<T[]> {
+  const [rows, recent] = await Promise.all([
+    getAll<T>(table, dashboardBounds(period)),
+    supabase.from(table).select('*').order('fecha', { ascending: false }).order('id').limit(5),
+  ]);
+  if (recent.error) throw recent.error;
+  const values = new Map((rows as (T & { id: string })[]).map((row) => [row.id, row]));
+  for (const row of recent.data || []) values.set(row.id, toCamel<T & { id: string }>(row));
+  return [...values.values()];
+}
+export const cloudGetDashboardIngresos = (period: 'mes' | 'año' | 'todo') =>
+  dashboardEntries<Ingreso>('ingresos', period);
+export const cloudGetDashboardEgresos = (period: 'mes' | 'año' | 'todo') => dashboardEntries<Egreso>('egresos', period);
 export const cloudUpsertPedido = (p: Pedido) => upsertOne('pedidos', p);
 export const cloudDeletePedido = (id: string) => deleteOne('pedidos', id);
 
