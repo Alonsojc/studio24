@@ -174,8 +174,8 @@ test('collections includes delivered debts and prepares a WhatsApp draft on mobi
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        total: 1,
-        totalPending: 600,
+        total: 2,
+        totalPending: 630,
         overduePending: 600,
         overdueCount: 1,
         followupCount: 1,
@@ -197,6 +197,20 @@ test('collections includes delivered debts and prepares a WhatsApp draft on mobi
             fecha_pedido: '2026-09-01',
             updated_at: version,
           },
+          {
+            id: 'orphan-order',
+            cliente_id: 'missing-client',
+            cliente_nombre: null,
+            cliente_telefono: null,
+            descripcion: 'Pedido con cliente no disponible',
+            estado: 'aprobado',
+            monto_total: 30,
+            monto_pagado: 0,
+            pending: 30,
+            pagos: [],
+            fecha_pedido: '2026-09-01',
+            updated_at: version,
+          },
         ],
       }),
     }),
@@ -204,6 +218,8 @@ test('collections includes delivered debts and prepares a WhatsApp draft on mobi
   await page.goto('cobranza');
   await expect(page.getByRole('heading', { name: 'Cobranza' })).toBeVisible();
   await expect(page.getByText('Uniformes entregados')).toBeVisible();
+  await expect(page.getByText('Cliente no disponible', { exact: true })).toBeVisible();
+  await expect(page.locator('a[href*="missing-client"]')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'WhatsApp a Clienta de prueba' })).toHaveAttribute(
     'href',
     /wa.me\/524441234567/,

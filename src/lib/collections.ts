@@ -10,8 +10,8 @@ import { invalidateCloudCache } from './cloud-cache';
 import { formatCurrency } from './helpers';
 
 export interface CollectionRow extends Pedido {
-  clienteNombre: string;
-  clienteTelefono: string;
+  clienteNombre: string | null;
+  clienteTelefono: string | null;
   lastPaymentDate: string | null;
   pending: number;
 }
@@ -47,6 +47,10 @@ export async function fetchCollections(
 export function daysOverdue(due: string | null | undefined, today: string): number {
   if (!due || due >= today) return 0;
   return Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${due}T00:00:00Z`)) / 86400000);
+}
+export function collectionAccountPath(row: Pick<CollectionRow, 'clienteId' | 'clienteNombre'>): string | null {
+  if (!row.clienteId || !row.clienteNombre?.trim()) return null;
+  return `/clientes/cuenta?cliente=${encodeURIComponent(row.clienteId)}`;
 }
 export function collectionWhatsApp(row: CollectionRow): string | null {
   const phone = (row.clienteTelefono || '').replace(/\D/g, '');
