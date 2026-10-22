@@ -4,6 +4,9 @@
 
 Desde Clientes, abrir "Cuenta y movimientos". Administracion y contabilidad pueden registrar y aplicar adelantos; solo administracion puede anular una captura.
 
+- El total de la tarjeta es el ingreso acumulado de la clienta, no su saldo a favor ni necesariamente un monto facturado. El importe y "Cuenta y movimientos" abren el historial de ingresos, incluyendo cobros directos sin pedido. Los accesos de registrar adelanto y de pedidos conservan su destino especifico.
+- Clientes inicia con "Con pedidos", ocultando las cuentas sin pedidos. El filtro permite "Solo pedidos activos" (excluye entregados/cancelados) o "Todos los clientes". El orden puede ser alfabetico, por importe/cantidad de ingresos, pendiente o pedidos activos. El pendiente considera todos los pedidos no cancelados, incluidos entregados aun sin liquidar, y descuenta pagos/credito aplicado; no es el saldo a favor. Los filtros se combinan con la busqueda sin alterar los registros.
+- La cuenta y sus PDF/Excel muestran ingresos, adelantos y movimientos de saldo por separado. Un ingreso historico no se convierte en saldo disponible ni crea un pedido; vincularlo como adelanto sigue siendo una operacion financiera explicita.
 - Nuevo cobro: crea un ingreso y un adelanto en la misma transaccion. Confirmar que el dinero no esta registrado en Ingresos ni en los pagos de un pedido.
 - Ingreso existente: vincula un ingreso positivo de la misma clienta, sin pedido y sin otro adelanto vigente. No crea otro cobro.
 - Al volver a vincular un ingreso cuyo adelanto se anulo, la nueva disponibilidad no se fecha antes de su ultimo movimiento anterior. La fecha original del ingreso no cambia y los cortes historicos no duplican ese dinero.

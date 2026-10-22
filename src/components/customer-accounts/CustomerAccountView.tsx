@@ -32,6 +32,7 @@ import { formatCurrency, formatDate, formaPagoLabel } from '@/lib/helpers';
 import { btnPrimary, inputClass, labelClass } from '@/lib/styles';
 import CustomerAccountForm, { type AccountEditor } from './CustomerAccountForm';
 import { openCustomerReceipt } from '@/lib/customer-receipts';
+import CustomerIncomeHistory from './CustomerIncomeHistory';
 
 const iconButton =
   'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 disabled:opacity-40';
@@ -52,7 +53,9 @@ export default function CustomerAccountView({
   const state = useCustomerAccount(clienteId);
   const { account, confirmed, refreshing, busy, error, pending } = state;
   const canManageAccount = role === 'admin' || role === 'contador';
-  const [tab, setTab] = useState<'advances' | 'movements' | 'orders'>('advances');
+  const [tab, setTab] = useState<'incomes' | 'advances' | 'movements' | 'orders'>(
+    initialAction === 'receive' ? 'advances' : pedidoId ? 'orders' : 'incomes',
+  );
   const [editor, setEditor] = useState<AccountEditor | null>(() =>
     initialAction === 'receive' && canManageAccount && !pending.length ? { action: 'receive' } : null,
   );
@@ -64,6 +67,7 @@ export default function CustomerAccountView({
   const validRange = !from || !to || from <= to;
   const statement = validRange ? buildCustomerStatement(account, from, to) : null;
   const available = accountBalance(account.movements);
+  const totalIncome = account.ingresos.reduce((sum, income) => sum + Math.round(income.montoTotal * 100), 0) / 100;
   const reverseIds = new Set(account.movements.map((movement) => movement.reversesId).filter(Boolean));
   const canMove = confirmed && !busy && !pending.length && canManageAccount;
   const openEditor = (next: AccountEditor) => {
@@ -177,7 +181,11 @@ export default function CustomerAccountView({
           ))}
         </div>
       )}
-      <dl className="mb-6 grid grid-cols-2 gap-x-6 gap-y-5 border-y border-neutral-200 py-5 lg:grid-cols-4">
+      <dl className="mb-6 grid grid-cols-2 gap-x-6 gap-y-5 border-y border-neutral-200 py-5 lg:grid-cols-5">
+        <div>
+          <dt className={labelClass}>Total ingresado</dt>
+          <dd className="break-words text-2xl font-bold text-green-600">{formatCurrency(totalIncome)}</dd>
+        </div>
         <div>
           <dt className={labelClass}>Saldo a favor disponible</dt>
           <dd className="break-words text-2xl font-bold text-emerald-600">{formatCurrency(available)}</dd>
@@ -220,8 +228,9 @@ export default function CustomerAccountView({
         <div role="tablist" aria-label="Cuenta de cliente" className="flex flex-wrap border-b border-neutral-200">
           {(
             [
+              ['incomes', 'Ingresos'],
               ['advances', 'Adelantos'],
-              ['movements', 'Movimientos'],
+              ['movements', 'Movimientos de saldo'],
               ['orders', 'Pedidos'],
             ] as const
           ).map(([value, label]) => (
@@ -298,8 +307,16 @@ export default function CustomerAccountView({
         )}
         {statement && (
           <p className="w-full text-xs text-neutral-500 sm:ml-auto sm:w-auto">
-            Saldo inicial <strong>{formatCurrency(statement.opening)}</strong> · Saldo al cierre{' '}
-            <strong>{formatCurrency(statement.closing)}</strong>
+            {tab === 'incomes' ? (
+              <>
+                {statement.incomes.length} {statement.incomes.length === 1 ? 'ingreso' : 'ingresos'} en el periodo
+              </>
+            ) : (
+              <>
+                Saldo a favor inicial <strong>{formatCurrency(statement.opening)}</strong> · Saldo al cierre{' '}
+                <strong>{formatCurrency(statement.closing)}</strong>
+              </>
+            )}
           </p>
         )}
         {!validRange && (
@@ -309,6 +326,7 @@ export default function CustomerAccountView({
         )}
       </div>
 
+      {tab === 'incomes' && <CustomerIncomeHistory statement={statement} />}
       {tab === 'advances' && (
         <div role="tabpanel" aria-label="Adelantos" className="overflow-x-auto border-y border-neutral-200">
           <table className="w-full min-w-[720px] text-left">
@@ -455,7 +473,7 @@ export default function CustomerAccountView({
         </div>
       )}
       {tab === 'movements' && (
-        <div role="tabpanel" aria-label="Movimientos" className="overflow-x-auto border-y border-neutral-200">
+        <div role="tabpanel" aria-label="Movimientos de saldo" className="overflow-x-auto border-y border-neutral-200">
           <table className="w-full min-w-[780px] text-left">
             <thead className="bg-neutral-50 text-[10px] uppercase text-neutral-500">
               <tr>
@@ -494,7 +512,7 @@ export default function CustomerAccountView({
               {!statement?.rows.length && (
                 <tr>
                   <td colSpan={6} className="px-4 py-12 text-center text-sm text-neutral-500">
-                    Sin movimientos en el periodo.
+                    Sin movimientos de saldo en el periodo.
                   </td>
                 </tr>
               )}

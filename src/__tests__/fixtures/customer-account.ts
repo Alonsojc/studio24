@@ -108,3 +108,22 @@ export function accountFixture(): CustomerAccount {
     ingresos: [{ ...accountIncome }],
   };
 }
+
+export function historicalIncomeAccount(): CustomerAccount {
+  return {
+    cliente: { ...accountCliente },
+    advances: [],
+    movements: [],
+    pedidos: [],
+    ingresos: [
+      {
+        ...accountIncome,
+        id: 'historical-income',
+        fecha: '2026-08-10',
+        descripcion: 'Bordado de toallas',
+        monto: 3950,
+        montoTotal: 3950,
+      },
+    ],
+  };
+}

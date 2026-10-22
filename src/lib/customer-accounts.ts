@@ -106,6 +106,21 @@ export function availableIncomes(account: CustomerAccount): Ingreso[] {
 
 export function buildCustomerStatement(account: CustomerAccount, from = '', to = '') {
   if (from && to && from > to) throw new Error('La fecha inicial debe ser anterior a la final');
+  const advanceIncomeIds = new Set(
+    account.advances.filter((advance) => !advance.voidedAt).map((advance) => advance.ingresoId),
+  );
+  const orders = new Map(account.pedidos.map((pedido) => [pedido.id, pedido]));
+  const incomes = account.ingresos
+    .filter((income) => (!from || income.fecha >= from) && (!to || income.fecha <= to))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.id.localeCompare(b.id))
+    .map((income) => ({
+      ...income,
+      linkLabel: advanceIncomeIds.has(income.id)
+        ? 'Adelanto registrado'
+        : income.pedidoId
+          ? orders.get(income.pedidoId)?.descripcion || 'Pedido vinculado'
+          : 'Sin pedido asociado',
+    }));
   const movements = [...account.movements].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.sequence - b.sequence);
   const openingCents = movements
     .filter((movement) => from && movement.fecha < from)
@@ -125,6 +140,8 @@ export function buildCustomerStatement(account: CustomerAccount, from = '', to =
   return {
     from,
     to,
+    incomes,
+    incomeTotal: incomes.reduce((sum, income) => sum + toCents(income.montoTotal), 0) / 100,
     opening: openingCents / 100,
     closing: balanceCents / 100,
     rows,

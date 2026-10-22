@@ -21,7 +21,13 @@ import {
   bindLocalDataToUser,
 } from '@/lib/store';
 import { hasPendingSync } from '@/lib/sync-queue';
-import { accountFixture, accountAdvance, accountCliente, accountMovement } from './fixtures/customer-account';
+import {
+  accountFixture,
+  accountAdvance,
+  accountCliente,
+  accountMovement,
+  historicalIncomeAccount,
+} from './fixtures/customer-account';
 
 const api = vi.hoisted(() => ({ rpc: vi.fn(), response: vi.fn(), flush: vi.fn(), report: vi.fn(), upload: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({ supabase: { rpc: api.rpc } }));
@@ -73,6 +79,42 @@ beforeEach(() => {
   api.rpc.mockImplementation(() => ({ abortSignal: () => api.response() }));
 });
 describe('customer account math and statements', () => {
+  it('includes historical direct income without manufacturing credit or an order', () => {
+    const account = historicalIncomeAccount();
+    const before = JSON.stringify(account);
+    const statement = buildCustomerStatement(account);
+    expect(statement.incomeTotal).toBe(3950);
+    expect(statement.incomes).toHaveLength(1);
+    expect(statement.incomes[0]).toMatchObject({ descripcion: 'Bordado de toallas', linkLabel: 'Sin pedido asociado' });
+    expect(statement.rows).toEqual([]);
+    expect(statement.closing).toBe(0);
+    expect(statement.outstanding).toBe(0);
+    expect(JSON.stringify(account)).toBe(before);
+  });
+  it('filters incomes by the inclusive date range independently of credit movements', () => {
+    const account = historicalIncomeAccount();
+    expect(buildCustomerStatement(account, '2026-08-10', '2026-08-10').incomeTotal).toBe(3950);
+    expect(buildCustomerStatement(account, '2026-10-01').incomes).toEqual([]);
+    expect(buildCustomerStatement(account, '', '2026-08-09').incomeTotal).toBe(0);
+    account.ingresos = [0.1, 0.2].map((amount, index) => ({
+      ...account.ingresos[0],
+      id: `small-${index}`,
+      montoTotal: amount,
+    }));
+    expect(buildCustomerStatement(account).incomeTotal).toBe(0.3);
+  });
+  it('shows an advance-backed collection once and does not count credit applications as new income', () => {
+    const account = accountFixture();
+    const statement = buildCustomerStatement(account);
+    expect(statement.incomeTotal).toBe(5000);
+    expect(statement.incomes).toHaveLength(1);
+    expect(statement.incomes[0].linkLabel).toBe('Adelanto registrado');
+    expect(statement.closing).toBe(3800);
+    account.ingresos.push({ ...account.ingresos[0], id: 'order-payment', pedidoId: 'order-2', montoTotal: 200 });
+    expect(buildCustomerStatement(account).incomes[1].linkLabel).toBe('Pedido order-2');
+    account.advances[0].voidedAt = '2026-10-05T12:00:00Z';
+    expect(buildCustomerStatement(account).incomes[0].linkLabel).toBe('Sin pedido asociado');
+  });
   it('uses the same Mexico City business date as SQL after midnight UTC', () => {
     expect(customerAccountToday(new Date('2026-10-19T23:59:59Z'))).toBe('2026-10-19');
     expect(customerAccountToday(new Date('2026-10-20T00:05:00Z'))).toBe('2026-10-19');

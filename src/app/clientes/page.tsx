@@ -2,9 +2,9 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Wallet } from 'lucide-react';
+import { Plus, Search, Wallet } from 'lucide-react';
 import { v4 as uuid } from 'uuid';
 import { getClientes, getIngresos, getPedidos } from '@/lib/store';
 import { cloudGetClientes, cloudGetIngresos, cloudGetPedidos } from '@/lib/store-cloud';
@@ -18,6 +18,14 @@ import EmptyState from '@/components/EmptyState';
 import ActionMenu from '@/components/ActionMenu';
 import { useRole } from '@/components/RoleProvider';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
+import {
+  buildCustomerStats,
+  customerSortOptions,
+  emptyCustomerStats,
+  selectCustomers,
+  type CustomerSort,
+  type CustomerOrderFilter,
+} from '@/lib/customer-list';
 
 function emptyCliente(): Omit<Cliente, 'id' | 'createdAt'> {
   return { nombre: '', telefono: '', email: '', direccion: '', logo: '', notas: '' };
@@ -32,7 +40,8 @@ export default function ClientesPage() {
   );
   const { data: ingresos, reload: reloadIngresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
   const { data: pedidos, reload: reloadPedidos } = useCloudStore(getPedidos, cloudGetPedidos, 'bordados_pedidos');
-  const clientes = [...clientesRaw].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const clientes = clientesRaw;
+  const customerStats = useMemo(() => buildCustomerStats(ingresos, pedidos), [ingresos, pedidos]);
   const reload = () => {
     reloadClientes();
     reloadIngresos();
@@ -46,6 +55,9 @@ export default function ClientesPage() {
   const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<CustomerSort>('name-asc');
+  const [orderFilter, setOrderFilter] = useState<CustomerOrderFilter>('with-orders');
+  const [onlyDebtors, setOnlyDebtors] = useState(false);
 
   const openNew = () => {
     setEditingId(null);
@@ -93,14 +105,14 @@ export default function ClientesPage() {
 
   const clienteIngresos = (id: string) => ingresos.filter((i) => i.clienteId === id);
   const clientePedidos = (id: string) => pedidos.filter((p) => p.clienteId === id);
-  const clienteTotal = (id: string) => clienteIngresos(id).reduce((s, i) => s + i.montoTotal, 0);
+  const clienteTotal = (id: string) => (customerStats.get(id)?.incomeCents || 0) / 100;
 
-  const filtered = clientes.filter(
-    (c) =>
-      c.nombre.toLowerCase().includes(search.toLowerCase()) ||
-      c.telefono.includes(search) ||
-      c.email.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = selectCustomers(clientes, customerStats, { search, sort, orders: orderFilter, onlyDebtors });
+  const showAll = () => {
+    setSearch('');
+    setOrderFilter('all');
+    setOnlyDebtors(false);
+  };
 
   return (
     <div>
@@ -114,22 +126,15 @@ export default function ClientesPage() {
         }
       />
 
-      <div className="mb-5">
-        <div className="relative max-w-md">
-          <svg
-            className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-300"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
-            />
-          </svg>
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <div className="relative w-full lg:max-w-md">
+          <Search
+            size={16}
+            aria-hidden="true"
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-300"
+          />
           <input
+            aria-label="Buscar clientes"
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -137,18 +142,62 @@ export default function ClientesPage() {
             className="w-full border border-neutral-200 rounded-xl pl-10 pr-4 py-2.5 text-sm bg-white focus:outline-none focus:border-[#c72a09]"
           />
         </div>
+        <div className="w-full min-w-0 sm:w-60">
+          <label htmlFor="customer-sort" className={labelClass}>
+            Ordenar por
+          </label>
+          <select
+            id="customer-sort"
+            value={sort}
+            onChange={(event) => setSort(event.target.value as CustomerSort)}
+            className={`${inputClass} bg-white text-sm`}
+          >
+            {customerSortOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="w-full min-w-0 sm:w-52">
+          <label htmlFor="customer-orders" className={labelClass}>
+            Pedidos
+          </label>
+          <select
+            id="customer-orders"
+            value={orderFilter}
+            onChange={(event) => setOrderFilter(event.target.value as CustomerOrderFilter)}
+            className={`${inputClass} bg-white text-sm`}
+          >
+            <option value="with-orders">Con pedidos</option>
+            <option value="active">Solo pedidos activos</option>
+            <option value="all">Todos los clientes</option>
+          </select>
+        </div>
+        <label className="inline-flex min-h-11 items-center gap-2 text-sm text-neutral-600">
+          <input
+            type="checkbox"
+            checked={onlyDebtors}
+            onChange={(event) => setOnlyDebtors(event.target.checked)}
+            className="h-4 w-4 accent-[#c72a09]"
+          />
+          Solo con saldo pendiente
+        </label>
       </div>
+      <p className="mb-4 text-xs text-neutral-500" role="status">
+        {filtered.length} de {clientes.length} clientes
+      </p>
 
       {filtered.length === 0 ? (
         <EmptyState
-          title="Sin clientes"
-          description="Agrega tu primer cliente al catálogo"
+          title={clientes.length ? 'Sin coincidencias' : 'Sin clientes'}
+          description={clientes.length ? 'No hay clientes con estos filtros.' : 'Agrega tu primer cliente al catálogo'}
           action={
             <button
-              onClick={openNew}
+              onClick={clientes.length ? showAll : openNew}
               className="text-[#c72a09] font-bold text-xs uppercase tracking-wide hover:underline"
             >
-              + Agregar cliente
+              {clientes.length ? 'Mostrar todos los clientes' : '+ Agregar cliente'}
             </button>
           }
         />
@@ -156,7 +205,8 @@ export default function ClientesPage() {
         <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
           {filtered.map((c) => {
             const total = clienteTotal(c.id);
-            const count = clienteIngresos(c.id).length;
+            const stats = customerStats.get(c.id) || emptyCustomerStats;
+            const count = stats.incomeCount;
             const accountHref = `/clientes/cuenta?cliente=${encodeURIComponent(c.id)}`;
             return (
               <article
@@ -196,12 +246,24 @@ export default function ClientesPage() {
                   />
                 </div>
                 <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 mt-auto pt-1.5">
-                  <p className="text-[11px] text-neutral-500">
-                    {count} ventas &middot;{' '}
-                    {clientePedidos(c.id).filter((p) => p.estado !== 'entregado' && p.estado !== 'cancelado').length}{' '}
-                    pedidos activos
-                  </p>
-                  <p className="text-sm font-bold text-green-600 tabular-nums">{formatCurrency(total)}</p>
+                  <div>
+                    <p className="text-[11px] text-neutral-500">
+                      {count} {count === 1 ? 'ingreso' : 'ingresos'} &middot; {stats.activeOrderCount} pedidos activos
+                    </p>
+                    {stats.pendingCents > 0 && (
+                      <p className="mt-0.5 text-[11px] font-semibold text-red-600">
+                        Pendiente {formatCurrency(stats.pendingCents / 100)}
+                      </p>
+                    )}
+                  </div>
+                  <Link
+                    href={accountHref}
+                    aria-label={`Ver ingresos de ${c.nombre}: ${formatCurrency(total)}`}
+                    className="rounded-sm text-right hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c72a09]"
+                  >
+                    <span className="block text-[10px] leading-4 text-neutral-500">Total ingresado</span>
+                    <span className="block text-sm font-bold text-green-600 tabular-nums">{formatCurrency(total)}</span>
+                  </Link>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 pt-1 border-t border-neutral-100">
                   <Link
@@ -317,7 +379,7 @@ export default function ClientesPage() {
 
             {/* Ingresos del cliente */}
             <div>
-              <span className={labelClass}>Ingresos ({clienteIngresos(selectedCliente.id).length} ventas)</span>
+              <span className={labelClass}>Ingresos ({clienteIngresos(selectedCliente.id).length} registros)</span>
               <div className="space-y-1 max-h-48 overflow-y-auto mt-2">
                 {clienteIngresos(selectedCliente.id).length === 0 ? (
                   <p className="text-sm text-neutral-300 py-3 text-center">Sin ingresos</p>
@@ -339,7 +401,7 @@ export default function ClientesPage() {
                 )}
               </div>
               <div className="border-t border-neutral-100 mt-3 pt-3 flex justify-between">
-                <span className="text-sm font-bold text-[#0a0a0a]">Total facturado</span>
+                <span className="text-sm font-bold text-[#0a0a0a]">Total ingresado</span>
                 <span className="text-lg font-black text-[#c72a09]">
                   {formatCurrency(clienteTotal(selectedCliente.id))}
                 </span>
