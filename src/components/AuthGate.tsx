@@ -14,6 +14,7 @@ import {
 } from '@/lib/store';
 import { reportError } from '@/lib/sentry';
 import { flushPendingSync } from '@/lib/sync-flush';
+import ConnectionScreen from '@/components/ConnectionScreen';
 
 type View = 'login' | 'register' | 'reset' | 'check-email';
 
@@ -187,16 +188,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#fafafa] px-4">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <div className="w-6 h-6 border-2 border-[#c72a09] border-t-transparent rounded-full animate-spin" />
-          <p className="text-xs font-semibold text-neutral-400">Conectando con Studio 24...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <ConnectionScreen />;
 
   if (user && !sessionError) return <>{children}</>;
 

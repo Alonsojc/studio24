@@ -1,13 +1,13 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import AuthGate from '@/components/AuthGate';
-import RoleProvider from '@/components/RoleProvider';
-import SeedData from '@/components/SeedData';
-import Sidebar from '@/components/Sidebar';
-import RouteGuard from '@/components/RouteGuard';
-import MigrationBanner from '@/components/MigrationBanner';
-import NotificationManager from '@/components/NotificationManager';
+import ConnectionScreen from '@/components/ConnectionScreen';
+
+const AuthenticatedFrame = dynamic(() => import('@/components/AuthenticatedFrame'), {
+  loading: () => <ConnectionScreen />,
+});
 
 const PUBLIC_ROUTES = ['/seguimiento'];
 
@@ -20,15 +20,7 @@ export default function AppFrame({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthGate>
-      <RoleProvider>
-        <SeedData />
-        <Sidebar />
-        <main className="lg:ml-[260px] min-h-screen px-3 py-14 sm:px-4 sm:py-16 lg:px-10 lg:py-8">
-          <RouteGuard>{children}</RouteGuard>
-        </main>
-        <MigrationBanner />
-        <NotificationManager />
-      </RoleProvider>
+      <AuthenticatedFrame>{children}</AuthenticatedFrame>
     </AuthGate>
   );
 }
