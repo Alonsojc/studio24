@@ -52,7 +52,24 @@ export function applyPedidoPayment<T extends Pick<Pedido, 'montoTotal' | 'montoP
   pedido: T,
   pago: PagoPedido,
 ): T {
-  const pagos = [...(pedido.pagos || []), pago];
+  const anteriores = pedido.pagos || [];
+  // Older orders stored only an accumulated amount. Preserve its provenance
+  // instead of dropping it when the first detailed payment is recorded.
+  const saldoInicial: PagoPedido[] =
+    anteriores.length === 0 && pedido.montoPagado > 0
+      ? [
+          {
+            id: `saldo-inicial:${pago.id}`,
+            fecha: '',
+            formaPago: 'otro',
+            monto: Math.round(pedido.montoPagado * 100) / 100,
+            referencia: 'Saldo anterior sin detalle',
+            origen: 'saldo_inicial',
+            createdAt: pago.createdAt,
+          },
+        ]
+      : [];
+  const pagos = [...saldoInicial, ...anteriores, pago];
   const montoPagado = calculatePedidoPaidAmount({ montoPagado: pedido.montoPagado, pagos });
   return {
     ...pedido,
@@ -78,6 +95,40 @@ export function applyInventoryConsumption(
 export function hasIngresoForPedido(ingresos: Pick<Ingreso, 'pedidoId'>[], pedidoId: string): boolean {
   if (!pedidoId) return false;
   return ingresos.some((ingreso) => ingreso.pedidoId === pedidoId);
+}
+
+export function buildRepeatedPedido(
+  pedido: Pedido,
+  options: { id: string; trackingToken: string; fechaPedido: string; now?: Date },
+): Pedido {
+  const source = { ...pedido } as Pedido & { serverUpdatedAt?: string };
+  delete source.serverUpdatedAt;
+  delete source.updatedAt;
+  return {
+    ...source,
+    id: options.id,
+    trackingToken: options.trackingToken,
+    estado: 'pendiente',
+    estadoPago: 'pendiente',
+    montoPagado: 0,
+    pagos: [],
+    inventarioUsado: [],
+    fechaPedido: options.fechaPedido,
+    fechaEntrega: '',
+    fechaEntregaReal: '',
+    fotos: [],
+    paymentDueDate: null,
+    nextFollowupDate: null,
+    collectionNotes: '',
+    checklist: {
+      archivoListo: false,
+      hilosCargados: false,
+      aroColocado: false,
+      estabilizador: false,
+      pruebaHecha: false,
+    },
+    createdAt: (options.now || new Date()).toISOString(),
+  };
 }
 
 export function canCreateIngresoForPedido(

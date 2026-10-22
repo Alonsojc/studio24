@@ -88,7 +88,7 @@ export interface PagoPedido {
   formaPago: FormaPago;
   monto: number;
   referencia: string;
-  origen?: 'saldo_cliente';
+  origen?: 'saldo_cliente' | 'saldo_inicial';
   anticipoId?: string;
   createdAt: string;
   updatedAt?: string;
@@ -130,6 +130,9 @@ export interface Pedido {
   urgente: boolean;
   notas: string;
   trackingToken?: string;
+  paymentDueDate?: string | null;
+  nextFollowupDate?: string | null;
+  collectionNotes?: string;
   createdAt: string;
   updatedAt?: string;
 }

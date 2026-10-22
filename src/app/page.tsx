@@ -2,7 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { cloudGetIngresos, cloudGetEgresos, cloudGetClientes, cloudGetPedidos } from '@/lib/store-cloud';
+import {
+  cloudGetDashboardIngresos,
+  cloudGetDashboardEgresos,
+  cloudGetClientes,
+  cloudGetActivePedidos,
+} from '@/lib/store-cloud';
 import { getIngresos, getEgresos, getPedidos, getClientes, KEYS } from '@/lib/store';
 import { Ingreso, Egreso, Pedido, Cliente } from '@/lib/types';
 import {
@@ -21,11 +26,18 @@ type DashFilter = 'mes' | 'año' | 'todo';
 const filterLabels: Record<DashFilter, string> = { mes: 'Mes actual', año: 'Año actual', todo: 'Histórico' };
 
 export default function Dashboard() {
-  const { data: ingresos } = useCloudStore<Ingreso>(getIngresos, cloudGetIngresos, KEYS.ingresos);
-  const { data: egresos } = useCloudStore<Egreso>(getEgresos, cloudGetEgresos, KEYS.egresos);
-  const { data: pedidos } = useCloudStore<Pedido>(getPedidos, cloudGetPedidos, KEYS.pedidos);
-  const { data: clientes } = useCloudStore<Cliente>(getClientes, cloudGetClientes, KEYS.clientes);
   const [filter, setFilter] = useState<DashFilter>('mes');
+  const { data: ingresos } = useCloudStore<Ingreso>(
+    getIngresos,
+    () => cloudGetDashboardIngresos(filter),
+    KEYS.ingresos,
+    [filter],
+  );
+  const { data: egresos } = useCloudStore<Egreso>(getEgresos, () => cloudGetDashboardEgresos(filter), KEYS.egresos, [
+    filter,
+  ]);
+  const { data: pedidos } = useCloudStore<Pedido>(getPedidos, cloudGetActivePedidos, KEYS.pedidos);
+  const { data: clientes } = useCloudStore<Cliente>(getClientes, cloudGetClientes, KEYS.clientes);
 
   const now = new Date();
   const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
@@ -123,9 +135,9 @@ export default function Dashboard() {
           href="/egresos"
         />
         <StatCard
-          label="Ganancia Neta"
+          label="Flujo de caja"
           value={formatCurrency(ganancia)}
-          subtitle={ganancia >= 0 ? 'Positiva' : 'Negativa'}
+          subtitle="Cobros menos pagos, incluido IVA"
           color={ganancia >= 0 ? 'green' : 'red'}
         />
         <StatCard label="Clientes" value={String(clientes.length)} subtitle="Registrados" />

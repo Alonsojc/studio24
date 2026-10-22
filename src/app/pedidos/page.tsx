@@ -6,11 +6,12 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Wallet } from 'lucide-react';
 import { v4 as uuid } from 'uuid';
-import { getPedidos, getClientes, getIngresos } from '@/lib/store';
-import { cloudGetPedidosPage, cloudGetClientes, cloudGetIngresosByYear } from '@/lib/store-cloud';
+import { getClientes, getIngresos } from '@/lib/store';
+import { cloudGetClientes, cloudGetIngresosByYear } from '@/lib/store-cloud';
 import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolioAsync } from '@/lib/store-sync';
 import { useCloudStore } from '@/lib/useCloudStore';
-import Pagination, { PAGE_SIZE } from '@/components/Pagination';
+import Pagination from '@/components/Pagination';
+import { usePedidoPage, type OrderScope } from '@/lib/usePedidoPage';
 import { Pedido, EstadoPedido, EstadoPago, ConceptoIngreso, FormaPago } from '@/lib/types';
 import {
   formatCurrency,
@@ -25,9 +26,9 @@ import {
   buildIngresoFromPedido,
   applyPedidoPayment,
   buildPedidoPayment,
+  buildRepeatedPedido,
   calculateEstadoPago,
   calculatePedidoPaidAmount,
-  calculatePedidoCreditApplied,
   calculatePedidoTotal,
   canCreateIngresoForPedido,
 } from '@/lib/business-rules';
@@ -107,11 +108,10 @@ const statusMessages: Record<EstadoPedido, string> = {
 
 export default function PedidosPage() {
   const now = new Date();
-  const { data: pedidosRaw, reload: reloadPedidos } = useCloudStore(
-    getPedidos,
-    cloudGetPedidosPage,
-    'bordados_pedidos',
-  );
+  const [page, setPage] = useState(0);
+  const [scope, setScope] = useState<OrderScope>('active');
+  const { data: orderPage, reload: reloadPedidos } = usePedidoPage(scope, page);
+  const pedidosRaw = orderPage.rows;
   const { data: clientes, reload: reloadClientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
   const { data: ingresos, reload: reloadIngresos } = useCloudStore(
     getIngresos,
@@ -139,9 +139,8 @@ export default function PedidosPage() {
   const [paymentForma, setPaymentForma] = useState<FormaPago>('transferencia');
   const [paymentReferencia, setPaymentReferencia] = useState('');
   const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
-  const [page, setPage] = useState(0);
   const { role } = useRole();
-  const pagedPedidos = pedidos.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const pagedPedidos = pedidos;
 
   const openNew = () => {
     setEditingId(null);
@@ -247,22 +246,11 @@ export default function PedidosPage() {
   };
 
   const repetirPedido = (p: Pedido) => {
-    const nuevo: Pedido = {
-      ...p,
+    const nuevo = buildRepeatedPedido(p, {
       id: uuid(),
-      estado: 'pendiente',
-      estadoPago: 'pendiente',
-      montoPagado: 0,
-      pagos: [],
-      inventarioUsado: [],
-      fechaPedido: todayString(),
-      fechaEntrega: '',
-      fechaEntregaReal: '',
-      fotos: [],
-      checklist: { ...emptyChecklist },
       trackingToken: createTrackingToken(),
-      createdAt: new Date().toISOString(),
-    };
+      fechaPedido: todayString(),
+    });
     addPedido(nuevo);
     reload();
   };
@@ -452,8 +440,7 @@ export default function PedidosPage() {
   };
   const clienteName = (id: string) => clientes.find((c) => c.id === id)?.nombre || 'Sin cliente';
 
-  const activos = pedidos.filter((p) => p.estado !== 'entregado' && p.estado !== 'cancelado');
-  const totalActivos = activos.reduce((s, p) => s + p.montoTotal, 0);
+  const totalActivos = orderPage.summary.activeTotal;
 
   const checklistLabels: Record<string, string> = {
     archivoListo: 'Archivo cargado en USB',
@@ -467,9 +454,21 @@ export default function PedidosPage() {
     <div>
       <PageHeader
         title="Pedidos"
-        description={`${activos.length} activos · ${formatCurrency(totalActivos)} en producción`}
+        description={`${orderPage.summary.activeCount} activos · ${formatCurrency(totalActivos)} en producción`}
         action={
           <div className="flex gap-2">
+            <select
+              aria-label="Mostrar pedidos"
+              value={scope}
+              onChange={(event) => {
+                setScope(event.target.value as OrderScope);
+                setPage(0);
+              }}
+              className={inputClass}
+            >
+              <option value="active">Activos</option>
+              <option value="all">Todos</option>
+            </select>
             <div className="flex bg-neutral-100 rounded-xl p-0.5">
               {(['pipeline', 'lista', 'pagos'] as const).map((v) => (
                 <button
@@ -501,7 +500,7 @@ export default function PedidosPage() {
                     {col.label}
                   </span>
                   <span className="ml-auto text-[10px] font-bold text-neutral-300 bg-white rounded-full w-5 h-5 flex items-center justify-center">
-                    {items.length}
+                    {orderPage.summary.statuses[col.estado] || 0}
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -727,7 +726,7 @@ export default function PedidosPage() {
           </div>
         ))}
 
-      {view === 'lista' && <Pagination total={pedidos.length} page={page} onPageChange={setPage} />}
+      <Pagination total={orderPage.total} page={page} onPageChange={setPage} />
 
       {/* Pagos View */}
       {view === 'pagos' && (
@@ -735,16 +734,16 @@ export default function PedidosPage() {
           {/* Summary cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
             {(['pendiente', 'parcial', 'pagado'] as const).map((ep) => {
-              const items = pedidos.filter((p) => (p.estadoPago || 'pendiente') === ep && p.estado !== 'cancelado');
-              const total = items.reduce((s, p) => s + p.montoTotal, 0);
-              const pagado = items.reduce((s, p) => s + calculatePedidoPaidAmount(p), 0);
+              const summary = orderPage.summary.payments[ep];
+              const total = summary?.total || 0;
+              const pagado = summary?.paid || 0;
               return (
                 <div
                   key={ep}
                   className={`rounded-2xl p-5 border ${ep === 'pendiente' ? 'bg-red-50 border-red-100' : ep === 'parcial' ? 'bg-amber-50 border-amber-100' : 'bg-green-50 border-green-100'}`}
                 >
                   <p className="text-[10px] font-bold tracking-[0.1em] uppercase text-neutral-400">{pagoLabel[ep]}</p>
-                  <p className="text-2xl font-black mt-1">{items.length} pedidos</p>
+                  <p className="text-2xl font-black mt-1">{summary?.count || 0} pedidos</p>
                   <p className="text-xs text-neutral-500 mt-1">
                     Total: {formatCurrency(total)} {ep === 'parcial' && `· Cobrado: ${formatCurrency(pagado)}`}
                   </p>
@@ -1013,17 +1012,7 @@ export default function PedidosPage() {
                   step="0.01"
                   min="0"
                   value={calculatePedidoPaidAmount(form) || ''}
-                  readOnly={calculatePedidoCreditApplied(form) > 0}
-                  onChange={(e) => {
-                    if (calculatePedidoCreditApplied(form) > 0) return;
-                    const montoPagado = parseFloat(e.target.value) || 0;
-                    setForm({
-                      ...form,
-                      pagos: [],
-                      montoPagado,
-                      estadoPago: calculateEstadoPago(form.piezas * form.precioUnitario, montoPagado),
-                    });
-                  }}
+                  readOnly
                   className={inputClass}
                 />
               </div>
@@ -1054,7 +1043,9 @@ export default function PedidosPage() {
                   {(form.pagos || []).map((pago) => (
                     <div key={pago.id} className="flex items-center justify-between text-xs">
                       <span className="text-neutral-500">
-                        {formatDate(pago.fecha)} · {pago.origen === 'saldo_cliente' ? 'Saldo a favor' : pago.formaPago}
+                        {pago.origen === 'saldo_inicial'
+                          ? 'Saldo anterior'
+                          : `${formatDate(pago.fecha)} · ${pago.origen === 'saldo_cliente' ? 'Saldo a favor' : pago.formaPago}`}
                         {pago.referencia ? ` · ${pago.referencia}` : ''}
                       </span>
                       <span className="font-bold text-[#0a0a0a]">{formatCurrency(pago.monto)}</span>

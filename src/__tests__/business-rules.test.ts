@@ -4,6 +4,7 @@ import {
   applyPedidoPayment,
   buildIngresoFromPedido,
   buildPedidoPayment,
+  buildRepeatedPedido,
   calculateEstadoPago,
   calculatePedidoPaidAmount,
   calculatePedidoTotal,
@@ -62,6 +63,30 @@ const ingreso: Ingreso = {
 };
 
 describe('reglas de negocio de pedidos e ingresos', () => {
+  it('repite un pedido sin copiar su version, cobros ni seguimiento financiero', () => {
+    const source = {
+      ...pedido,
+      serverUpdatedAt: '2026-10-01T12:00:00Z',
+      paymentDueDate: '2026-10-01',
+      nextFollowupDate: '2026-10-20',
+      collectionNotes: 'Original',
+    };
+    const copy = buildRepeatedPedido(source, {
+      id: 'new-order',
+      trackingToken: 'new-token',
+      fechaPedido: '2026-10-22',
+    });
+    expect(copy).not.toHaveProperty('serverUpdatedAt');
+    expect(copy).toMatchObject({
+      id: 'new-order',
+      montoPagado: 0,
+      pagos: [],
+      paymentDueDate: null,
+      nextFollowupDate: null,
+      collectionNotes: '',
+    });
+    expect(source.collectionNotes).toBe('Original');
+  });
   it('calcula total y estado de pago del pedido', () => {
     expect(calculatePedidoTotal({ piezas: 3, precioUnitario: 99.99 })).toBe(299.97);
     expect(calculatePedidoPaidAmount({ montoPagado: 200, pagos: [] })).toBe(200);
@@ -91,6 +116,43 @@ describe('reglas de negocio de pedidos e ingresos', () => {
     expect(updated.montoPagado).toBe(500);
     expect(updated.estadoPago).toBe('parcial');
     expect(updated.pagos?.[0]).toMatchObject({ referencia: 'SPEI-1', fecha: '2026-04-02' });
+  });
+
+  it('preserva el saldo anterior al agregar el primer abono detallado', () => {
+    const pago = buildPedidoPayment({ id: 'nuevo', monto: 200, formaPago: 'efectivo' });
+    const original: Pedido = { ...pedido, montoTotal: 1000, montoPagado: 500, pagos: [] };
+    const updated = applyPedidoPayment(original, pago);
+    expect(updated.montoPagado).toBe(700);
+    expect(updated.pagos?.[0]).toMatchObject({ monto: 500, origen: 'saldo_inicial', fecha: '', formaPago: 'otro' });
+    expect(original.pagos).toEqual([]);
+    const next = applyPedidoPayment(updated, { ...pago, id: 'siguiente', monto: 100 });
+    expect(next.montoPagado).toBe(800);
+    expect(next.pagos?.filter((item) => item.origen === 'saldo_inicial')).toHaveLength(1);
+  });
+
+  it('mantiene intactos los pagos con saldo a favor al recibir efectivo adicional', () => {
+    const original = {
+      ...pedido,
+      montoPagado: 500,
+      pagos: [
+        {
+          id: 'credito',
+          monto: 500,
+          origen: 'saldo_cliente' as const,
+          anticipoId: 'adelanto',
+          fecha: '2026-10-01',
+          formaPago: 'otro' as const,
+          referencia: '',
+          createdAt: '',
+        },
+      ],
+    };
+    const updated = applyPedidoPayment(
+      original,
+      buildPedidoPayment({ id: 'efectivo', monto: 200, formaPago: 'efectivo' }),
+    );
+    expect(updated.montoPagado).toBe(700);
+    expect(updated.pagos?.[0]).toEqual(original.pagos[0]);
   });
 
   it('descuenta inventario consumido por pedido sin dejar stock negativo', () => {

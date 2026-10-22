@@ -45,6 +45,7 @@ yarn-error.log*
 
 # local database backups
 /.local-backups/
+/backup/
 
 # typescript
 *.tsbuildinfo

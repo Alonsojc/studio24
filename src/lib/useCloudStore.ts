@@ -1,163 +1,125 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, type DependencyList } from 'react';
+import { useState, useEffect, useCallback, useRef, useId, type DependencyList } from 'react';
 import { mergeCloudList, mergeCloudObject, writeLocalJSON } from './sync-queue';
+import { ACTIVE_USER_KEY } from './store';
+import { boundedRead, removeCloudRead, setCloudRead } from './cloud-read-status';
+import { invalidateCloudCache } from './cloud-cache';
 
-function useLocalChanges<T>(key: string, reader: () => T, setter: (value: T) => void) {
-  const readerRef = useRef(reader);
-  useEffect(() => {
-    readerRef.current = reader;
+/** Only the current request and session can commit a cloud response. */
+export function useCloudResource<T>(
+  localReader: () => T,
+  cloudFetcher: () => Promise<T>,
+  localKey: string,
+  deps: DependencyList = [],
+  merge: (local: T, cloud: T) => T = (_local, cloud) => cloud,
+  watchKeys: string[] = [],
+) {
+  const id = useId();
+  const depsKey = deps.map(String).join('|');
+  const [data, setData] = useState(localReader);
+  const [state, setState] = useState({
+    loading: true,
+    syncing: false,
+    error: '',
+    hasSnapshot: false,
+    updatedAt: null as string | null,
   });
+  const latest = useRef({ localReader, cloudFetcher, merge, watchKeys });
   useEffect(() => {
+    latest.current = { localReader, cloudFetcher, merge, watchKeys };
+  });
+  const revision = useRef(0);
+  const reloadRef = useRef<() => void>(() => {});
+  const load = useCallback(async () => {
+    const request = ++revision.current;
+    const owner = localStorage.getItem(ACTIVE_USER_KEY);
+    const timeKey = `bordados_read_at:${owner}:${localKey}:${depsKey}`;
+    const updatedAt = localStorage.getItem(timeKey);
+    const hasSnapshot = localStorage.getItem(localKey) !== null && (!depsKey || Boolean(updatedAt));
+    const pending = { loading: !hasSnapshot, syncing: true, error: '', hasSnapshot, updatedAt };
+    setData(latest.current.localReader());
+    setState(pending);
+    setCloudRead(id, { ...pending, loading: true, retry: () => reloadRef.current() });
+    try {
+      const cloud = await boundedRead(latest.current.cloudFetcher);
+      if (request !== revision.current || owner !== localStorage.getItem(ACTIVE_USER_KEY)) return;
+      const value = latest.current.merge(latest.current.localReader(), cloud);
+      writeLocalJSON(localKey, value);
+      const confirmedAt = new Date().toISOString();
+      localStorage.setItem(timeKey, confirmedAt);
+      setData(value);
+      const next = { loading: false, syncing: false, error: '', hasSnapshot: true, updatedAt: confirmedAt };
+      setState(next);
+      setCloudRead(id, { ...next, retry: () => reloadRef.current() });
+    } catch (error) {
+      if (request !== revision.current || owner !== localStorage.getItem(ACTIVE_USER_KEY)) return;
+      const message = navigator.onLine === false ? 'Sin conexion' : 'No se pudieron confirmar los datos';
+      const next = {
+        loading: false,
+        syncing: false,
+        error: error instanceof Error && error.message.includes('tardo demasiado') ? error.message : message,
+        hasSnapshot,
+        updatedAt,
+      };
+      setState(next);
+      setCloudRead(id, { ...next, retry: () => reloadRef.current() });
+    }
+  }, [id, localKey, depsKey]);
+  const reload = useCallback(() => {
+    invalidateCloudCache();
+    void load();
+  }, [load]);
+  useEffect(() => {
+    reloadRef.current = reload;
+  }, [reload]);
+  useEffect(() => {
+    void load();
+    const requests = revision;
     const update = (event: Event) => {
-      const changedKey = event instanceof StorageEvent ? event.key : (event as CustomEvent).detail;
-      if (!changedKey || changedKey === key) setter(readerRef.current());
+      const key = event instanceof StorageEvent ? event.key : (event as CustomEvent).detail;
+      if (!key || key === localKey || latest.current.watchKeys.includes(key)) setData(latest.current.localReader());
     };
     window.addEventListener('studio24:local-change', update);
     window.addEventListener('storage', update);
+    window.addEventListener('online', reload);
     return () => {
+      ++requests.current;
+      removeCloudRead(id);
       window.removeEventListener('studio24:local-change', update);
       window.removeEventListener('storage', update);
+      window.removeEventListener('online', reload);
     };
-  }, [key, setter]);
+  }, [id, localKey, load, reload]);
+  return { data, ...state, reload };
 }
 
-function hasLocalSnapshot(localKey: string): boolean {
-  return typeof window !== 'undefined' && localStorage.getItem(localKey) !== null;
-}
-
-/**
- * Local-first data hook.
- * 1. Returns localStorage data immediately (fast, synchronous)
- * 2. Fetches from Supabase in background
- * 3. Merges cloud data into state + updates localStorage cache
- * 4. Falls back to localStorage if Supabase fails (offline)
- */
 export function useCloudStore<T extends { id: string; createdAt?: string; updatedAt?: string }>(
   localReader: () => T[],
   cloudFetcher: () => Promise<T[]>,
   localKey: string,
   deps: DependencyList = [],
-): { data: T[]; loading: boolean; syncing: boolean; reload: () => void } {
-  const isClient = typeof window !== 'undefined';
-  const [data, setData] = useState<T[]>(() => (isClient ? localReader() : []));
-  const [loading, setLoading] = useState(() => isClient && !hasLocalSnapshot(localKey));
-  const [syncing, setSyncing] = useState(false);
-  useLocalChanges(localKey, localReader, setData);
-  const mountedRef = useRef(false);
-  const depsKey = deps.map(String).join('|');
-
-  useEffect(() => {
-    mountedRef.current = true;
-    let cancelled = false;
-    (async () => {
-      setSyncing(true);
-      try {
-        const cloudData = await cloudFetcher();
-        if (!cancelled && mountedRef.current) {
-          const localData = localReader();
-          const merged = mergeCloudList(localKey, localData as never[], cloudData as never[]) as T[];
-          setData(merged);
-          writeLocalJSON(localKey, merged);
-        }
-      } catch {
-        // Offline — keep localStorage data
-      }
-      if (!cancelled) {
-        setLoading(false);
-        setSyncing(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // localReader/cloudFetcher are often inline page closures; deps controls
-    // intentional refetches such as selected year/month.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localKey, depsKey]);
-
-  const reload = useCallback(() => {
-    setData(localReader());
-    setSyncing(true);
-    cloudFetcher()
-      .then((cloudData) => {
-        const merged = mergeCloudList(localKey, localReader() as never[], cloudData as never[]) as T[];
-        setData(merged);
-        writeLocalJSON(localKey, merged);
-      })
-      .catch(() => {})
-      .finally(() => {
-        setLoading(false);
-        setSyncing(false);
-      });
-  }, [localReader, cloudFetcher, localKey]);
-
-  return { data, loading, syncing, reload };
+) {
+  return useCloudResource(
+    localReader,
+    cloudFetcher,
+    localKey,
+    deps,
+    (local, cloud) => mergeCloudList(localKey, local as never[], cloud as never[]) as T[],
+  );
 }
-
-/**
- * Same as useCloudStore but for single-object data (like config).
- */
 export function useCloudStoreOne<T>(
   localReader: () => T,
   cloudFetcher: () => Promise<T>,
   localKey: string,
   deps: DependencyList = [],
-): { data: T; loading: boolean; syncing: boolean; reload: () => void } {
-  const [data, setData] = useState<T>(() => localReader());
-  const [loading, setLoading] = useState(() => !hasLocalSnapshot(localKey));
-  const [syncing, setSyncing] = useState(false);
-  useLocalChanges(localKey, localReader, setData);
-  const depsKey = deps.map(String).join('|');
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setSyncing(true);
-      try {
-        const cloudData = await cloudFetcher();
-        if (!cancelled) {
-          const merged = mergeCloudObject(
-            localKey,
-            localReader() as Record<string, unknown>,
-            cloudData as Record<string, unknown>,
-          ) as T;
-          setData(merged);
-          writeLocalJSON(localKey, merged);
-        }
-      } catch {
-        // Offline — keep localStorage data
-      }
-      if (!cancelled) {
-        setLoading(false);
-        setSyncing(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localKey, depsKey]);
-
-  const reload = useCallback(() => {
-    setData(localReader());
-    setSyncing(true);
-    cloudFetcher()
-      .then((cloudData) => {
-        const merged = mergeCloudObject(
-          localKey,
-          localReader() as Record<string, unknown>,
-          cloudData as Record<string, unknown>,
-        ) as T;
-        setData(merged);
-        writeLocalJSON(localKey, merged);
-      })
-      .catch(() => {})
-      .finally(() => {
-        setLoading(false);
-        setSyncing(false);
-      });
-  }, [localReader, cloudFetcher, localKey]);
-
-  return { data, loading, syncing, reload };
+) {
+  return useCloudResource(
+    localReader,
+    cloudFetcher,
+    localKey,
+    deps,
+    (local, cloud) =>
+      mergeCloudObject(localKey, local as Record<string, unknown>, cloud as Record<string, unknown>) as T,
+  );
 }
