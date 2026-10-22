@@ -6,7 +6,7 @@ import {
   type CustomerAccount,
   type CustomerStatement,
 } from './customer-accounts';
-import { formatCurrency } from './helpers';
+import { formatCurrency, formaPagoLabel } from './helpers';
 
 export interface AccountExport {
   cliente: Cliente;
@@ -71,10 +71,38 @@ export async function createCustomerAccountPdf(input: AccountExport) {
   textBlock(`Periodo: ${statement.from || 'Inicio'} a ${statement.to || 'Hoy'} | Moneda: MXN`);
   y += 3;
   textBlock(
-    `Saldo al inicio: ${formatCurrency(statement.opening)}   |   Saldo al cierre: ${formatCurrency(statement.closing)}`,
+    `Saldo a favor al inicio: ${formatCurrency(statement.opening)}   |   Saldo a favor al cierre: ${formatCurrency(statement.closing)}`,
   );
   textBlock(`Pendiente de pedidos hoy: ${formatCurrency(statement.outstanding)}`);
   y += 5;
+  space(20);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('Ingresos registrados', 14, y);
+  y += 7;
+  textBlock(`Total ingresado en el periodo: ${formatCurrency(statement.incomeTotal)}`);
+  y += 4;
+  for (const income of statement.incomes) {
+    space(22);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(income.fecha, 14, y);
+    doc.text(formatCurrency(income.montoTotal), right, y, { align: 'right' });
+    y += 5;
+    textBlock(income.descripcion || 'Ingreso');
+    textBlock(`${formaPagoLabel(income.formaPago)} | ${income.linkLabel}`, 8);
+    if (income.notas) textBlock(income.notas, 8);
+    y += 2;
+    line();
+    y += 6;
+  }
+  if (!statement.incomes.length) textBlock('Sin ingresos en el periodo seleccionado.');
+  space(20);
+  y += 4;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('Movimientos de saldo a favor', 14, y);
+  y += 8;
   const headers = () => {
     space(12);
     doc.setFillColor(242, 243, 245);
@@ -85,7 +113,7 @@ export async function createCustomerAccountPdf(input: AccountExport) {
     doc.text('Movimiento / referencia / pedido', 39, y);
     doc.text('Abonos', 145, y, { align: 'right' });
     doc.text('Aplicado', 173, y, { align: 'right' });
-    doc.text('Saldo', right - 2, y, { align: 'right' });
+    doc.text('Saldo a favor', right - 2, y, { align: 'right' });
     y += 9;
   };
   headers();
@@ -129,7 +157,7 @@ export async function createCustomerAccountPdf(input: AccountExport) {
       }
     }
   }
-  if (!statement.rows.length) textBlock('Sin movimientos en el periodo seleccionado.');
+  if (!statement.rows.length) textBlock('Sin movimientos de saldo en el periodo seleccionado.');
   y += 5;
   space(18);
   doc.setFont('helvetica', 'bold');
@@ -206,11 +234,11 @@ export async function createCustomerAccountExcel(input: AccountExport): Promise<
     ],
     ['Desde', statement.from || 'Inicio', 'Hasta', statement.to || 'Hoy', 'Moneda', 'MXN'],
     [
-      { value: 'Saldo inicial', columnSpan: 3 },
+      { value: 'Saldo a favor inicial', columnSpan: 3 },
       null,
       null,
       money(statement.opening),
-      { value: 'Saldo al cierre', columnSpan: 2 },
+      { value: 'Saldo a favor al cierre', columnSpan: 2 },
       null,
       money(statement.closing),
     ],
@@ -224,7 +252,7 @@ export async function createCustomerAccountExcel(input: AccountExport): Promise<
       'Pedido',
       'Abonos / reintegros',
       'Aplicado / anulado',
-      'Saldo',
+      'Saldo a favor',
       'Notas',
       'ID movimiento',
       'ID pedido',
@@ -287,7 +315,43 @@ export async function createCustomerAccountExcel(input: AccountExport): Promise<
         ];
       }),
   ];
+  const incomes = [
+    [{ value: 'Ingresos registrados', columnSpan: 3, fontWeight: 'bold' as const }, null, null, text(cliente.nombre)],
+    ['Desde', statement.from || 'Inicio', 'Hasta', statement.to || 'Hoy', 'Moneda', 'MXN'],
+    [{ value: 'Total ingresado en el periodo', columnSpan: 3 }, null, null, money(statement.incomeTotal)],
+    [],
+    [
+      'Fecha',
+      'Concepto',
+      'Forma de pago',
+      'Vinculo',
+      'Total',
+      'Factura',
+      'Numero de factura',
+      'Notas',
+      'ID ingreso',
+      'ID pedido',
+    ].map(header),
+    ...statement.incomes.map((income) => [
+      date(income.fecha),
+      text(income.descripcion),
+      formaPagoLabel(income.formaPago),
+      text(income.linkLabel),
+      money(income.montoTotal),
+      income.factura ? 'Si' : 'No',
+      text(income.numeroFactura),
+      text(income.notas),
+      income.id,
+      income.pedidoId || '',
+    ]),
+  ];
   return writeExcelFile([
+    {
+      sheet: 'Ingresos',
+      data: incomes,
+      stickyRowsCount: 5,
+      columns: [14, 45, 22, 40, 22, 14, 26, 45, 40, 40].map((width) => ({ width })),
+    },
     {
       sheet: 'Estado de cuenta',
       data: movements,

@@ -5,7 +5,7 @@ import ClientesPage from '@/app/clientes/page';
 import CustomerAccountPage from '@/app/clientes/cuenta/page';
 import CustomerAccountView from '@/components/customer-accounts/CustomerAccountView';
 import type { useCustomerAccount } from '@/lib/useCustomerAccount';
-import { accountFixture } from './fixtures/customer-account';
+import { accountFixture, historicalIncomeAccount } from './fixtures/customer-account';
 
 const mocks = vi.hoisted(() => ({
   role: 'admin',
@@ -53,8 +53,8 @@ describe('client shortcuts', () => {
         key === 'bordados_clientes'
           ? [{ ...account.cliente, id: 'client&one' }]
           : key === 'bordados_ingresos'
-            ? account.ingresos
-            : account.pedidos,
+            ? account.ingresos.map((income) => ({ ...income, clienteId: 'client&one' }))
+            : account.pedidos.map((order) => ({ ...order, clienteId: 'client&one' })),
       reload: vi.fn(),
     }));
   });
@@ -67,21 +67,111 @@ describe('client shortcuts', () => {
     await act(async () => root.render(<ClientesPage />));
     const card = container.querySelector('article')!;
     const links = [...card.querySelectorAll('a')];
-    expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
-      ['Cuenta y movimientos', '/clientes/cuenta?cliente=client%26one'],
-      ['Registrar adelanto', '/clientes/cuenta?cliente=client%26one&accion=adelanto'],
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/clientes/cuenta?cliente=client%26one',
+      '/clientes/cuenta?cliente=client%26one',
+      '/clientes/cuenta?cliente=client%26one&accion=adelanto',
     ]);
-    links[0].addEventListener('click', (event) => event.preventDefault());
-    await act(async () => links[0].click());
+    expect(links[0].textContent).toContain('Total ingresado');
+    expect(links[1].textContent).toBe('Cuenta y movimientos');
+    expect(links[2].textContent).toBe('Registrar adelanto');
+    links[1].addEventListener('click', (event) => event.preventDefault());
+    await act(async () => links[1].click());
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     await act(async () => card.querySelector<HTMLButtonElement>('button')!.click());
     expect(container.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe('Maria Nunez');
+  });
+
+  it('opens on the historical income instead of an empty advance ledger', async () => {
+    state.account = historicalIncomeAccount();
+    await act(async () => root.render(<CustomerAccountView clienteId="client-1" />));
+    const panel = container.querySelector('[role="tabpanel"][aria-label="Ingresos"]');
+    expect(panel?.textContent).toContain('Bordado de toallas');
+    expect(panel?.textContent).toContain('$3,950.00');
+    expect(panel?.textContent).toContain('Transferencia');
+    expect(panel?.textContent).toContain('Sin pedido asociado');
+    const balance = [...container.querySelectorAll('dt')].find(
+      (node) => node.textContent === 'Saldo a favor disponible',
+    );
+    expect(balance?.nextElementSibling?.textContent).toBe('$0.00');
+    const movements = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
+      (node) => node.textContent === 'Movimientos de saldo',
+    )!;
+    await act(async () => movements.click());
+    expect(container.querySelector('[role="tabpanel"]')?.textContent).toContain(
+      'Sin movimientos de saldo en el periodo.',
+    );
+    expect(mocks.submit).not.toHaveBeenCalled();
+    expect(mocks.retry).not.toHaveBeenCalled();
   });
 
   it('does not offer advance capture to an operator', async () => {
     mocks.role = 'operador';
     await act(async () => root.render(<ClientesPage />));
     expect(container.querySelector('article')?.textContent).not.toContain('Registrar adelanto');
+  });
+
+  it('hides customers without orders by default and combines order and debt filters with sorting', async () => {
+    const account = accountFixture();
+    const clients = ['Ana', 'Bea', 'Caro'].map((nombre, index) => ({
+      ...account.cliente!,
+      id: `client-${index}`,
+      nombre,
+    }));
+    const orders = [
+      {
+        ...account.pedidos[0],
+        id: 'delivered',
+        clienteId: 'client-0',
+        estado: 'entregado',
+        montoTotal: 100,
+        montoPagado: 100,
+      },
+      { ...account.pedidos[1], id: 'open', clienteId: 'client-1', montoTotal: 500, montoPagado: 50 },
+    ];
+    mocks.cloudStore.mockImplementation((_reader, _fetcher, key) => ({
+      data: key === 'bordados_clientes' ? clients : key === 'bordados_pedidos' ? orders : [],
+      reload: vi.fn(),
+    }));
+    await act(async () => root.render(<ClientesPage />));
+    const visible = () => [...container.querySelectorAll('article')].map((card) => card.getAttribute('aria-label'));
+    const changeSelect = async (id: string, value: string) =>
+      act(async () => {
+        const select = container.querySelector<HTMLSelectElement>(id)!;
+        select.value = value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    expect(visible()).toEqual(['Ana', 'Bea']);
+    expect(container.querySelector<HTMLSelectElement>('#customer-orders')?.value).toBe('with-orders');
+    await changeSelect('#customer-sort', 'pending');
+    expect(visible()).toEqual(['Bea', 'Ana']);
+    expect(container.querySelector('article')?.textContent).toContain('Pendiente $450.00');
+    await changeSelect('#customer-orders', 'active');
+    expect(visible()).toEqual(['Bea']);
+    await changeSelect('#customer-orders', 'all');
+    expect(visible()).toEqual(['Bea', 'Ana', 'Caro']);
+    await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    expect(visible()).toEqual(['Bea']);
+    expect(mocks.submit).not.toHaveBeenCalled();
+  });
+
+  it('can reveal an income-only customer hidden by the default order filter without creating a record', async () => {
+    const account = historicalIncomeAccount();
+    mocks.cloudStore.mockImplementation((_reader, _fetcher, key) => ({
+      data: key === 'bordados_clientes' ? [account.cliente] : key === 'bordados_ingresos' ? account.ingresos : [],
+      reload: vi.fn(),
+    }));
+    await act(async () => root.render(<ClientesPage />));
+    expect(container.querySelector('article')).toBeNull();
+    expect(container.textContent).toContain('0 de 1 clientes');
+    const show = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent === 'Mostrar todos los clientes',
+    )!;
+    await act(async () => show.click());
+    expect(container.querySelector('article')?.textContent).toContain('$3,950.00');
+    expect(container.querySelector<HTMLSelectElement>('#customer-orders')?.value).toBe('all');
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(mocks.submit).not.toHaveBeenCalled();
   });
 
   it.each(['admin', 'contador'])('opens only the receive form for %s without writing a movement', async (role) => {
