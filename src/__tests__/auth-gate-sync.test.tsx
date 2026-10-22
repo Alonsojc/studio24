@@ -114,6 +114,39 @@ describe('AuthGate background sync', () => {
     expect(container.textContent).toContain('Aplicacion');
     expect(mocks.pullFromCloud).toHaveBeenCalledWith({ replaceEmpty: false, bootstrap: true });
   });
+  it('shows login on a new signed-out device without pulling business data', async () => {
+    sessionStorage.clear();
+    mocks.getSession.mockResolvedValue({ data: { session: null } });
+    await act(async () =>
+      root.render(
+        <AuthGate>
+          <div>Aplicacion</div>
+        </AuthGate>,
+      ),
+    );
+    expect(container.querySelector('input[type="email"]')).not.toBeNull();
+    expect(container.textContent).not.toContain('Aplicacion');
+    expect(mocks.bindLocalDataToUser).not.toHaveBeenCalled();
+    expect(mocks.pullFromCloud).not.toHaveBeenCalled();
+  });
+  it('waits for the first cloud pull before mounting startup effects on a new device', async () => {
+    sessionStorage.clear();
+    mocks.hasLocalBusinessData.mockReturnValue(false);
+    let completePull!: () => void;
+    mocks.pullFromCloud.mockImplementation(() => new Promise<void>((resolve) => (completePull = resolve)));
+    await act(async () =>
+      root.render(
+        <AuthGate>
+          <div>Aplicacion</div>
+        </AuthGate>,
+      ),
+    );
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    expect(container.textContent).not.toContain('Aplicacion');
+    expect(mocks.pullFromCloud).toHaveBeenCalledWith({ replaceEmpty: true, bootstrap: true });
+    await act(async () => completePull());
+    expect(container.textContent).toContain('Aplicacion');
+  });
   it('preserves pending data before clearing a lost session', async () => {
     mocks.pullFromCloud.mockResolvedValue(0);
     await act(async () =>

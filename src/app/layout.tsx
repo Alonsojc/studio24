@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
 import SentryBoot from '@/components/SentryBoot';
 import AppFrame from '@/components/AppFrame';
 import './globals.css';
+
+const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
 
 export const viewport: Viewport = {
   themeColor: '#c72a09',
@@ -33,7 +36,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className="h-full antialiased">
+    <html lang="es" className={`${inter.variable} h-full antialiased`}>
       <body className="min-h-full font-sans">
         <SentryBoot />
         <AppFrame>{children}</AppFrame>
