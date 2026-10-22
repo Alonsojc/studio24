@@ -7,6 +7,7 @@ import { getPedidos } from '@/lib/store';
 import { formatDate } from '@/lib/helpers';
 import { autoBackupIfDue } from '@/lib/auto-backup';
 import { useRole } from './RoleProvider';
+import { reportError } from '@/lib/sentry';
 
 const NOTIF_KEY = 'bordados_last_notif';
 
@@ -68,25 +69,21 @@ function sendNotification(porVencer: ReturnType<typeof getPedidos>, vencidos: Re
  * - Registra Service Worker para PWA
  */
 export default function SeedData() {
-  const { role, loading } = useRole();
+  const { role, loading, error } = useRole();
   useEffect(() => {
-    if (typeof window === 'undefined' || loading) return;
+    if (typeof window === 'undefined' || loading || error) return;
+    let cancelled = false;
 
     // Intentar restaurar datos desde IDB si localStorage está vacío.
     // generarEgresosRecurrentes runs AFTER restore to avoid race-condition duplicates.
-    restoreFromIDB()
-      .then(async (restored) => {
-        if (restored) {
-          window.location.reload();
-          return;
-        }
-        syncAllToIDB();
+    void restoreFromIDB()
+      .catch(() => false)
+      .then(async () => {
+        if (cancelled) return;
+        void syncAllToIDB();
         if (role === 'admin' || role === 'contador') await generarEgresosRecurrentes();
       })
-      .catch(() => {
-        // IDB not available (e.g. mobile private mode) — run startup without restore
-        if (role === 'admin' || role === 'contador') void generarEgresosRecurrentes();
-      });
+      .catch((error) => reportError(error, { kind: 'startupRecurrentes' }));
 
     // Registrar Service Worker sin dejar app shell viejo pegado después de deploys.
     if ('serviceWorker' in navigator) {
@@ -103,7 +100,10 @@ export default function SeedData() {
 
     // Auto-backup semanal a Supabase Storage
     if (role === 'admin') autoBackupIfDue();
-  }, [role, loading]);
+    return () => {
+      cancelled = true;
+    };
+  }, [role, loading, error]);
 
   return null;
 }
