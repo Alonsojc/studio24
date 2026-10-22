@@ -14,7 +14,8 @@ permissions:
 
 concurrency:
   group: "pages-${{ github.ref }}"
-  cancel-in-progress: false
+  # Superseded PR checks are disposable; an active main publication must finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   database:
@@ -64,6 +65,14 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'test-anon-key' }}
         run: npm test
 
+      - name: Restore Next.js build cache
+        uses: actions/cache@v5
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-node24-next-${{ hashFiles('package-lock.json', 'next.config.*') }}-${{ hashFiles('src/**', 'public/**', 'tsconfig.json', 'postcss.config.*') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-node24-next-${{ hashFiles('package-lock.json', 'next.config.*') }}-
+
       - name: Build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co' }}
@@ -82,7 +91,9 @@ jobs:
         timeout-minutes: 5
         env:
           PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: "60000"
-        run: npx playwright install --with-deps chromium
+        # The configured headless project uses this same Chromium headless shell.
+        # Skip the separate headed browser download; retain all OS dependencies.
+        run: npx playwright install --with-deps --only-shell chromium
 
       - name: Playwright tests
         env:
@@ -108,6 +119,8 @@ jobs:
             echo "Sentry sourcemaps disabled; set SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT to enable."
             exit 0
           fi
+          # Sentry expects a literal ~/ URL prefix, without shell expansion.
+          # shellcheck disable=SC2088
           npx --no-install sentry-cli sourcemaps upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" --release "$SENTRY_RELEASE" --url-prefix '~/studio24/_next/static' --validate out/_next/static
 
       - name: Remove sourcemaps from Pages artifact
