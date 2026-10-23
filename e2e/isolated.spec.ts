@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 const id = '10000000-0000-0000-0000-000000000001';
 const version = '2026-09-13T12:00:00Z';
@@ -107,6 +108,81 @@ test('public tracking renders without login', async ({ page }) => {
   await page.goto('seguimiento?t=' + 'a'.repeat(48));
   await expect(page.getByText('Pedido publico de prueba')).toBeVisible();
   await expect(page.getByPlaceholder('Contraseña')).toHaveCount(0);
+});
+test('PDF exports remain available after dependency security updates', async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await login(page);
+  const cliente = { id: 'pdf-client', nombre: 'Cliente PDF', telefono: '', email: '', updated_at: version };
+  const pedido = {
+    id: 'pdf-order',
+    cliente_id: cliente.id,
+    descripcion: 'Uniformes de prueba',
+    concepto: 'solo_bordado',
+    piezas: 2,
+    precio_unitario: 50,
+    monto_total: 100,
+    monto_pagado: 0,
+    costo_materiales: 0,
+    estado: 'pendiente',
+    estado_pago: 'pendiente',
+    pagos: [],
+    fotos: [],
+    inventario_usado: [],
+    maquina: '',
+    archivo_diseno: '',
+    checklist: {},
+    fecha_pedido: '2026-10-22',
+    fecha_entrega: '2026-10-25',
+    fecha_entrega_real: '',
+    urgente: false,
+    notas: '',
+    updated_at: version,
+  };
+  await page.route('**/rest/v1/clientes?*', (route) => route.fulfill({ json: [cliente] }));
+  await page.route('**/rest/v1/pedidos?*', (route) =>
+    route.fulfill({
+      json: [pedido],
+      headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' },
+    }),
+  );
+  await page.route('**/rest/v1/rpc/get_order_summary', (route) =>
+    route.fulfill({
+      json: {
+        activeCount: 1,
+        activeTotal: 100,
+        statuses: { pendiente: 1 },
+        payments: { pendiente: { count: 1, total: 100, paid: 0 } },
+      },
+    }),
+  );
+  await page.route('**/rest/v1/rpc/get_customer_account', (route) =>
+    route.fulfill({
+      json: { cliente, advances: [], movements: [], ingresos: [], pedidos: [pedido] },
+    }),
+  );
+  const downloadPdf = async (name: string, action: () => Promise<void>) => {
+    const pending = page.waitForEvent('download');
+    await action();
+    const download = await pending;
+    expect(download.suggestedFilename()).toMatch(/\.pdf$/i);
+    const path = testInfo.outputPath(`${name}.pdf`);
+    await download.saveAs(path);
+    const bytes = await readFile(path);
+    expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(bytes.length).toBeGreaterThan(1000);
+  };
+  await page.goto('cotizador');
+  await downloadPdf('cotizacion', () => page.getByRole('button', { name: 'Descargar PDF', exact: true }).click());
+  await page.goto('fiscal');
+  await downloadPdf('fiscal', () => page.getByRole('button', { name: 'PDF', exact: true }).click());
+  await page.goto('pedidos');
+  await page.getByRole('button', { name: 'Más acciones', exact: true }).click();
+  await downloadPdf('orden', () => page.getByRole('button', { name: 'Imprimir orden', exact: true }).click());
+  await page.goto(`clientes/cuenta?cliente=${cliente.id}`);
+  await expect(page.getByRole('heading', { name: 'Cliente PDF', exact: true })).toBeVisible();
+  await downloadPdf('estado-cuenta', () => page.getByRole('button', { name: 'PDF', exact: true }).click());
+  expect(errors).toEqual([]);
 });
 test('cached records survive navigation without repeating the auth screen', async ({ page }) => {
   await login(page);

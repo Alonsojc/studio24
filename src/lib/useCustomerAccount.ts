@@ -41,7 +41,7 @@ export function useCustomerAccount(clienteId: string) {
   }, [clienteId]);
   useEffect(() => {
     mounted.current = true;
-    void refresh();
+    const initialRefresh = setTimeout(() => void refresh(), 0);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const update = (event: StorageEvent) => {
       setPending(pendingCustomerCommands(clienteId));
@@ -60,6 +60,7 @@ export function useCustomerAccount(clienteId: string) {
     window.addEventListener('storage', update);
     return () => {
       mounted.current = false;
+      clearTimeout(initialRefresh);
       clearTimeout(timer);
       window.removeEventListener('storage', update);
     };

@@ -19,7 +19,7 @@ interface LineItem {
 }
 
 export default function CotizadorPage() {
-  const nextIdRef = useRef(1);
+  const nextIdRef = useRef(2);
   const { data: productos } = useCloudStore(getProductos, cloudGetProductos, KEYS.productos);
   const { data: clientes } = useCloudStore(getClientes, cloudGetClientes, KEYS.clientes);
   const { data: config } = useCloudStoreOne(getConfig, cloudGetConfig, KEYS.config);
@@ -33,9 +33,7 @@ export default function CotizadorPage() {
   const [clienteId, setClienteId] = useState('');
   const [clienteNombre, setClienteNombre] = useState('');
   const [clienteEmpresa, setClienteEmpresa] = useState('');
-  const [items, setItems] = useState<LineItem[]>([
-    { id: String(nextIdRef.current++), descripcion: '', cantidad: 1, precioUnitario: 0 },
-  ]);
+  const [items, setItems] = useState<LineItem[]>([{ id: '1', descripcion: '', cantidad: 1, precioUnitario: 0 }]);
   const [selBordado, setSelBordado] = useState<{ label: string; precio: number } | null>(null);
   const [selPrenda, setSelPrenda] = useState<{ label: string; precio: number } | null>(null);
   const [conIVA, setConIVA] = useState(false);
