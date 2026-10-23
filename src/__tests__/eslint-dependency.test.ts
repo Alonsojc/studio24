@@ -10,6 +10,7 @@ const projectRoot = process.cwd();
 const load = createRequire(path.join(projectRoot, 'package.json'));
 const pluginRequire = createRequire(load.resolve('@next/eslint-plugin-next'));
 const globRequire = createRequire(pluginRequire.resolve('fast-glob'));
+const matcherRequire = createRequire(globRequire.resolve('micromatch'));
 type RootDir = string | (string | null | number)[];
 const { getRootDirs } = pluginRequire('@next/eslint-plugin-next/dist/utils/get-root-dirs.js') as {
   getRootDirs: (context: { cwd: string; settings: { next?: { rootDir?: RootDir } } }) => string[];
@@ -18,6 +19,12 @@ const matcher = globRequire('micromatch') as {
   braces: (pattern: string, options: { expand: boolean; nodupes: boolean }) => string[];
 };
 const expandOptions = { expand: true, nodupes: true };
+type Ast = { type: string; value?: string; nodes: Ast[] };
+const braces = matcherRequire('braces') as {
+  compile: (input: string | Ast) => string;
+  expand: (input: string | Ast) => string[];
+  stringify: (input: string | Ast) => string;
+};
 
 let fixture: string;
 const layouts = ['web', 'admin', 'app', 'src-app'];
@@ -68,17 +75,22 @@ beforeAll(() => {
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));
 
 describe('Next ESLint dependency boundary', () => {
-  it('loads the private adapter through the real Next plugin, without installed braces', () => {
-    expect(realpathSync(globRequire.resolve('micromatch'))).toBe(
-      realpathSync(path.join(projectRoot, 'tooling/next-eslint-matcher/index.cjs')),
+  it('loads the patched workspace through the real Next plugin, without an unpatched braces copy', () => {
+    expect(realpathSync(matcherRequire.resolve('braces'))).toBe(
+      realpathSync(path.join(projectRoot, 'vendor/braces/index.js')),
     );
     expect(pluginRequire('fast-glob/package.json').version).toBe('3.3.1');
     expect(pluginRequire('@next/eslint-plugin-next/package.json').version).toBe('16.4.2');
     const lock = JSON.parse(readFileSync(path.join(projectRoot, 'package-lock.json'), 'utf8')) as {
-      packages: Record<string, { version?: string }>;
+      packages: Record<string, { version?: string; link?: boolean; resolved?: string }>;
     };
-    expect(Object.keys(lock.packages).filter((name) => /(?:^|\/)node_modules\/braces$/.test(name))).toEqual([]);
-    expect(lock.packages['tooling/next-eslint-matcher'].version).toBe('4.0.8-studio24.1');
+    const installed = Object.entries(lock.packages).filter(([name]) => /(?:^|\/)node_modules\/braces$/.test(name));
+    expect(installed.length).toBeGreaterThan(0);
+    for (const [, entry] of installed) {
+      expect(entry).toMatchObject({ link: true, resolved: 'vendor/braces' });
+    }
+    expect(lock.packages['vendor/braces'].version).toBe('3.0.4-studio24.1');
+    expect(globRequire('micromatch/package.json').version).toBe('4.0.8');
   });
 
   it('retains the distinct default context cwd and explicit process cwd behavior', () => {
@@ -130,17 +142,49 @@ describe('Next ESLint dependency boundary', () => {
     expect(roots(app('not-a-directory'))).toEqual([]);
   });
 
+  it('preserves quoted brace patterns', () => {
+    expect(absolute(roots(`${fixture}/apps/"{web,__missing__}"`))).toEqual([app('web')]);
+  });
+
+  it('does not discard a valid root after duplicate and empty alternatives', () => {
+    expect(absolute(roots('{{,' + 'x,'.repeat(1000) + '.},}'))).toEqual([projectRoot]);
+  });
+
   it.each(['a,b', '1..2', ''])('rejects deeply nested %s braces before expansion', (center) => {
     // GHSA-vfj7-8cjw-p6xm: both compile/expand variants used to exhaust the stack.
     const pattern = '{'.repeat(4500) + center + '}'.repeat(4500);
-    expect(() => roots(pattern)).toThrow(new SyntaxError('Next ESLint rootDir brace nesting exceeds 64 levels'));
+    expect(() => roots(pattern)).toThrow(new SyntaxError('Unsafe brace nesting exceeds 64 levels'));
   });
 
-  it('rejects malformed nesting and bounds expansion without silently omitting roots', () => {
-    expect(() => roots('{'.repeat(65))).toThrow(/brace nesting/);
-    expect(() => roots('x'.repeat(10001))).toThrow(/10000 characters/);
-    expect(() => roots('{a,b}'.repeat(13))).toThrow(/1000 brace expansions/);
-    expect(() => matcher.braces('web', { expand: false, nodupes: true })).toThrow(TypeError);
+  it('rejects malformed nesting and retains the existing length and range limits', () => {
+    expect(() => braces.compile('{'.repeat(65))).toThrow(/brace nesting/);
+    expect(() => braces.compile('x'.repeat(10001))).toThrow(/10000/);
+    expect(() => roots('{1..1001}')).toThrow(/range limit/);
+    expect(matcher.braces('web', { expand: false, nodupes: true })).toEqual(['web']);
+  });
+
+  it('bounds parenthesis blocks and direct AST walkers, including cyclic AST input', () => {
+    expect(() => roots('{' + '('.repeat(4500) + 'a,b' + ')'.repeat(4500) + '}')).toThrow(/brace nesting/);
+    const deep: Ast = { type: 'root', nodes: [] };
+    let node = deep;
+    for (let i = 0; i < 4500; i++) {
+      const child: Ast = { type: 'brace', nodes: [] };
+      node.nodes.push(child);
+      node = child;
+    }
+    const cyclic: Ast = { type: 'root', nodes: [] };
+    cyclic.nodes.push(cyclic);
+    for (const input of [deep, cyclic]) {
+      for (const method of [braces.compile, braces.expand, braces.stringify]) {
+        expect(() => method(input)).toThrow(/brace nesting/);
+      }
+    }
+    expect(() =>
+      braces.compile({
+        type: 'root',
+        nodes: Array.from({ length: 20001 }, () => ({ type: 'text', value: 'x', nodes: [] })),
+      }),
+    ).toThrow(/20000 nodes/);
   });
 
   it('preserves ordinary expansion, duplicates, literal escapes and supported boundaries', () => {
@@ -166,12 +210,23 @@ describe('ESLint rule compatibility', () => {
     for (const rootDir of [
       path.relative(projectRoot, app('web')),
       `${fixture}/apps/{web,admin}/`,
+      `${fixture}/apps/"{web,__missing__}"`,
       [app('web'), app('admin')],
     ]) {
       expect(await lint(rootDir)).toEqual(
         expect.arrayContaining([expect.objectContaining({ ruleId: '@next/next/no-html-link-for-pages', severity: 2 })]),
       );
     }
+  });
+
+  it('retains the rule after large duplicate/empty alternatives', async () => {
+    const messages = await lint(
+      '{{,' + 'x,'.repeat(1000) + '.},}',
+      'export default function Page() { return <a href="/">Home</a>; }',
+    );
+    expect(messages).toEqual(
+      expect.arrayContaining([expect.objectContaining({ ruleId: '@next/next/no-html-link-for-pages', severity: 2 })]),
+    );
   });
 
   it('fails lint explicitly for unsafe root settings instead of silently losing the rule', async () => {

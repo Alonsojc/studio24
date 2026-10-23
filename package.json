@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "tooling/next-eslint-matcher"
+    "vendor/braces"
   ],
   "scripts": {
     "dev": "next dev",
@@ -48,13 +48,13 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "braces": "3.0.4-studio24.1",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
     "fflate": "0.8.3",
     "husky": "^9.1.7",
     "jsdom": "^29.0.2",
     "lint-staged": "^16.4.0",
-    "micromatch": "4.0.8-studio24.1",
     "prettier": "^3.8.2",
     "tailwindcss": "^4",
     "typescript": "^5",
@@ -64,7 +64,9 @@
     "postcss": "8.5.30",
     "@next/eslint-plugin-next@16.4.2": {
       "fast-glob@3.3.1": {
-        "micromatch": "$micromatch"
+        "micromatch@4.0.8": {
+          "braces": "$braces"
+        }
       }
     }
   }

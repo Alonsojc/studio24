@@ -1,0 +1,13 @@
+{
+  "name": "braces",
+  "version": "3.0.4-studio24.1",
+  "private": true,
+  "description": "Private braces 3.0.3 security backport for Next ESLint",
+  "main": "index.js",
+  "license": "MIT",
+  "author": "Jon Schlinkert (https://github.com/jonschlinkert)",
+  "repository": "micromatch/braces",
+  "dependencies": {
+    "fill-range": "7.1.1"
+  }
+}
