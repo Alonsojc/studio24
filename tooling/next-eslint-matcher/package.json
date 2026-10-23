@@ -1,0 +1,15 @@
+{
+  "name": "micromatch",
+  "version": "4.0.8-studio24.1",
+  "private": true,
+  "description": "Bounded brace expansion for Next 16.4.2 ESLint root discovery",
+  "main": "index.cjs",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "brace-expansion": "5.0.12",
+    "picomatch": "2.3.2"
+  },
+  "engines": {
+    "node": "20 || >=22"
+  }
+}
