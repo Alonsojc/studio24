@@ -2,11 +2,15 @@
   "name": "studio24",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "vendor/braces"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "audit:dependencies": "npm audit",
     "audit:production": "npm audit --omit=dev",
     "test": "vitest run",
     "test:e2e": "playwright test",
@@ -44,6 +48,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "braces": "3.0.4-studio24.1",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
     "fflate": "0.8.3",
@@ -56,6 +61,13 @@
     "vitest": "^4.1.12"
   },
   "overrides": {
-    "postcss": "8.5.30"
+    "postcss": "8.5.30",
+    "@next/eslint-plugin-next@16.4.2": {
+      "fast-glob@3.3.1": {
+        "micromatch@4.0.8": {
+          "braces": "$braces"
+        }
+      }
+    }
   }
 }
