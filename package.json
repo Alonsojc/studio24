@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "audit:production": "npm audit --omit=dev",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:prod": "PLAYWRIGHT_BASE_URL=https://alonsojc.github.io/studio24/ playwright test",
@@ -28,7 +29,7 @@
     "html2canvas-pro": "^2.0.2",
     "jspdf": "^4.2.1",
     "lucide-react": "1.59.0",
-    "next": "16.3.5",
+    "next": "16.4.2",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
@@ -44,7 +45,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.5",
+    "eslint-config-next": "16.4.2",
     "fflate": "0.8.3",
     "husky": "^9.1.7",
     "jsdom": "^29.0.2",
@@ -52,9 +53,9 @@
     "prettier": "^3.8.2",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.12"
   },
   "overrides": {
-    "postcss": "8.5.23"
+    "postcss": "8.5.30"
   }
 }
