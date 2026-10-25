@@ -163,6 +163,26 @@ describe('customer account math and statements', () => {
   });
 });
 describe('cloud-confirmed money operations', () => {
+  it('retries both halves of a direct collection with stable operation IDs', async () => {
+    api.response.mockResolvedValueOnce({ data: null, error: { message: 'Network unavailable', code: '' } });
+    const command = newCustomerCommand('collect', {
+      clienteId: 'client-1',
+      pedidoId: 'order-1',
+      fecha: '2026-10-01',
+      amount: 100,
+      formaPago: 'efectivo',
+    });
+    expect(command.data.applicationId).toBeTruthy();
+    expect(command.data.applicationId).not.toBe(command.id);
+    await expect(runCustomerCommand(command)).rejects.toThrow('Network');
+    const pending = pendingCustomerCommands('client-1')[0];
+    expect(pending).toEqual(command);
+    await runCustomerCommand(pending);
+    expect(api.rpc.mock.calls).toEqual([
+      ['collect_order_payment', { p_operation: command.id, p_data: command.data }],
+      ['collect_order_payment', { p_operation: command.id, p_data: command.data }],
+    ]);
+  });
   it('does not post any money if uploading the proof fails', async () => {
     api.upload.mockRejectedValueOnce(new Error('No se pudo subir el comprobante'));
     const command = newCustomerCommand('receive', {

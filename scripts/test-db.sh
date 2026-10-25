@@ -13,7 +13,10 @@ for file in supabase/migrations/*.sql; do
   esac
   psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$file"
 done
+if [ "${SCHEMA_ONLY:-0}" = 1 ]; then exit 0; fi
+node scripts/test-restore-drill.mjs
 psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-reliability.sql
 psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-customer-accounts.sql
 node scripts/test-customer-concurrency.mjs
 psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-operations.sql
+psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-finance-reliability.sql

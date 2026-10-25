@@ -30,6 +30,7 @@ async function isolate(page: Page, role: 'admin' | 'operador' | 'contador' = 'ad
     else if (table === 'team_members') data = { role, team_id: 'team-test' };
     else if (table === 'config') data = { nombre_negocio: 'Studio 24 Test', updated_at: version };
     else if (table === 'get_order_summary') data = { activeCount: 0, activeTotal: 0, statuses: {}, payments: {} };
+    else if (table === 'get_customer_directory') data = { rows: [], total: 0, registered: 0 };
     else if (table === 'get_collections')
       data = { rows: [], total: 0, totalPending: 0, overduePending: 0, overdueCount: 0, followupCount: 0 };
     else if (table === 'get_advance_report')
@@ -108,6 +109,266 @@ test('public tracking renders without login', async ({ page }) => {
   await page.goto('seguimiento?t=' + 'a'.repeat(48));
   await expect(page.getByText('Pedido publico de prueba')).toBeVisible();
   await expect(page.getByPlaceholder('Contraseña')).toHaveCount(0);
+});
+
+test('recovery stays outside business screens and updates the password before returning', async ({
+  page,
+}, testInfo) => {
+  await login(page);
+  await page.evaluate((user) => sessionStorage.setItem('studio24_password_recovery_user', user), id);
+  let updated = false;
+  await page.route('**/auth/v1/user', async (route) => {
+    if (route.request().method() === 'PUT') {
+      expect(route.request().postDataJSON().password).toBe('synthetic-new-password');
+      updated = true;
+    }
+    await route.fulfill({
+      json: {
+        id,
+        aud: 'authenticated',
+        role: 'authenticated',
+        email: 'test@example.invalid',
+        app_metadata: {},
+        user_metadata: {},
+      },
+    });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('ajustes');
+  await expect(page.getByRole('heading', { name: 'Nueva contrasena' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^ajustes$/i })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('recovery-mobile.png'), fullPage: true });
+  await page.getByLabel('Contrasena nueva', { exact: true }).fill('synthetic-new-password');
+  await page.getByLabel('Confirmar contrasena', { exact: true }).fill('synthetic-new-password');
+  await page.getByRole('button', { name: 'Guardar contrasena' }).click();
+  await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
+  expect(await page.evaluate(() => sessionStorage.getItem('studio24_password_recovery_user'))).toBeNull();
+  expect(updated).toBe(true);
+});
+
+test('a fresh recovery link opens the password form without loading business data', async ({ page }) => {
+  await isolate(page);
+  const businessReads: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/rest/v1/')) businessReads.push(request.url());
+  });
+  await page.goto(
+    'ajustes#access_token=test-token&refresh_token=test-refresh&expires_in=3600&token_type=bearer&type=recovery',
+  );
+  await expect(page.getByRole('heading', { name: 'Nueva contrasena' })).toBeVisible();
+  expect(businessReads).toEqual([]);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Nueva contrasena' })).toBeVisible();
+  expect(businessReads).toEqual([]);
+});
+
+test('invoice linking requires a choice and imports global IVA only once', async ({ page }) => {
+  await login(page);
+  const date = new Date().toISOString().slice(0, 10);
+  const record = {
+    id: '30000000-0000-0000-0000-000000000001',
+    fecha: date,
+    descripcion: 'Gasto sin factura',
+    monto: 1000,
+    iva: 160,
+    monto_total: 1160,
+    categoria: 'otro',
+    subcategoria: '',
+    proveedor_id: '',
+    forma_pago: 'transferencia',
+    factura: false,
+    updated_at: version,
+  };
+  let releaseRecords!: () => void;
+  const recordsReady = new Promise<void>((resolve) => (releaseRecords = resolve));
+  await page.route('**/rest/v1/egresos?*', async (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    if (query.getAll('fecha').includes(`gte.${date.slice(0, 4)}-01-01`)) await recordsReady;
+    await route.fulfill({ json: query.has('id') ? [] : [record] });
+  });
+  const writes: Record<string, unknown>[] = [];
+  await page.route('**/rest/v1/rpc/sync_write_record', async (route) => {
+    const body = route.request().postDataJSON();
+    writes.push(body.p_record);
+    await route.fulfill({ json: { ...body.p_record, updated_at: new Date().toISOString() } });
+  });
+  await page.goto('facturas');
+  await expect(page.locator('input[type="file"]')).toBeDisabled();
+  releaseRecords();
+  await expect(page.locator('input[type="file"]')).toBeEnabled();
+  const xml = `<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" Fecha="${date}T10:00:00" SubTotal="1000" Total="1160" Moneda="MXN" TipoDeComprobante="I" FormaPago="03">
+  <cfdi:Emisor Rfc="SUPPLIER" Nombre="Proveedor"/><cfdi:Receptor Rfc="BUSINESS" Nombre="Negocio" UsoCFDI="G03"/>
+  <cfdi:Conceptos><cfdi:Concepto Descripcion="Bordado sintetico"><cfdi:Impuestos><cfdi:Traslados><cfdi:Traslado Impuesto="002" Importe="160"/></cfdi:Traslados></cfdi:Impuestos></cfdi:Concepto></cfdi:Conceptos>
+  <cfdi:Impuestos><cfdi:Traslados><cfdi:Traslado Impuesto="002" Importe="160"/></cfdi:Traslados></cfdi:Impuestos>
+  <cfdi:Complemento><tfd:TimbreFiscalDigital UUID="AAAAAAAA-1111-2222-3333-BBBBBBBBBBBB"/></cfdi:Complemento></cfdi:Comprobante>`;
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles({ name: 'synthetic.xml', mimeType: 'application/xml', buffer: Buffer.from(xml) });
+  await expect(page.getByRole('button', { name: 'Procesar todas' })).toBeDisabled();
+  await page.getByLabel('Vincular factura').selectOption(record.id);
+  await page.getByRole('button', { name: 'Procesar todas' }).click();
+  await expect.poll(() => writes.length).toBe(1);
+  await expect(page.getByRole('button', { name: /Procesar todas|Procesando/ })).toHaveCount(0);
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toMatchObject({ id: record.id, iva: 160, monto_total: 1160 });
+  // With no available candidates, a second invoice still needs an explicit choice.
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'another.xml',
+    mimeType: 'application/xml',
+    buffer: Buffer.from(xml.replace('AAAAAAAA-1111-2222-3333-BBBBBBBBBBBB', 'CCCCCCCC-1111-2222-3333-DDDDDDDDDDDD')),
+  });
+  await expect(page.getByRole('button', { name: 'Procesar todas' })).toBeDisabled();
+  await page.getByLabel('Vincular factura').selectOption('new');
+  await expect(page.getByRole('button', { name: 'Procesar todas' })).toBeEnabled();
+});
+
+test('direct collection retries the same operation after a lost response', async ({ page }, testInfo) => {
+  await login(page);
+  const cliente = { id: 'collection-client', nombre: 'Clienta de prueba', updated_at: version };
+  const pedido = {
+    id: 'collection-order',
+    cliente_id: cliente.id,
+    descripcion: 'Pedido de prueba',
+    monto_total: 100,
+    monto_pagado: 0,
+    pagos: [],
+    estado: 'pendiente',
+    estado_pago: 'pendiente',
+    fecha_pedido: '2026-10-22',
+    updated_at: version,
+  };
+  let account: Record<string, unknown> = { cliente, pedidos: [pedido], ingresos: [], advances: [], movements: [] };
+  await page.route('**/rest/v1/rpc/get_customer_account', (route) => route.fulfill({ json: account }));
+  const calls: {
+    p_operation: string;
+    p_data: { applicationId: string; amount: number; pedidoId: string; fecha: string };
+  }[] = [];
+  const genericWrites: unknown[] = [];
+  await page.route('**/rest/v1/rpc/sync_write_record', (route) => {
+    genericWrites.push(route.request().postDataJSON());
+    return route.fulfill({ status: 400, json: { message: 'Use the atomic collection command' } });
+  });
+  await page.route('**/rest/v1/rpc/collect_order_payment', async (route) => {
+    const body = route.request().postDataJSON();
+    calls.push(body);
+    expect(body.p_data).toMatchObject({ amount: 50, pedidoId: pedido.id, clienteId: cliente.id });
+    const advance = {
+      id: body.p_operation,
+      cliente_id: cliente.id,
+      ingreso_id: 'collection-income',
+      source: 'new',
+      fecha: body.p_data.fecha,
+      amount: 50,
+      forma_pago: 'transferencia',
+      referencia: '',
+      notas: '',
+      voided_at: null,
+    };
+    const movement = {
+      cliente_id: cliente.id,
+      advance_id: advance.id,
+      fecha: advance.fecha,
+      amount: 50,
+      referencia: '',
+      notas: '',
+    };
+    account = {
+      cliente,
+      pedidos: [
+        {
+          ...pedido,
+          monto_pagado: 50,
+          estado_pago: 'parcial',
+          pagos: [{ id: body.p_data.applicationId, monto: 50, origen: 'saldo_cliente' }],
+        },
+      ],
+      ingresos: [
+        {
+          id: advance.ingreso_id,
+          cliente_id: cliente.id,
+          fecha: advance.fecha,
+          descripcion: 'Cobro de prueba',
+          monto: 50,
+          iva: 0,
+          monto_total: 50,
+        },
+      ],
+      advances: [advance],
+      movements: [
+        { ...movement, id: 'deposit', sequence: 1, kind: 'deposit', operation_id: body.p_operation, pedido_id: null },
+        {
+          ...movement,
+          id: 'application',
+          sequence: 2,
+          kind: 'apply',
+          operation_id: body.p_data.applicationId,
+          pedido_id: pedido.id,
+          pedido_descripcion: pedido.descripcion,
+        },
+      ],
+    };
+    if (calls.length === 1) await route.abort('failed');
+    else await route.fulfill({ json: account });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`clientes/cuenta?cliente=${cliente.id}&accion=cobro&pedido=${pedido.id}`);
+  const dialog = page.getByRole('dialog', { name: 'Registrar cobro de pedido' });
+  await expect(dialog.getByLabel('Importe (MXN)')).toBeEnabled();
+  await dialog.getByLabel('Importe (MXN)').fill('50');
+  await dialog.getByRole('checkbox').check();
+  await page.screenshot({ path: testInfo.outputPath('collection-mobile.png'), fullPage: true });
+  await dialog.getByRole('button', { name: 'Confirmar movimiento' }).click();
+  await dialog.getByRole('button', { name: 'Reintentar confirmacion' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(calls).toHaveLength(2);
+  expect(calls[1]).toEqual(calls[0]);
+  expect(genericWrites).toEqual([]);
+  await expect(page.locator('dl > div').filter({ hasText: 'Total ingresado' }).locator('dd')).toHaveText('$50.00');
+  await expect(page.locator('dl > div').filter({ hasText: 'Saldo a favor disponible' }).locator('dd')).toHaveText(
+    '$0.00',
+  );
+  await expect(page.locator('dl > div').filter({ hasText: 'Pendiente de pedidos' }).locator('dd')).toHaveText('$50.00');
+  await page.getByRole('tab', { name: 'Ingresos', exact: true }).click();
+  await expect(page.getByText('Cobro de prueba', { exact: true })).toHaveCount(1);
+});
+
+test('customer directory paginates aggregates and fits desktop and mobile', async ({ page }, testInfo) => {
+  await login(page);
+  const pages: number[] = [];
+  await page.route('**/rest/v1/rpc/get_customer_directory', async (route) => {
+    const query = route.request().postDataJSON();
+    pages.push(query.p_page);
+    await route.fulfill({
+      json: {
+        total: 51,
+        registered: 60,
+        rows: Array.from({ length: query.p_page ? 1 : 50 }, (_, i) => ({
+          id: `directory-${query.p_page * 50 + i}`,
+          nombre: `Clienta ${query.p_page * 50 + i + 1}`,
+          telefono: '',
+          email: '',
+          created_at: version,
+          updated_at: version,
+          income_count: 3,
+          income_cents: 395000,
+          order_count: 2,
+          active_order_count: 1,
+          pending_cents: 10000,
+        })),
+      },
+    });
+  });
+  await page.goto('clientes');
+  await expect(page.getByRole('article')).toHaveCount(50);
+  await page.getByRole('button', { name: 'Página siguiente' }).click();
+  await expect(page.getByRole('article', { name: 'Clienta 51' })).toBeVisible();
+  expect(pages).toContain(1);
+  for (const width of [1366, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(page.getByRole('link', { name: 'Registrar adelanto', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`directory-${width}.png`), fullPage: true });
+  }
 });
 test('PDF exports remain available after dependency security updates', async ({ page }, testInfo) => {
   const errors: string[] = [];

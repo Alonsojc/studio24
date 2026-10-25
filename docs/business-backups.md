@@ -41,6 +41,31 @@ en un proyecto aislado, recrear el esquema con las migraciones y validar las
 relaciones e importes antes de cambiar el proyecto utilizado por la aplicacion.
 El JSON del respaldo completo no es un archivo para importar desde Ajustes.
 
+## Simulacro de restauracion
+
+Despues de conservar el archivo cifrado, el workflow prepara PostgreSQL 17
+aislado y ejecuta `scripts/restore-drill.mjs`. Restaura todas las tablas del
+snapshot, conserva valores y versiones, verifica claves foraneas, reajusta
+secuencias y vuelve a habilitar los triggers. Copia y compara los bytes de los
+archivos recuperados. Un fallo marca la ejecucion como fallida, pero conserva
+el respaldo cifrado para investigacion.
+
+El comando solo admite `studio24_test` en localhost, vacio salvo el catalogo
+INPC de las migraciones y con el esquema Auth ficticio de pruebas. Rechaza una
+base ya usada. No es una herramienta para restaurar sobre produccion.
+
+```sh
+SCHEMA_ONLY=1 bash scripts/test-db.sh
+node scripts/restore-drill.mjs /ruta/studio24.enc
+```
+
+Requiere `TEST_DATABASE_URL` y `STUDIO24_BACKUP_PASSPHRASE` en el entorno.
+La suite `scripts/test-db.sh` tambien comprueba un ciclo completo con datos
+sinteticos y un cobro posterior a la recuperacion. Las identidades de Auth se
+recrean solo como referencias: no recupera contrasenas, sesiones, permisos de
+la plataforma ni configura un proyecto Supabase nuevo. Una recuperacion real
+sigue requiriendo validar esos componentes por separado antes de cambiar el sitio.
+
 Si faltan credenciales, falla una descarga o se exceden 512 MiB de evidencia,
 el workflow falla y no publica una copia incompleta. Revisar cualquier aviso de
 fallo de GitHub Actions antes de considerar que el respaldo esta actualizado.

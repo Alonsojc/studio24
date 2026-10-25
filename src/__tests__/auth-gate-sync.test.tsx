@@ -129,6 +129,36 @@ describe('AuthGate background sync', () => {
     expect(mocks.bindLocalDataToUser).not.toHaveBeenCalled();
     expect(mocks.pullFromCloud).not.toHaveBeenCalled();
   });
+  it('keeps recovery outside business startup and resumes it on refresh', async () => {
+    sessionStorage.setItem('studio24_password_recovery_user', 'user-1');
+    await act(async () =>
+      root.render(
+        <AuthGate>
+          <div>Aplicacion</div>
+        </AuthGate>,
+      ),
+    );
+    expect(container.textContent).toContain('Nueva contrasena');
+    expect(container.textContent).not.toContain('Aplicacion');
+    expect(mocks.pullFromCloud).not.toHaveBeenCalled();
+  });
+  it('handles recovery events even for the already signed-in user', async () => {
+    mocks.pullFromCloud.mockResolvedValue(0);
+    await act(async () =>
+      root.render(
+        <AuthGate>
+          <div>Aplicacion</div>
+        </AuthGate>,
+      ),
+    );
+    await act(async () => {
+      authCallback('PASSWORD_RECOVERY', { user: { id: 'user-1' } });
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(container.textContent).toContain('Nueva contrasena');
+    expect(container.textContent).not.toContain('Aplicacion');
+    expect(sessionStorage.getItem('studio24_password_recovery_user')).toBe('user-1');
+  });
   it('waits for the first cloud pull before mounting startup effects on a new device', async () => {
     sessionStorage.clear();
     mocks.hasLocalBusinessData.mockReturnValue(false);

@@ -49,7 +49,7 @@ export async function encryptBundle(root, output, passphrase) {
   await finished(destination);
 }
 
-export async function verifyBundle(file, passphrase) {
+export async function withVerifiedBundle(file, passphrase, consume) {
   const root = await mkdtemp(join(tmpdir(), 'studio24-verify-'));
   try {
     const handle = await open(file, 'r');
@@ -98,6 +98,8 @@ export async function verifyBundle(file, passphrase) {
     await run('tar', ['-xzf', archive, '-C', extracted, '--no-same-owner', '--no-same-permissions']);
     const manifest = JSON.parse(await readFile(join(extracted, 'manifest.json'), 'utf8'));
     if (manifest.schemaVersion !== 2 || !Array.isArray(manifest.files)) throw new Error('Invalid manifest');
+    if (!['records.json', 'storage.json'].every((path) => manifest.files.some((item) => item.path === path)))
+      throw new Error('Missing verified backup metadata');
     for (const item of manifest.files) {
       const path = join(extracted, safePath(item.path));
       const info = await lstat(path);
@@ -109,15 +111,20 @@ export async function verifyBundle(file, passphrase) {
       if (!Array.isArray(records.tables[table]) || records.tables[table].length !== count)
         throw new Error('Backup row counts do not match');
     }
-    return {
+    const summary = {
       verified: true,
       tables: Object.keys(manifest.counts).length,
       files: manifest.files.length,
       createdAt: manifest.createdAt,
     };
+    return consume ? await consume({ root: extracted, records, manifest, summary }) : summary;
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+}
+
+export async function verifyBundle(file, passphrase) {
+  return withVerifiedBundle(file, passphrase);
 }
 
 export async function createBusinessBackup(client, output, passphrase) {

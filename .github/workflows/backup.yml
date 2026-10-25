@@ -17,6 +17,17 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: isolated-test-password
+          POSTGRES_DB: studio24_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -37,3 +48,13 @@ jobs:
           path: backup/studio24.enc
           if-no-files-found: error
           retention-days: 14
+      - name: Prepare isolated restore database
+        env:
+          TEST_DATABASE_URL: postgres://postgres:isolated-test-password@127.0.0.1:5432/studio24_test
+          SCHEMA_ONLY: '1'
+        run: bash scripts/test-db.sh
+      - name: Restore and compare records and evidence
+        env:
+          TEST_DATABASE_URL: postgres://postgres:isolated-test-password@127.0.0.1:5432/studio24_test
+          STUDIO24_BACKUP_PASSPHRASE: ${{ secrets.STUDIO24_BACKUP_PASSPHRASE }}
+        run: node scripts/restore-drill.mjs backup/studio24.enc

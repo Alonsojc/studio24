@@ -34,7 +34,8 @@ import { downloadCSV } from '@/lib/csv';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 import MonthBar from '@/components/MonthBar';
 import Pagination, { PAGE_SIZE } from '@/components/Pagination';
-import { deleteFacturaFiles, openFacturaFile } from '@/lib/cfdi-storage';
+import { openFacturaFile } from '@/lib/cfdi-storage';
+import ReplaceInvoiceModal from '@/components/ReplaceInvoiceModal';
 
 const categorias: CategoriaEgreso[] = [
   'programas',
@@ -184,34 +185,8 @@ export default function EgresosPage() {
     deleteEgreso(id);
     reload();
   };
-  const handleReplaceFactura = async (egreso: Egreso) => {
-    const hasCfdi = Boolean(egreso.uuidCFDI || egreso.xmlUrl || egreso.pdfUrl || egreso.numeroFactura);
-    if (!hasCfdi) {
-      alert('Este egreso no tiene CFDI o archivos de factura guardados.');
-      return;
-    }
-    if (
-      !confirm(
-        'Se borrarán el PDF/XML guardados y se limpiará el UUID para que puedas subir la factura correcta desde Facturas. El egreso se conserva. ¿Continuar?',
-      )
-    )
-      return;
-
-    try {
-      await deleteFacturaFiles({ pdfUrl: egreso.pdfUrl, xmlUrl: egreso.xmlUrl });
-      updateEgreso({
-        ...egreso,
-        numeroFactura: '',
-        uuidCFDI: '',
-        xmlUrl: '',
-        pdfUrl: '',
-      });
-      reload();
-      alert('Listo. Ahora sube el XML/PDF nuevo desde Facturas para vincularlo otra vez.');
-    } catch (err) {
-      alert(`No se pudo borrar la factura: ${err instanceof Error ? err.message : 'error desconocido'}`);
-    }
-  };
+  const [replacement, setReplacement] = useState<string | null>(null);
+  const handleReplaceFactura = (egreso: Egreso) => setReplacement(egreso.id);
 
   const openNewRec = () => {
     setEditingRecId(null);
@@ -647,6 +622,9 @@ export default function EgresosPage() {
       )}
 
       <Pagination total={filtered.length} page={page} onPageChange={setPage} />
+      {replacement && (
+        <ReplaceInvoiceModal tipo="egreso" id={replacement} onClose={() => setReplacement(null)} onSaved={reload} />
+      )}
 
       {/* Egreso Modal */}
       <Modal

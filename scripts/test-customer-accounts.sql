@@ -14,7 +14,11 @@ select public.sync_write_record('clientes','{"id":"credit-client","nombre":"Clie
 select public.sync_write_record('clientes','{"id":"credit-client-two","nombre":"Otra clienta"}',null,'credit-client-operation-2');
 select public.sync_write_record('pedidos','{"id":"credit-order-1","cliente_id":"credit-client","descripcion":"Pedido A","piezas":1,"precio_unitario":1000,"monto_total":1000,"fecha_pedido":"2026-10-01"}',null,'credit-order-operation1');
 select public.sync_write_record('pedidos','{"id":"credit-order-2","cliente_id":"credit-client","descripcion":"Pedido B","piezas":1,"precio_unitario":2000,"monto_total":2000,"fecha_pedido":"2026-10-01"}',null,'credit-order-operation2');
-select public.sync_write_record('pedidos','{"id":"credit-order-old","cliente_id":"credit-client","descripcion":"Pago previo","piezas":1,"precio_unitario":1000,"monto_total":1000,"monto_pagado":150,"fecha_pedido":"2026-10-01"}',null,'credit-order-operation3');
+select public.sync_write_record('pedidos','{"id":"credit-order-old","cliente_id":"credit-client","descripcion":"Pago previo","piezas":1,"precio_unitario":1000,"monto_total":1000,"fecha_pedido":"2026-10-01"}',null,'credit-order-operation3');
+-- Reproduce a pre-migration balance, not a new payment through an old client.
+reset role;
+update public.pedidos set monto_pagado=150 where id='credit-order-old';
+set local role authenticated;
 select public.sync_write_record('pedidos','{"id":"credit-order-other","cliente_id":"credit-client-two","descripcion":"Otro pedido","piezas":1,"precio_unitario":1000,"monto_total":1000,"fecha_pedido":"2026-10-01"}',null,'credit-order-operation4');
 select public.sync_write_record('ingresos','{"id":"credit-existing-income","cliente_id":"credit-client","descripcion":"Ingreso existente","concepto":"otro","monto":500,"monto_total":500,"fecha":"2026-10-01","forma_pago":"transferencia"}',null,'credit-income-operation1');
 do $$ declare result jsonb; failed boolean; count_before int; begin

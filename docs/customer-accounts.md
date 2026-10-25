@@ -11,6 +11,7 @@ Desde Clientes, abrir "Cuenta y movimientos". Administracion y contabilidad pued
 - Ingreso existente: vincula un ingreso positivo de la misma clienta, sin pedido y sin otro adelanto vigente. No crea otro cobro.
 - Al volver a vincular un ingreso cuyo adelanto se anulo, la nueva disponibilidad no se fecha antes de su ultimo movimiento anterior. La fecha original del ingreso no cambia y los cortes historicos no duplican ese dinero.
 - Aplicar saldo: consume un adelanto hasta el menor entre disponible y pendiente del pedido. Un adelanto puede pagar varios pedidos; varios adelantos pueden pagar un pedido.
+- Registrar cobro de pedido: crea un ingreso y aplica su importe al pedido en una sola transaccion. El adelanto tecnico queda totalmente aplicado, sin saldo disponible; no se duplica el efectivo al entregar el pedido. Primero se guarda el pedido y despues se registra su cobro. No sirve para volver a capturar un ingreso que ya existe.
 - Revertir aplicacion: conserva ambos movimientos y devuelve el importe al adelanto. No registra una devolucion de efectivo.
 - Anular captura: requiere motivo y todas las aplicaciones revertidas. Si era nuevo cobro, pone su ingreso en cero; si era ingreso existente, lo conserva. No permite anular un ingreso con factura. No es un flujo de reembolso.
 - PDF y Excel: periodo inclusivo, saldo inicial, movimientos, aplicaciones/reversas y saldo al corte. El pendiente de pedidos se identifica como actual, no historico.
@@ -22,6 +23,17 @@ La migracion `20261019233010_customer_advances_ledger.sql` debe aplicarse antes 
 `customer_account_command` valida sesion, equipo, rol, clienta, importes y fechas. Serializa la cuenta por clienta y bloquea el pedido/ingreso correspondiente. Cada operacion usa un UUID persistente; una respuesta perdida se reintenta con el mismo UUID y contenido. No hay movimientos financieros optimistas ni envios automaticos sin conexion.
 
 Las tablas `customer_advances` y `customer_account_movements` solo admiten lectura financiera por RLS. Los pagos con `origen=saldo_cliente` y los cobros que respaldan adelantos no pueden alterarse desde el CRUD generico. Los conflictos requieren revision explicita desde el indicador de sincronizacion.
+
+La migracion `20261025174424_finance_reliability.sql` agrega `collect_order_payment`
+y bloquea cambios directos a `pedidos.pagos`/`monto_pagado`. Esos campos pasan a
+ser resultado de los comandos transaccionales. No convierte pagos historicos.
+Debe aplicarse antes de publicar esta version; clientes antiguos con pagos
+pendientes de sincronizar mostraran un conflicto que debe conciliarse, no
+descartarse ni repetirse como un cobro nuevo sin revisar la evidencia.
+
+El directorio usa `get_customer_directory`: filtros y totales de todo el equipo
+en servidor, 50 clientes por pagina y cache local por consulta. Solo al abrir
+la cuenta se descarga el detalle de sus ingresos, pedidos y movimientos.
 
 El comprobante opcional se sube antes del cobro a `customer-receipts`, privado, con limite de 10 MB y PDF/JPG/PNG. El acceso usa URL firmada de 60 segundos. Los objetos ligados no se pueden sobrescribir ni borrar. Si falla una validacion despues de subirlo, puede quedar un objeto sin ligar; no crea dinero y su politica permite eliminarlo.
 

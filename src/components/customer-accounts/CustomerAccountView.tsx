@@ -47,7 +47,7 @@ export default function CustomerAccountView({
 }: {
   clienteId: string;
   pedidoId?: string;
-  initialAction?: 'receive';
+  initialAction?: 'receive' | 'collect';
 }) {
   const { role } = useRole();
   const state = useCustomerAccount(clienteId);
@@ -57,7 +57,7 @@ export default function CustomerAccountView({
     initialAction === 'receive' ? 'advances' : pedidoId ? 'orders' : 'incomes',
   );
   const [editor, setEditor] = useState<AccountEditor | null>(() =>
-    initialAction === 'receive' && canManageAccount && !pending.length ? { action: 'receive' } : null,
+    initialAction && canManageAccount && !pending.length ? { action: initialAction, pedidoId } : null,
   );
   const [expanded, setExpanded] = useState<string | null>(null);
   const [from, setFrom] = useState('');
@@ -545,6 +545,15 @@ export default function CustomerAccountView({
                   <td className={`${cell} whitespace-nowrap`}>{formatCurrency(pedido.montoPagado)}</td>
                   <td className={`${cell} whitespace-nowrap`}>{formatCurrency(pendingOrderAmount(pedido))}</td>
                   <td className={cell}>
+                    {pendingOrderAmount(pedido) > 0 && (
+                      <button
+                        className={commandButton}
+                        disabled={!canMove}
+                        onClick={() => openEditor({ action: 'collect', pedidoId: pedido.id })}
+                      >
+                        <Plus size={15} /> Registrar cobro
+                      </button>
+                    )}
                     {pendingOrderAmount(pedido) > 0 && (
                       <button
                         className={commandButton}

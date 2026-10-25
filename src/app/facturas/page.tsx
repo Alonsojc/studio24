@@ -5,11 +5,12 @@ import { v4 as uuid } from 'uuid';
 import { getIngresos, getEgresos, getConfig, getProveedores } from '@/lib/store';
 import { cloudGetIngresosByYear, cloudGetEgresosByYear } from '@/lib/store-cloud';
 import { useCloudStore } from '@/lib/useCloudStore';
-import { addIngreso, updateIngreso, addEgreso, updateEgreso, updateProveedor } from '@/lib/store-sync';
-import { Ingreso, Egreso } from '@/lib/types';
-import { formatCurrency, formatDate, todayString } from '@/lib/helpers';
-import { parseXMLFile, mapFormaPago, type DatosCFDI } from '@/lib/cfdi';
-import { uploadFacturaFiles, openFacturaFile } from '@/lib/cfdi-storage';
+import { updateEgreso, updateProveedor } from '@/lib/store-sync';
+import { formatCurrency, formatDate } from '@/lib/helpers';
+import { parseXMLFile, type DatosCFDI } from '@/lib/cfdi';
+import { openFacturaFile } from '@/lib/cfdi-storage';
+import { invoiceCandidates, normalizedUuid } from '@/lib/invoice-matching';
+import { saveImportedInvoice } from '@/lib/invoice-import';
 import {
   clasificarDeducibilidad,
   tipoDeduccionLabel,
@@ -41,77 +42,70 @@ export default function FacturasPage() {
   const [filterMonth, setFilterMonth] = useState<string>(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
   );
-  const { data: ingresos } = useCloudStore(getIngresos, () => cloudGetIngresosByYear(filterYear), 'bordados_ingresos', [
+  const ingresosStore = useCloudStore(getIngresos, () => cloudGetIngresosByYear(filterYear), 'bordados_ingresos', [
     filterYear,
   ]);
-  const { data: egresos, reload: reloadEgresos } = useCloudStore(
-    getEgresos,
-    () => cloudGetEgresosByYear(filterYear),
-    'bordados_egresos',
-    [filterYear],
+  const egresosStore = useCloudStore(getEgresos, () => cloudGetEgresosByYear(filterYear), 'bordados_egresos', [
+    filterYear,
+  ]);
+  const { data: ingresos } = ingresosStore;
+  const { data: egresos, reload: reloadEgresos } = egresosStore;
+  const canImport = [ingresosStore, egresosStore].every(
+    (store) => store.hasSnapshot && !store.loading && !store.syncing && !store.error,
   );
   const [config] = useState(getConfig);
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
   const [processing, setProcessing] = useState(false);
   const [duplicadas, setDuplicadas] = useState(0);
+  const [uploadErrors, setUploadErrors] = useState<string[]>([]);
   const [filterTipo, setFilterTipo] = useState<'all' | 'ingreso' | 'egreso'>('all');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canImport || processing) return;
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    const xmlFiles = files.filter((f) => f.name.endsWith('.xml'));
-    const pdfFiles = files.filter((f) => f.name.endsWith('.pdf'));
+    const xmlFiles = files.filter((f) => /\.xml$/i.test(f.name));
+    const pdfFiles = files.filter((f) => /\.pdf$/i.test(f.name));
+    const errors: string[] = [];
 
     const nuevas: FacturaPendiente[] = [];
     let skipped = 0;
-    // Track IDs already matched in this batch to prevent two XMLs from claiming the same record
-    const batchMatchedIds = new Set<string>(facturas.filter((f) => f.matchId).map((f) => f.matchId!));
-
     for (const xmlFile of xmlFiles) {
       const cfdi = await parseXMLFile(xmlFile);
-      if (!cfdi) continue;
+      if (!cfdi || !cfdi.uuid || cfdi.tipoComprobante !== 'I' || cfdi.moneda !== 'MXN') {
+        errors.push(`${xmlFile.name}: se requiere un CFDI de ingreso timbrado en MXN.`);
+        continue;
+      }
+      const ownRfc = normalizedUuid(config?.rfc);
+      if (ownRfc && ![cfdi.rfcEmisor, cfdi.rfcReceptor].some((rfc) => normalizedUuid(rfc) === ownRfc)) {
+        errors.push(`${xmlFile.name}: el RFC del negocio no aparece en la factura.`);
+        continue;
+      }
 
       // Find matching PDF by similar name (used in all flows)
-      const baseName = xmlFile.name.replace('.xml', '');
-      const pdfFile = pdfFiles.find((p) => p.name.replace('.pdf', '') === baseName);
+      const baseName = xmlFile.name.replace(/\.xml$/i, '').toLowerCase();
+      const pdfFile = pdfFiles.find((p) => p.name.replace(/\.pdf$/i, '').toLowerCase() === baseName);
 
       // Skip if this same CFDI is already queued in the current session
       const alreadyInBatch =
-        cfdi.uuid && (nuevas.some((n) => n.cfdi.uuid === cfdi.uuid) || facturas.some((f) => f.cfdi.uuid === cfdi.uuid));
+        cfdi.uuid && [...nuevas, ...facturas].some((f) => normalizedUuid(f.cfdi.uuid) === normalizedUuid(cfdi.uuid));
       if (alreadyInBatch) {
         skipped++;
         continue;
       }
 
-      // Look up an existing record in ingresos/egresos, first by UUID, then by amount+date.
+      // Only a matching UUID identifies the same invoice.
       let existing: { id: string; descripcion: string; xmlUrl?: string; pdfUrl?: string } | null = null;
       let existingTipo: 'ingreso' | 'egreso' | null = null;
       if (cfdi.uuid) {
-        const ing = ingresos.find((i) => i.uuidCFDI === cfdi.uuid);
+        const ing = ingresos.find((i) => normalizedUuid(i.uuidCFDI) === normalizedUuid(cfdi.uuid));
         if (ing) {
           existing = ing;
           existingTipo = 'ingreso';
         } else {
-          const eg = egresos.find((e) => e.uuidCFDI === cfdi.uuid);
-          if (eg) {
-            existing = eg;
-            existingTipo = 'egreso';
-          }
-        }
-      }
-      if (!existing && cfdi.total > 0) {
-        const ing = ingresos.find(
-          (i) => i.factura && Math.abs(i.montoTotal - cfdi.total) < 0.01 && i.fecha === cfdi.fecha,
-        );
-        if (ing) {
-          existing = ing;
-          existingTipo = 'ingreso';
-        } else {
-          const eg = egresos.find(
-            (e) => e.factura && Math.abs(e.montoTotal - cfdi.total) < 0.01 && e.fecha === cfdi.fecha,
-          );
+          const eg = egresos.find((e) => normalizedUuid(e.uuidCFDI) === normalizedUuid(cfdi.uuid));
           if (eg) {
             existing = eg;
             existingTipo = 'egreso';
@@ -159,10 +153,6 @@ export default function FacturasPage() {
         tipo = 'egreso'; // Default: assume it's a purchase
       }
 
-      // Try to find a match in existing records (excluding IDs already claimed in this batch)
-      const match = findMatch(cfdi, tipo, batchMatchedIds);
-      if (match) batchMatchedIds.add(match.id);
-
       // Auto-classify deducibility for egresos
       const descConceptos = cfdi.conceptos.map((c) => c.descripcion).join(' ');
       const deducibilidad = tipo === 'egreso' ? clasificarDeducibilidad(cfdi.usoCFDI, descConceptos) : undefined;
@@ -173,257 +163,47 @@ export default function FacturasPage() {
         xmlFile,
         pdfFile,
         tipo,
-        matchId: match?.id,
-        matchDesc: match?.desc,
         deducibilidad,
-        status: match ? 'matched' : 'new',
+        // Even with no candidates, creating a financial record needs a choice.
+        status: 'pending',
       });
     }
 
     setFacturas((prev) => [...prev, ...nuevas]);
+    setUploadErrors(errors);
     if (skipped > 0) setDuplicadas(skipped);
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const findMatch = (
-    cfdi: DatosCFDI,
-    tipo: 'ingreso' | 'egreso',
-    excludeIds?: Set<string>,
-  ): { id: string; desc: string } | null => {
-    // Search in existing records for a match by amount + date proximity
-    const records = tipo === 'ingreso' ? ingresos : egresos;
-    const tolerance = 0.01; // $0.01 tolerance for rounding
-
-    for (const rec of records) {
-      // Skip if already has a CFDI
-      if ((rec as Ingreso).uuidCFDI) continue;
-      // Skip if already claimed by another factura in this batch
-      if (excludeIds && excludeIds.has(rec.id)) continue;
-
-      const montoMatch =
-        Math.abs(rec.montoTotal - cfdi.total) <= tolerance || Math.abs(rec.monto - cfdi.subtotal) <= tolerance;
-      if (!montoMatch) continue;
-
-      // Check date proximity (within 7 days)
-      const recDate = new Date(rec.fecha);
-      const cfdiDate = new Date(cfdi.fecha);
-      const daysDiff = Math.abs((recDate.getTime() - cfdiDate.getTime()) / (1000 * 60 * 60 * 24));
-      if (daysDiff > 7) continue;
-
-      return { id: rec.id, desc: rec.descripcion };
-    }
-    return null;
-  };
-
   const processAll = async () => {
+    if (!canImport || processing) return;
     setProcessing(true);
-    const updated = facturas.map((f) => (f.status === 'error' ? { ...f, status: f.retryStatus || 'new' } : f));
-    // Re-read fresh data to avoid overwriting UUIDs set in a previous session
-    const freshIngresos = getIngresos();
-    const freshEgresos = getEgresos();
-    const freshProveedores = getProveedores();
-    // Track IDs already processed in this batch to prevent double-linking
-    const processedMatchIds = new Set<string>();
-
-    // Helper: when an egreso gets linked to a CFDI, backfill the proveedor's
-    // RFC from the emisor if the proveedor still has no RFC. This is what
-    // makes DIOT work later without manual data entry.
-    const syncProveedorRfc = (egreso: Egreso | undefined, rfcEmisor: string) => {
-      if (!egreso || !egreso.proveedorId || !rfcEmisor) return;
-      const prov = freshProveedores.find((p) => p.id === egreso.proveedorId);
-      if (prov && !prov.rfc) {
-        updateProveedor({ ...prov, rfc: rfcEmisor.toUpperCase() });
-      }
-    };
-
+    const updated = facturas.map((f) => ({ ...f }));
+    const claimed = new Set<string>();
     for (let i = 0; i < updated.length; i++) {
       const f = updated[i];
-      if (f.status === 'done') continue;
-
-      // If another factura in this batch already claimed this match, demote to "new"
-      if (f.status === 'matched' && f.matchId && processedMatchIds.has(f.matchId)) {
-        updated[i] = { ...f, status: 'new', matchId: undefined, matchDesc: undefined };
+      const mode = f.status === 'error' ? f.retryStatus || 'new' : f.status;
+      if (mode === 'pending' || mode === 'done') continue;
+      if (f.matchId && claimed.has(f.matchId)) {
+        updated[i] = { ...f, status: 'pending', matchId: undefined };
+        continue;
       }
-
+      if (f.matchId) claimed.add(f.matchId);
       try {
-        const current = updated[i];
-        if (current.status === 'matched' && current.matchId) {
-          // Double-check the record hasn't been linked to a CFDI since we last read
-          const freshRec =
-            current.tipo === 'ingreso'
-              ? freshIngresos.find((r) => r.id === current.matchId)
-              : freshEgresos.find((r) => r.id === current.matchId);
-          if (freshRec && (freshRec as Ingreso).uuidCFDI) {
-            // Already linked — demote to "new" to create a fresh record instead
-            updated[i] = { ...current, status: 'new', matchId: undefined, matchDesc: undefined };
-          } else {
-            processedMatchIds.add(current.matchId);
-          }
-        }
-
-        // Attach-only: factura already exists in the system, we just want
-        // to upload its files and persist the paths on the existing record.
-        const current2 = updated[i];
-        if (current2.status === 'attach' && current2.matchId) {
-          let attachXml = '';
-          let attachPdf = '';
-          try {
-            const uploaded = await uploadFacturaFiles(
-              current2.cfdi.uuid || current2.id,
-              current2.xmlFile,
-              current2.pdfFile,
-            );
-            attachXml = uploaded.xmlPath;
-            attachPdf = uploaded.pdfPath;
-          } catch (err) {
-            console.warn('No se pudo subir el archivo de factura', err);
-            updated[i] = {
-              ...current2,
-              retryStatus: 'attach',
-              status: 'error',
-              error: err instanceof Error ? err.message : 'No se pudieron subir los archivos. Reintenta.',
-            };
-            continue;
-          }
-          if (current2.tipo === 'ingreso') {
-            const existing = freshIngresos.find((r) => r.id === current2.matchId);
-            if (existing) {
-              updateIngreso({
-                ...existing,
-                factura: true,
-                numeroFactura: existing.numeroFactura || current2.cfdi.uuid,
-                uuidCFDI: existing.uuidCFDI || current2.cfdi.uuid,
-                xmlUrl: existing.xmlUrl || attachXml,
-                pdfUrl: existing.pdfUrl || attachPdf,
-              });
-            }
-          } else {
-            const existing = freshEgresos.find((r) => r.id === current2.matchId);
-            if (existing) {
-              updateEgreso({
-                ...existing,
-                factura: true,
-                numeroFactura: existing.numeroFactura || current2.cfdi.uuid,
-                uuidCFDI: existing.uuidCFDI || current2.cfdi.uuid,
-                xmlUrl: existing.xmlUrl || attachXml,
-                pdfUrl: existing.pdfUrl || attachPdf,
-              });
-              syncProveedorRfc(existing, current2.cfdi.rfcEmisor);
-            }
-          }
-          updated[i] = { ...current2, status: 'done' };
-          continue;
-        }
-
-        // Upload XML (and PDF if present) to Supabase Storage so we can
-        // view them later from the ingreso/egreso row or this page.
-        let xmlUrl = '';
-        let pdfUrl = '';
-        try {
-          const uploaded = await uploadFacturaFiles(f.cfdi.uuid || f.id, f.xmlFile, f.pdfFile);
-          xmlUrl = uploaded.xmlPath;
-          pdfUrl = uploaded.pdfPath;
-        } catch (err) {
-          updated[i] = {
-            ...updated[i],
-            retryStatus: updated[i].matchId ? 'matched' : 'new',
-            status: 'error',
-            error: err instanceof Error ? err.message : 'No se pudieron subir los archivos. Reintenta.',
-          };
-          continue;
-        }
-
-        const afterCheck = updated[i];
-        if (afterCheck.status === 'matched' && afterCheck.matchId) {
-          // Link to existing record
-          if (afterCheck.tipo === 'ingreso') {
-            const existing = freshIngresos.find((r) => r.id === afterCheck.matchId);
-            if (existing) {
-              updateIngreso({
-                ...existing,
-                factura: true,
-                numeroFactura: afterCheck.cfdi.uuid,
-                uuidCFDI: afterCheck.cfdi.uuid,
-                iva: afterCheck.cfdi.iva,
-                montoTotal: afterCheck.cfdi.total,
-                xmlUrl: xmlUrl || existing.xmlUrl,
-                pdfUrl: pdfUrl || existing.pdfUrl,
-              });
-            }
-          } else {
-            const existing = freshEgresos.find((r) => r.id === afterCheck.matchId);
-            if (existing) {
-              updateEgreso({
-                ...existing,
-                factura: true,
-                numeroFactura: afterCheck.cfdi.uuid,
-                uuidCFDI: afterCheck.cfdi.uuid,
-                iva: afterCheck.cfdi.iva,
-                montoTotal: afterCheck.cfdi.total,
-                xmlUrl: xmlUrl || existing.xmlUrl,
-                pdfUrl: pdfUrl || existing.pdfUrl,
-              });
-              syncProveedorRfc(existing, afterCheck.cfdi.rfcEmisor);
-            }
-          }
-        } else {
-          // Create new record
-          const desc = f.cfdi.conceptos.map((c) => c.descripcion).join(', ') || f.cfdi.nombreEmisor;
-
-          if (f.tipo === 'ingreso') {
-            const ingreso: Ingreso = {
-              id: uuid(),
-              fecha: f.cfdi.fecha || todayString(),
-              clienteId: '',
-              descripcion: desc.substring(0, 100),
-              concepto: 'otro',
-              monto: f.cfdi.subtotal,
-              iva: f.cfdi.iva,
-              montoTotal: f.cfdi.total,
-              formaPago: mapFormaPago(f.cfdi.formaPago),
-              factura: true,
-              numeroFactura: f.cfdi.uuid,
-              uuidCFDI: f.cfdi.uuid,
-              xmlUrl,
-              pdfUrl,
-              notas: `Importado desde XML. Emisor: ${f.cfdi.nombreEmisor}`,
-              createdAt: new Date().toISOString(),
-            };
-            addIngreso(ingreso);
-          } else {
-            const egreso: Egreso = {
-              id: uuid(),
-              fecha: f.cfdi.fecha || todayString(),
-              descripcion: desc.substring(0, 100),
-              categoria: 'otro',
-              subcategoria: '',
-              proveedorId: '',
-              monto: f.cfdi.subtotal,
-              iva: f.cfdi.iva,
-              montoTotal: f.cfdi.total,
-              formaPago: mapFormaPago(f.cfdi.formaPago),
-              factura: true,
-              numeroFactura: f.cfdi.uuid,
-              uuidCFDI: f.cfdi.uuid,
-              xmlUrl,
-              pdfUrl,
-              notas: `Importado desde XML. Emisor: ${f.cfdi.nombreEmisor}`,
-              createdAt: new Date().toISOString(),
-            };
-            addEgreso(egreso);
-          }
-        }
-        updated[i] = { ...updated[i], status: 'done' };
-      } catch (err) {
+        await saveImportedInvoice({ ...f, mode });
+        updated[i] = { ...f, status: 'done', error: undefined };
+        const egreso = f.tipo === 'egreso' ? getEgresos().find((row) => row.id === (f.matchId || f.id)) : undefined;
+        const proveedor = egreso && getProveedores().find((row) => row.id === egreso.proveedorId);
+        if (proveedor && !proveedor.rfc) updateProveedor({ ...proveedor, rfc: f.cfdi.rfcEmisor.toUpperCase() });
+      } catch (error) {
         updated[i] = {
-          ...updated[i],
-          retryStatus: updated[i].matchId ? 'matched' : 'new',
+          ...f,
           status: 'error',
-          error: err instanceof Error ? err.message : 'No se pudo guardar la factura.',
+          retryStatus: mode,
+          error: error instanceof Error ? error.message : 'No se pudo guardar la factura.',
         };
       }
     }
-
     setFacturas(updated);
     setProcessing(false);
   };
@@ -442,12 +222,10 @@ export default function FacturasPage() {
   const toggleTipo = (id: string) => {
     setFacturas((prev) => {
       // Collect IDs already matched by other facturas
-      const otherMatchedIds = new Set(prev.filter((f) => f.id !== id && f.matchId).map((f) => f.matchId!));
       return prev.map((f) => {
-        if (f.id !== id) return f;
+        if (f.id !== id || f.status === 'attach' || f.status === 'done') return f;
         const nuevoTipo = f.tipo === 'ingreso' ? ('egreso' as const) : ('ingreso' as const);
-        const match = findMatch(f.cfdi, nuevoTipo, otherMatchedIds);
-        return { ...f, tipo: nuevoTipo, matchId: match?.id, matchDesc: match?.desc, status: match ? 'matched' : 'new' };
+        return { ...f, tipo: nuevoTipo, matchId: undefined, matchDesc: undefined, status: 'pending' };
       });
     });
   };
@@ -511,14 +289,26 @@ export default function FacturasPage() {
     <div>
       <PageHeader
         title="Facturas"
-        description="Sube XMLs de CFDI para vincular o crear registros automáticamente"
+        description="Comprobantes emitidos y recibidos"
         action={
-          <button onClick={() => fileRef.current?.click()} className={btnPrimary}>
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={!canImport || processing}
+            className={`${btnPrimary} disabled:opacity-50`}
+          >
             + Subir XMLs / PDFs
           </button>
         }
       />
-      <input ref={fileRef} type="file" accept=".xml,.pdf" multiple onChange={handleUpload} className="hidden" />
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".xml,.pdf"
+        multiple
+        disabled={!canImport || processing}
+        onChange={handleUpload}
+        className="hidden"
+      />
 
       {/* Duplicates warning */}
       {duplicadas > 0 && (
@@ -542,13 +332,11 @@ export default function FacturasPage() {
             📄
           </div>
           <h3 className="font-bold text-[#0a0a0a] mb-2">Sube tus facturas</h3>
-          <p className="text-xs text-neutral-400 max-w-md mx-auto mb-4">
-            Arrastra o selecciona archivos XML y PDF. El sistema lee el CFDI, busca si ya existe un ingreso o egreso con
-            el mismo monto, y lo vincula automáticamente. Si no encuentra match, crea uno nuevo.
-          </p>
+          <p className="text-xs text-neutral-400 max-w-md mx-auto mb-4">XML y PDF de comprobantes CFDI</p>
           <button
             onClick={() => fileRef.current?.click()}
-            className="px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-[#0a0a0a] text-white hover:bg-[#222] transition-colors"
+            disabled={!canImport || processing}
+            className="px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-[#0a0a0a] text-white hover:bg-[#222] transition-colors disabled:opacity-50"
           >
             Seleccionar archivos
           </button>
@@ -556,13 +344,22 @@ export default function FacturasPage() {
       )}
 
       {/* Pending facturas */}
+      {uploadErrors.map((error) => (
+        <p key={error} role="alert" className="mb-3 text-sm text-red-600">
+          {error}
+        </p>
+      ))}
       {pendientes.length > 0 && (
         <div className="space-y-3 mb-8">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[10px] font-bold tracking-[0.12em] text-neutral-400 uppercase">
               {pendientes.length} factura{pendientes.length > 1 ? 's' : ''} por procesar
             </h3>
-            <button onClick={processAll} disabled={processing} className={`${btnPrimary} disabled:opacity-50`}>
+            <button
+              onClick={processAll}
+              disabled={!canImport || processing || pendientes.some((f) => f.status === 'pending')}
+              className={`${btnPrimary} disabled:opacity-50`}
+            >
               {processing ? 'Procesando...' : 'Procesar todas'}
             </button>
           </div>
@@ -577,6 +374,9 @@ export default function FacturasPage() {
                   <div className="flex items-center gap-2 mb-1">
                     <button
                       onClick={() => toggleTipo(f.id)}
+                      disabled={
+                        processing || f.status === 'attach' || f.retryStatus === 'attach' || Boolean(config.rfc)
+                      }
                       className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase cursor-pointer ${f.tipo === 'ingreso' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}
                     >
                       {f.tipo === 'ingreso' ? 'Factura emitida' : 'Factura recibida'}
@@ -599,6 +399,43 @@ export default function FacturasPage() {
               </div>
 
               {/* Match info */}
+              {f.status !== 'attach' && f.retryStatus !== 'attach' && (
+                <select
+                  aria-label="Vincular factura"
+                  disabled={processing}
+                  value={f.matchId || (f.status === 'pending' ? '' : 'new')}
+                  className="mt-3 w-full rounded-lg border border-neutral-200 p-2 text-sm"
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    const record = (f.tipo === 'ingreso' ? ingresos : egresos).find((r) => r.id === id);
+                    setFacturas((prev) =>
+                      prev.map((row) =>
+                        row.id === f.id
+                          ? {
+                              ...row,
+                              matchId: record?.id,
+                              matchDesc: record?.descripcion,
+                              status: record ? 'matched' : id === 'new' ? 'new' : 'pending',
+                            }
+                          : row,
+                      ),
+                    );
+                  }}
+                >
+                  <option value="">Seleccionar registro</option>
+                  <option value="new">Nuevo {f.tipo}</option>
+                  {invoiceCandidates(
+                    f.cfdi,
+                    f.tipo === 'ingreso' ? ingresos : egresos,
+                    new Set(facturas.filter((row) => row.id !== f.id && row.matchId).map((row) => row.matchId!)),
+                    getProveedores(),
+                  ).map((record) => (
+                    <option key={record.id} value={record.id}>
+                      {record.fecha} · {record.descripcion} · {formatCurrency(record.montoTotal)}
+                    </option>
+                  ))}
+                </select>
+              )}
               {f.status === 'error' && (
                 <p role="alert" className="mt-3 text-xs text-red-600">
                   {f.error || 'No se pudo completar la factura.'}
@@ -607,7 +444,7 @@ export default function FacturasPage() {
               {f.status === 'matched' && f.matchDesc && (
                 <div className="mt-3 bg-green-50 rounded-xl p-3">
                   <p className="text-xs text-green-700">
-                    <span className="font-bold">Match encontrado:</span> {f.matchDesc}
+                    <span className="font-bold">Registro seleccionado:</span> {f.matchDesc}
                   </p>
                   <p className="text-[10px] text-green-600 mt-0.5">Se vinculará la factura a este registro existente</p>
                 </div>
@@ -615,7 +452,7 @@ export default function FacturasPage() {
               {f.status === 'new' && (
                 <div className="mt-3 bg-blue-50 rounded-xl p-3">
                   <p className="text-xs text-blue-700">
-                    <span className="font-bold">Sin match:</span> Se creará un nuevo {f.tipo} automáticamente
+                    <span className="font-bold">Nuevo registro:</span> {f.tipo}
                   </p>
                 </div>
               )}
@@ -647,6 +484,7 @@ export default function FacturasPage() {
               <div className="flex justify-end mt-3">
                 <button
                   onClick={() => removeFactura(f.id)}
+                  disabled={processing}
                   className="text-[10px] text-neutral-400 hover:text-red-500 font-bold uppercase tracking-wide"
                 >
                   Quitar

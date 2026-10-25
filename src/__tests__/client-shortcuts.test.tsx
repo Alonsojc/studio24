@@ -14,12 +14,40 @@ const mocks = vi.hoisted(() => ({
   cloudStore: vi.fn(),
   submit: vi.fn(),
   retry: vi.fn(),
+  reload: vi.fn(),
+  flush: vi.fn(),
+  addCliente: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.search }));
 vi.mock('@/components/RoleProvider', () => ({ useRole: () => ({ role: mocks.role }) }));
 vi.mock('@/lib/useCustomerAccount', () => ({ useCustomerAccount: mocks.state }));
 vi.mock('@/lib/useCloudStore', () => ({ useCloudStore: mocks.cloudStore }));
+vi.mock('@/lib/useCustomerDirectory', async () => {
+  const { buildCustomerStats, selectCustomers, emptyCustomerStats } = await import('@/lib/customer-list');
+  return {
+    useCustomerDirectory: (options: Parameters<typeof selectCustomers>[2] & { page: number }) => {
+      const clients = mocks.cloudStore(null, null, 'bordados_clientes').data;
+      const stats = buildCustomerStats(
+        mocks.cloudStore(null, null, 'bordados_ingresos').data,
+        mocks.cloudStore(null, null, 'bordados_pedidos').data,
+      );
+      const selected = selectCustomers(clients, stats, options);
+      return {
+        data: {
+          rows: selected
+            .slice(options.page * 50, options.page * 50 + 50)
+            .map((cliente) => ({ cliente, stats: stats.get(cliente.id) || emptyCustomerStats })),
+          total: selected.length,
+          registered: clients.length,
+        },
+        reload: mocks.reload,
+      };
+    },
+  };
+});
 vi.mock('@/lib/supabase', () => ({ supabase: { rpc: vi.fn() } }));
+vi.mock('@/lib/sync-flush', () => ({ flushPendingSync: mocks.flush }));
+vi.mock('@/lib/store-sync', () => ({ addCliente: mocks.addCliente, updateCliente: vi.fn(), deleteCliente: vi.fn() }));
 vi.mock('@/lib/customer-receipts', () => ({ openCustomerReceipt: vi.fn(), uploadCustomerReceipt: vi.fn() }));
 
 describe('client shortcuts', () => {
@@ -29,6 +57,7 @@ describe('client shortcuts', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     localStorage.clear();
+    mocks.flush.mockResolvedValue(0);
     mocks.role = 'admin';
     mocks.search = new URLSearchParams('cliente=client-1');
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -80,6 +109,25 @@ describe('client shortcuts', () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     await act(async () => card.querySelector<HTMLButtonElement>('button')!.click());
     expect(container.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe('Maria Nunez');
+  });
+
+  it('refreshes the aggregated directory only after the new customer write finishes', async () => {
+    let finish!: () => void;
+    mocks.flush.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
+    await act(async () => root.render(<ClientesPage />));
+    const button = (text: string) =>
+      [...container.querySelectorAll('button')].find((node) => node.textContent === text)!;
+    await act(async () => button('+ Nuevo Cliente').click());
+    await act(async () => {
+      const input = container.querySelector<HTMLInputElement>('input[placeholder="Nombre completo o empresa"]')!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Cliente nuevo');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => button('Agregar').click());
+    expect(mocks.addCliente).toHaveBeenCalledWith(expect.objectContaining({ nombre: 'Cliente nuevo' }));
+    expect(mocks.reload).not.toHaveBeenCalled();
+    await act(async () => finish());
+    expect(mocks.reload).toHaveBeenCalledOnce();
   });
 
   it('opens on the historical income instead of an empty advance ledger', async () => {

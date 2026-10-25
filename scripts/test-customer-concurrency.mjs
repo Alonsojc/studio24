@@ -141,6 +141,28 @@ try {
       update public.ingresos set monto=250,monto_total=250 where pedido_id='concurrent-order-3' and id<>'aggregate-extra-cash';
     end $aggregate$;
     rollback;`);
+  const collect = (n) =>
+    authenticated(`do $$ begin perform public.collect_order_payment(
+    '34000000-0000-0000-0000-00000000000${n}',
+    '{"clienteId":"${client}","pedidoId":"concurrent-order-4","applicationId":"35000000-0000-0000-0000-00000000000${n}","amount":700,"fecha":"2026-10-03","formaPago":"efectivo"}'); end $$`);
+  const before = (await sql(`select count(*) from public.ingresos where cliente_id='${client}'`)).stdout.trim();
+  const cash = await Promise.allSettled([sql(collect(1)), sql(collect(2))]);
+  assert.equal(
+    cash.filter((result) => result.status === 'fulfilled').length,
+    1,
+    'only one direct collection may consume the remaining balance',
+  );
+  assert.equal(
+    Number((await sql(`select count(*) from public.ingresos where cliente_id='${client}'`)).stdout.trim()),
+    Number(before) + 1,
+    'losing collection must roll back its receipt',
+  );
+  const winner = cash[0].status === 'fulfilled' ? 1 : 2;
+  await sql(collect(winner));
+  assert.equal(
+    (await sql("select monto_pagado from public.pedidos where id='concurrent-order-4'")).stdout.trim(),
+    '700',
+  );
   console.log(
     'Customer credit concurrency: receipt retries, double spending, order overpayment and concurrent cash receipts passed.',
   );

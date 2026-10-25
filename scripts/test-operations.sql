@@ -12,7 +12,10 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub','40000000-0000-0000-0000-000000000001',true);
 select public.sync_write_record('clientes','{"id":"ops-client","nombre":"Clienta aislada"}',null,'ops-client-operation-1');
 select public.sync_write_record('pedidos','{"id":"ops-order","cliente_id":"ops-client","descripcion":"Pedido aislado","monto_total":1000,"piezas":1,"precio_unitario":1000,"fecha_pedido":"2026-09-01"}',null,'ops-order-operation-1');
-select public.sync_write_record('pedidos','{"id":"ops-legacy","cliente_id":"ops-client","descripcion":"Pedido anterior","monto_total":1000,"monto_pagado":500,"piezas":1,"precio_unitario":1000,"fecha_pedido":"2026-09-01"}',null,'ops-legacy-operation-1');
+select public.sync_write_record('pedidos','{"id":"ops-legacy","cliente_id":"ops-client","descripcion":"Pedido anterior","monto_total":1000,"piezas":1,"precio_unitario":1000,"fecha_pedido":"2026-09-01"}',null,'ops-legacy-operation-1');
+reset role;
+update public.pedidos set pagos='[{"id":"legacy","monto":500,"origen":"saldo_inicial","fecha":""},{"id":"cash","monto":200,"fecha":"2026-10-01"}]',monto_pagado=700 where id='ops-legacy';
+set local role authenticated;
 select public.customer_account_command('receive','41000000-0000-0000-0000-000000000001','{"clienteId":"ops-client","source":"new","amount":1000,"fecha":"2026-09-01","formaPago":"transferencia"}');
 select public.customer_account_command('apply','42000000-0000-0000-0000-000000000001','{"clienteId":"ops-client","advanceId":"41000000-0000-0000-0000-000000000001","pedidoId":"ops-order","amount":400,"fecha":"2026-09-02"}');
 do $$ declare months jsonb; failed boolean:=false; begin
@@ -30,12 +33,11 @@ do $$ declare months jsonb; failed boolean:=false; begin
   assert (months->9->>'assigned')::numeric=0;
   assert (select count(*)=1 from public.ingresos), 'reporting must never create cash movements';
   begin update public.pedidos set pagos='[{"id":"cash","monto":200}]',monto_pagado=200 where id='ops-legacy';
-    exception when others then failed:=sqlerrm like '%importe pagado anterior%'; end;
+    exception when others then failed:=sqlerrm like 'CONFLICT:%'; end;
   assert failed, 'old clients may not drop a legacy accumulated payment';
-  update public.pedidos set pagos='[{"id":"legacy","monto":500,"origen":"saldo_inicial","fecha":""},{"id":"cash","monto":200,"fecha":"2026-10-01"}]',monto_pagado=700 where id='ops-legacy';
   failed:=false;
   begin update public.pedidos set pagos='[]',monto_pagado=700 where id='ops-legacy';
-    exception when others then failed:=sqlerrm like '%historial de abonos%'; end;
+    exception when others then failed:=sqlerrm like 'CONFLICT:%'; end;
   assert failed, 'detailed receipts cannot disappear';
   assert (select monto_pagado=700 from public.pedidos where id='ops-legacy');
   assert not has_function_privilege('authenticated','public.export_business_snapshot()','execute');

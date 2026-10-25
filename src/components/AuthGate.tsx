@@ -15,12 +15,14 @@ import {
 import { reportError } from '@/lib/sentry';
 import { flushPendingSync } from '@/lib/sync-flush';
 import ConnectionScreen from '@/components/ConnectionScreen';
+import PasswordRecovery from '@/components/PasswordRecovery';
 
 type View = 'login' | 'register' | 'reset' | 'check-email';
 
 const BOOT_TIMEOUT_MS = 8000;
 const BOOT_ERROR_MESSAGE = 'No se pudo conectar, intenta recargar.';
 const BOOT_SYNC_PREFIX = 'bordados_boot_synced_';
+const RECOVERY_KEY = 'studio24_password_recovery_user';
 
 function bootSyncKey(userId: string): string {
   return `${BOOT_SYNC_PREFIX}${userId}`;
@@ -64,6 +66,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState('');
   const [sessionError, setSessionError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const recoveryRef = useRef(false);
 
   const setCurrentUser = (nextUser: User | null) => {
     userRef.current = nextUser;
@@ -74,6 +78,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     let syncInFlight: Promise<void> | null = null;
     let bootDone = false;
+    recoveryRef.current = new URLSearchParams(window.location.hash.slice(1)).get('type') === 'recovery';
 
     const syncUserSession = async (nextUser: User, kind: string): Promise<void> => {
       if (syncInFlight) return syncInFlight;
@@ -114,7 +119,11 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         const nextUser = session?.user ?? null;
         setSessionError('');
-        if (nextUser) {
+        if (nextUser && (recoveryRef.current || sessionStorage.getItem(RECOVERY_KEY) === nextUser.id)) {
+          recoveryRef.current = true;
+          sessionStorage.setItem(RECOVERY_KEY, nextUser.id);
+          setRecovering(true);
+        } else if (nextUser) {
           await syncUserSession(nextUser, 'authBootstrapPullFromCloud');
         }
         if (cancelled) return;
@@ -137,14 +146,25 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (_event === 'PASSWORD_RECOVERY' && session?.user) recoveryRef.current = true;
       // Leave the auth lock before calling Supabase APIs.
       setTimeout(() => {
         void (async () => {
           if (cancelled) return;
           const nextUser = session?.user ?? null;
           setSessionError('');
+          if (nextUser && recoveryRef.current) {
+            sessionStorage.setItem(RECOVERY_KEY, nextUser.id);
+            setRecovering(true);
+            setCurrentUser(nextUser);
+            setLoading(false);
+            return;
+          }
           if (_event === 'INITIAL_SESSION' && !bootDone) return;
           if (!nextUser) {
+            recoveryRef.current = false;
+            setRecovering(false);
+            sessionStorage.removeItem(RECOVERY_KEY);
             setCurrentUser(null);
             setLoading(false);
             try {
@@ -189,6 +209,18 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   if (loading) return <ConnectionScreen />;
+
+  if (user && recovering)
+    return (
+      <PasswordRecovery
+        onComplete={() => {
+          recoveryRef.current = false;
+          setLoading(true);
+          sessionStorage.removeItem(RECOVERY_KEY);
+          window.location.replace(process.env.NODE_ENV === 'production' ? '/studio24/' : '/');
+        }}
+      />
+    );
 
   if (user && !sessionError) return <>{children}</>;
 

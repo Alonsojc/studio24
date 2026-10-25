@@ -2,16 +2,17 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Wallet } from 'lucide-react';
+import { Plus, Search, Wallet, RefreshCw } from 'lucide-react';
 import { v4 as uuid } from 'uuid';
-import { getClientes, getIngresos, getPedidos } from '@/lib/store';
-import { cloudGetClientes, cloudGetIngresos, cloudGetPedidos } from '@/lib/store-cloud';
 import { addCliente, updateCliente, deleteCliente } from '@/lib/store-sync';
-import { useCloudStore } from '@/lib/useCloudStore';
+import { flushPendingSync } from '@/lib/sync-flush';
+import { useCustomerDirectory } from '@/lib/useCustomerDirectory';
+import CustomerDetailHistory from '@/components/customer-accounts/CustomerDetailHistory';
+import Pagination from '@/components/Pagination';
 import { Cliente } from '@/lib/types';
-import { formatCurrency, formatDate, validateCliente, estadoPedidoLabel, estadoPedidoColor } from '@/lib/helpers';
+import { formatCurrency, validateCliente } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import EmptyState from '@/components/EmptyState';
@@ -19,10 +20,8 @@ import ActionMenu from '@/components/ActionMenu';
 import { useRole } from '@/components/RoleProvider';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 import {
-  buildCustomerStats,
   customerSortOptions,
   emptyCustomerStats,
-  selectCustomers,
   type CustomerSort,
   type CustomerOrderFilter,
 } from '@/lib/customer-list';
@@ -33,20 +32,6 @@ function emptyCliente(): Omit<Cliente, 'id' | 'createdAt'> {
 
 export default function ClientesPage() {
   const { role } = useRole();
-  const { data: clientesRaw, reload: reloadClientes } = useCloudStore(
-    getClientes,
-    cloudGetClientes,
-    'bordados_clientes',
-  );
-  const { data: ingresos, reload: reloadIngresos } = useCloudStore(getIngresos, cloudGetIngresos, 'bordados_ingresos');
-  const { data: pedidos, reload: reloadPedidos } = useCloudStore(getPedidos, cloudGetPedidos, 'bordados_pedidos');
-  const clientes = clientesRaw;
-  const customerStats = useMemo(() => buildCustomerStats(ingresos, pedidos), [ingresos, pedidos]);
-  const reload = () => {
-    reloadClientes();
-    reloadIngresos();
-    reloadPedidos();
-  };
   const [modalOpen, setModalOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
@@ -58,6 +43,22 @@ export default function ClientesPage() {
   const [sort, setSort] = useState<CustomerSort>('name-asc');
   const [orderFilter, setOrderFilter] = useState<CustomerOrderFilter>('with-orders');
   const [onlyDebtors, setOnlyDebtors] = useState(false);
+  const [page, setPage] = useState(0);
+  const [query, setQuery] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(search.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const {
+    data: directory,
+    reload,
+    loading,
+    syncing,
+    error,
+    hasSnapshot,
+  } = useCustomerDirectory({ page, search: query, sort, orders: orderFilter, onlyDebtors });
+  const filtered = directory.rows.map((row) => row.cliente);
+  const customerStats = new Map(directory.rows.map((row) => [row.cliente.id, row.stats]));
 
   const openNew = () => {
     setEditingId(null);
@@ -93,22 +94,21 @@ export default function ClientesPage() {
     if (editingId) updateCliente(data);
     else addCliente(data);
     setModalOpen(false);
-    reload();
+    // Refresh server aggregates after the queued edit. SyncStatus reports failures.
+    void flushPendingSync().then(reload, reload);
   };
   const handleDelete = (id: string) => {
     if (role !== 'admin') return;
     if (confirm('Eliminar cliente?')) {
       deleteCliente(id);
-      reload();
+      void flushPendingSync().then(reload, reload);
     }
   };
 
-  const clienteIngresos = (id: string) => ingresos.filter((i) => i.clienteId === id);
-  const clientePedidos = (id: string) => pedidos.filter((p) => p.clienteId === id);
   const clienteTotal = (id: string) => (customerStats.get(id)?.incomeCents || 0) / 100;
 
-  const filtered = selectCustomers(clientes, customerStats, { search, sort, orders: orderFilter, onlyDebtors });
   const showAll = () => {
+    setPage(0);
     setSearch('');
     setOrderFilter('all');
     setOnlyDebtors(false);
@@ -118,11 +118,22 @@ export default function ClientesPage() {
     <div>
       <PageHeader
         title="Clientes"
-        description={`${clientes.length} clientes registrados`}
+        description={`${directory.registered} clientes registrados`}
         action={
-          <button onClick={openNew} className={btnPrimary}>
-            + Nuevo Cliente
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={reload}
+              disabled={syncing}
+              title="Actualizar clientes"
+              aria-label="Actualizar clientes"
+              className={btnSecondary}
+            >
+              <RefreshCw size={16} />
+            </button>
+            <button onClick={openNew} className={btnPrimary}>
+              + Nuevo Cliente
+            </button>
+          </div>
         }
       />
 
@@ -137,7 +148,11 @@ export default function ClientesPage() {
             aria-label="Buscar clientes"
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            maxLength={200}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(0);
+            }}
             placeholder="Buscar por nombre, telefono o email..."
             className="w-full border border-neutral-200 rounded-xl pl-10 pr-4 py-2.5 text-sm bg-white focus:outline-none focus:border-[#c72a09]"
           />
@@ -149,7 +164,10 @@ export default function ClientesPage() {
           <select
             id="customer-sort"
             value={sort}
-            onChange={(event) => setSort(event.target.value as CustomerSort)}
+            onChange={(event) => {
+              setSort(event.target.value as CustomerSort);
+              setPage(0);
+            }}
             className={`${inputClass} bg-white text-sm`}
           >
             {customerSortOptions.map((option) => (
@@ -166,7 +184,10 @@ export default function ClientesPage() {
           <select
             id="customer-orders"
             value={orderFilter}
-            onChange={(event) => setOrderFilter(event.target.value as CustomerOrderFilter)}
+            onChange={(event) => {
+              setOrderFilter(event.target.value as CustomerOrderFilter);
+              setPage(0);
+            }}
             className={`${inputClass} bg-white text-sm`}
           >
             <option value="with-orders">Con pedidos</option>
@@ -178,26 +199,42 @@ export default function ClientesPage() {
           <input
             type="checkbox"
             checked={onlyDebtors}
-            onChange={(event) => setOnlyDebtors(event.target.checked)}
+            onChange={(event) => {
+              setOnlyDebtors(event.target.checked);
+              setPage(0);
+            }}
             className="h-4 w-4 accent-[#c72a09]"
           />
           Solo con saldo pendiente
         </label>
       </div>
       <p className="mb-4 text-xs text-neutral-500" role="status">
-        {filtered.length} de {clientes.length} clientes
+        {directory.total} de {directory.registered} clientes
       </p>
 
-      {filtered.length === 0 ? (
+      {loading && !hasSnapshot ? (
+        <p role="status" className="py-8 text-sm text-neutral-500">
+          Consultando clientes...
+        </p>
+      ) : error && !hasSnapshot ? (
+        <p role="alert" className="py-8 text-sm text-red-600">
+          No se pudo confirmar el directorio.{' '}
+          <button className="underline" onClick={reload}>
+            Reintentar
+          </button>
+        </p>
+      ) : filtered.length === 0 ? (
         <EmptyState
-          title={clientes.length ? 'Sin coincidencias' : 'Sin clientes'}
-          description={clientes.length ? 'No hay clientes con estos filtros.' : 'Agrega tu primer cliente al catálogo'}
+          title={directory.registered ? 'Sin coincidencias' : 'Sin clientes'}
+          description={
+            directory.registered ? 'No hay clientes con estos filtros.' : 'Agrega tu primer cliente al catálogo'
+          }
           action={
             <button
-              onClick={clientes.length ? showAll : openNew}
+              onClick={directory.registered ? showAll : openNew}
               className="text-[#c72a09] font-bold text-xs uppercase tracking-wide hover:underline"
             >
-              {clientes.length ? 'Mostrar todos los clientes' : '+ Agregar cliente'}
+              {directory.registered ? 'Mostrar todos los clientes' : '+ Agregar cliente'}
             </button>
           }
         />
@@ -290,6 +327,7 @@ export default function ClientesPage() {
       )}
 
       {/* Detail Modal */}
+      <Pagination total={directory.total} page={page} onPageChange={setPage} />
       <Modal
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
@@ -337,76 +375,7 @@ export default function ClientesPage() {
               Cuenta y movimientos
             </Link>
 
-            {/* Pedidos del cliente */}
-            {(() => {
-              const peds = clientePedidos(selectedCliente.id).sort((a, b) =>
-                b.fechaPedido.localeCompare(a.fechaPedido),
-              );
-              const activos = peds.filter((p) => p.estado !== 'entregado' && p.estado !== 'cancelado');
-              return (
-                <div>
-                  <span className={labelClass}>
-                    Pedidos ({peds.length} total &middot; {activos.length} activos)
-                  </span>
-                  <div className="space-y-1 max-h-48 overflow-y-auto mt-2">
-                    {peds.length === 0 ? (
-                      <p className="text-sm text-neutral-300 py-3 text-center">Sin pedidos</p>
-                    ) : (
-                      peds.map((p) => (
-                        <div key={p.id} className="flex justify-between items-center py-2.5 border-b border-neutral-50">
-                          <div>
-                            <p className="text-sm font-semibold text-[#0a0a0a]">{p.descripcion}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span
-                                className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase ${estadoPedidoColor(p.estado)}`}
-                              >
-                                {estadoPedidoLabel(p.estado)}
-                              </span>
-                              <span className="text-xs text-neutral-400">{formatDate(p.fechaPedido)}</span>
-                              {p.urgente && (
-                                <span className="text-[9px] font-bold text-red-500 uppercase">Urgente</span>
-                              )}
-                            </div>
-                          </div>
-                          <span className="text-sm font-bold text-[#0a0a0a]">{formatCurrency(p.montoTotal)}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Ingresos del cliente */}
-            <div>
-              <span className={labelClass}>Ingresos ({clienteIngresos(selectedCliente.id).length} registros)</span>
-              <div className="space-y-1 max-h-48 overflow-y-auto mt-2">
-                {clienteIngresos(selectedCliente.id).length === 0 ? (
-                  <p className="text-sm text-neutral-300 py-3 text-center">Sin ingresos</p>
-                ) : (
-                  clienteIngresos(selectedCliente.id)
-                    .sort((a, b) => b.fecha.localeCompare(a.fecha))
-                    .map((i) => (
-                      <div key={i.id} className="flex justify-between items-center py-2.5 border-b border-neutral-50">
-                        <div>
-                          <p className="text-sm font-semibold text-[#0a0a0a]">{i.descripcion}</p>
-                          <p className="text-xs text-neutral-400">
-                            {formatDate(i.fecha)}
-                            {i.factura && <span className="text-[#c72a09] font-semibold"> &middot; F</span>}
-                          </p>
-                        </div>
-                        <span className="text-sm font-bold text-green-600">{formatCurrency(i.montoTotal)}</span>
-                      </div>
-                    ))
-                )}
-              </div>
-              <div className="border-t border-neutral-100 mt-3 pt-3 flex justify-between">
-                <span className="text-sm font-bold text-[#0a0a0a]">Total ingresado</span>
-                <span className="text-lg font-black text-[#c72a09]">
-                  {formatCurrency(clienteTotal(selectedCliente.id))}
-                </span>
-              </div>
-            </div>
+            <CustomerDetailHistory key={selectedCliente.id} clienteId={selectedCliente.id} />
           </div>
         )}
       </Modal>
