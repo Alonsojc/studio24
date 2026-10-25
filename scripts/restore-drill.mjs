@@ -59,6 +59,26 @@ export async function restoreDrill(file, passphrase, databaseUrl) {
       throw new Error('Backup tables do not match the restore schema');
     if (tables.some((table) => table !== 'inpc' && expected.tables[table].length))
       throw new Error('Restore target is not empty');
+    const columns = JSON.parse(
+      await localSql(
+        databaseUrl,
+        `select jsonb_object_agg(table_name,cols) from (
+          select table_name,jsonb_agg(column_name order by ordinal_position) as cols
+          from information_schema.columns where table_schema='public' group by table_name
+        ) schema;`,
+      ),
+    );
+    // jsonb_populate_recordset silently ignores unknown fields and fills missing ones.
+    // Reject schema drift explicitly; never conceal data loss with a partial comparison.
+    for (const table of tables) {
+      const known = new Set(columns[table]);
+      for (const row of records.tables[table]) {
+        const missing = [...known].filter((column) => !Object.hasOwn(row, column)).length;
+        const unknown = Object.keys(row).filter((column) => !known.has(column)).length;
+        if (missing || unknown)
+          throw new Error(`Backup schema mismatch for ${table}: ${missing} missing, ${unknown} unknown columns`);
+      }
+    }
     const storage = JSON.parse(await readFile(join(root, 'storage.json'), 'utf8'));
     const included = new Map(manifest.files.map((item) => [item.path, item]));
     const recovered = join(root, 'recovered-storage');

@@ -50,6 +50,15 @@ secuencias y vuelve a habilitar los triggers. Copia y compara los bytes de los
 archivos recuperados. Un fallo marca la ejecucion como fallida, pero conserva
 el respaldo cifrado para investigacion.
 
+Antes de insertar, compara las columnas de cada fila con el esquema de destino.
+Una diferencia falla indicando tabla y cantidad de columnas, nunca valores ni
+datos de clientes. No se ignoran campos desconocidos ni se rellena evidencia
+faltante para hacer pasar la comparacion. Revisar las migraciones aplicadas y
+usar un esquema compatible con el respaldo; conservar siempre el archivo original.
+El primer simulacro real detecto que faltaba `proveedores.rfc` en produccion.
+`20261025183936_align_provider_rfc.sql` aplica esa columna ya prevista por el
+proyecto, sin inferir RFCs ni cambiar movimientos existentes.
+
 El comando solo admite `studio24_test` en localhost, vacio salvo el catalogo
 INPC de las migraciones y con el esquema Auth ficticio de pruebas. Rechaza una
 base ya usada. No es una herramienta para restaurar sobre produccion.
