@@ -20,6 +20,7 @@ select set_config('request.jwt.claim.sub','60000000-0000-0000-0000-000000000001'
 do $$ begin
  perform set_config('request.jwt.claim.sub','60000000-0000-0000-0000-000000000001',true);
  perform public.sync_write_record('clientes','{"id":"restore-client","nombre":"Synthetic restore"}',null,'restore-client-operation');
+ perform public.sync_write_record('proveedores','{"id":"restore-supplier","nombre":"Synthetic supplier","rfc":"SYNTHETIC"}',null,'restore-supplier-operation');
  perform public.sync_write_record('pedidos','{"id":"restore-order","cliente_id":"restore-client","descripcion":"Restore fixture","fecha_pedido":"2026-10-01","monto_total":100,"piezas":1,"precio_unitario":100}',null,'restore-order-operation');
  perform public.collect_order_payment('61000000-0000-0000-0000-000000000001','{"clienteId":"restore-client","pedidoId":"restore-order","applicationId":"62000000-0000-0000-0000-000000000001","amount":50,"fecha":"2026-10-02","formaPago":"efectivo"}');
 end $$;
@@ -49,6 +50,22 @@ rollback;
   const file = join(root, 'synthetic.enc');
   const key = 'isolated-restore-drill-fixture-key-only';
   await createBusinessBackup(api, file, key);
+  const drifted = structuredClone(records);
+  const driftFile = join(root, 'schema-drift.enc');
+  const driftApi = { ...api, rpc: async () => ({ data: drifted, error: null }) };
+  delete drifted.tables.proveedores[0].rfc;
+  await createBusinessBackup(driftApi, driftFile, key);
+  await assert.rejects(
+    restoreDrill(driftFile, key, url),
+    /Backup schema mismatch for proveedores: 1 missing, 0 unknown columns/,
+  );
+  drifted.tables.proveedores[0].rfc = 'SYNTHETIC';
+  drifted.tables.proveedores[0].unknown_field = 'private-fixture-must-not-be-logged';
+  await createBusinessBackup(driftApi, driftFile, key);
+  await assert.rejects(
+    restoreDrill(driftFile, key, url),
+    /Backup schema mismatch for proveedores: 0 missing, 1 unknown columns/,
+  );
   const result = await restoreDrill(file, key, url);
   restoredTables = Object.keys(records.tables).filter((table) => table !== 'inpc');
   assert.equal(result.restored, true);
