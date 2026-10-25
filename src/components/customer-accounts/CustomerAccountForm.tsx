@@ -62,6 +62,7 @@ export default function CustomerAccountForm({
   const [orderId, setOrderId] = useState(editor.pedidoId || '');
   const titles = {
     receive: 'Registrar adelanto',
+    collect: 'Registrar cobro de pedido',
     apply: 'Aplicar saldo a pedido',
     reverse_application: 'Revertir aplicacion',
     cancel: 'Anular registro de adelanto',
@@ -72,7 +73,7 @@ export default function CustomerAccountForm({
   );
   const order = account.pedidos.find((row) => row.id === orderId);
   const maximum = Math.min(
-    advance ? advanceBalance(advance.id, account.movements) : 0,
+    editor.action === 'collect' ? Infinity : advance ? advanceBalance(advance.id, account.movements) : 0,
     order ? pendingOrderAmount(order) : Infinity,
   );
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -83,7 +84,11 @@ export default function CustomerAccountForm({
       return;
     }
     const data: CustomerCommand['data'] = { clienteId, fecha, referencia: reference.trim(), notas: notes.trim() };
-    if (editor.action === 'receive') {
+    if (editor.action === 'collect') {
+      data.pedidoId = orderId;
+      data.amount = Number(amount);
+      data.formaPago = formaPago;
+    } else if (editor.action === 'receive') {
       data.source = source;
       if (source === 'existing') data.ingresoId = incomeId;
       else {
@@ -167,31 +172,33 @@ export default function CustomerAccountForm({
               )}
             </>
           )}
-          {editor.action === 'apply' && (
+          {(editor.action === 'apply' || editor.action === 'collect') && (
             <>
-              <div>
-                <label htmlFor="account-advance" className={labelClass}>
-                  Adelanto
-                </label>
-                <select
-                  id="account-advance"
-                  className={inputClass}
-                  value={advanceId}
-                  onChange={(event) => setAdvanceId(event.target.value)}
-                  required
-                  disabled={busy}
-                >
-                  <option value="">Seleccionar adelanto</option>
-                  {account.advances
-                    .filter((row) => !row.voidedAt && advanceBalance(row.id, account.movements) > 0)
-                    .map((row) => (
-                      <option key={row.id} value={row.id}>
-                        {advanceFolio(row.id, row.folio)} · {row.referencia || row.fecha} ·{' '}
-                        {formatCurrency(advanceBalance(row.id, account.movements))}
-                      </option>
-                    ))}
-                </select>
-              </div>
+              {editor.action === 'apply' && (
+                <div>
+                  <label htmlFor="account-advance" className={labelClass}>
+                    Adelanto
+                  </label>
+                  <select
+                    id="account-advance"
+                    className={inputClass}
+                    value={advanceId}
+                    onChange={(event) => setAdvanceId(event.target.value)}
+                    required
+                    disabled={busy}
+                  >
+                    <option value="">Seleccionar adelanto</option>
+                    {account.advances
+                      .filter((row) => !row.voidedAt && advanceBalance(row.id, account.movements) > 0)
+                      .map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {advanceFolio(row.id, row.folio)} · {row.referencia || row.fecha} ·{' '}
+                          {formatCurrency(advanceBalance(row.id, account.movements))}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label htmlFor="account-order" className={labelClass}>
                   Pedido
@@ -237,7 +244,9 @@ export default function CustomerAccountForm({
               </p>
             </div>
           )}
-          {(editor.action === 'apply' || (editor.action === 'receive' && source === 'new')) && (
+          {(editor.action === 'apply' ||
+            editor.action === 'collect' ||
+            (editor.action === 'receive' && source === 'new')) && (
             <div>
               <label htmlFor="account-amount" className={labelClass}>
                 Importe (MXN)
@@ -249,7 +258,7 @@ export default function CustomerAccountForm({
                 inputMode="decimal"
                 min="0.01"
                 step="0.01"
-                max={editor.action === 'apply' ? maximum : 999999999999.99}
+                max={editor.action === 'apply' || editor.action === 'collect' ? maximum : 999999999999.99}
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
                 required
@@ -279,7 +288,7 @@ export default function CustomerAccountForm({
               />
             </div>
           )}
-          {editor.action === 'receive' && source === 'new' && (
+          {(editor.action === 'collect' || (editor.action === 'receive' && source === 'new')) && (
             <div>
               <label htmlFor="account-method" className={labelClass}>
                 Forma de pago
@@ -299,7 +308,7 @@ export default function CustomerAccountForm({
               </select>
             </div>
           )}
-          {['receive', 'apply'].includes(editor.action) && (
+          {['receive', 'apply', 'collect'].includes(editor.action) && (
             <div>
               <label htmlFor="account-reference" className={labelClass}>
                 Referencia
@@ -329,7 +338,7 @@ export default function CustomerAccountForm({
               disabled={busy}
             />
           </div>
-          {editor.action === 'receive' && (
+          {(editor.action === 'receive' || editor.action === 'collect') && (
             <div>
               <label htmlFor="account-receipt" className={labelClass}>
                 Comprobante opcional (PDF, JPG o PNG, maximo 10 MB)
@@ -343,7 +352,7 @@ export default function CustomerAccountForm({
               />
             </div>
           )}
-          {editor.action === 'receive' && source === 'new' && (
+          {(editor.action === 'collect' || (editor.action === 'receive' && source === 'new')) && (
             <label className="flex gap-3 text-sm text-neutral-600">
               <input type="checkbox" required disabled={busy} className="mt-1 h-4 w-4 shrink-0 accent-[#c72a09]" />
               Confirmo que este cobro aun no esta registrado en Ingresos ni en los pagos de un pedido.

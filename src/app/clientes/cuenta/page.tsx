@@ -7,10 +7,11 @@ import CustomerAccountView from '@/components/customer-accounts/CustomerAccountV
 function AccountPage() {
   const search = useSearchParams();
   const clienteId = search.get('cliente') || '';
-  const initialAction = search.get('accion') === 'adelanto' ? 'receive' : undefined;
+  const initialAction =
+    search.get('accion') === 'adelanto' ? 'receive' : search.get('accion') === 'cobro' ? 'collect' : undefined;
   return (
     <CustomerAccountView
-      key={`${clienteId}:${initialAction || ''}`}
+      key={`${clienteId}:${initialAction || ''}:${search.get('pedido') || ''}`}
       clienteId={clienteId}
       pedidoId={search.get('pedido') || ''}
       initialAction={initialAction}

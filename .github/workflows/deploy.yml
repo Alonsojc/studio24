@@ -35,6 +35,12 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install restore verification dependencies
+        run: npm ci --ignore-scripts
       - name: Migration and RLS regression tests
         env:
           TEST_DATABASE_URL: postgres://postgres:isolated-test@127.0.0.1:5432/studio24_test

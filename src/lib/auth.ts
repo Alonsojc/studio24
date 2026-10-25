@@ -28,8 +28,13 @@ export async function signOut() {
 
 export async function resetPassword(email: string) {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/studio24/ajustes`,
+    redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}${process.env.NODE_ENV === 'production' ? '/studio24' : ''}/ajustes`,
   });
+  if (error) throw new Error(error.message);
+}
+
+export async function updatePassword(password: string) {
+  const { error } = await supabase.auth.updateUser({ password });
   if (error) throw new Error(error.message);
 }
 

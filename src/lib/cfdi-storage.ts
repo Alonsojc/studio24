@@ -22,11 +22,11 @@ export async function uploadFacturaFiles(
   const teamId = await getMyTeamId();
   if (!teamId) throw new Error('No se encontró el equipo actual');
 
-  const folder = `${teamId}/${safeUuid(cfdiUuid)}`;
+  const folder = `${teamId}/${safeUuid(cfdiUuid)}/${crypto.randomUUID()}`;
   const xmlPath = `${folder}.xml`;
   const { error: xmlError } = await supabase.storage
     .from(BUCKET)
-    .upload(xmlPath, xmlFile, { contentType: 'application/xml', upsert: true });
+    .upload(xmlPath, xmlFile, { contentType: 'application/xml', upsert: false });
   if (xmlError) throw xmlError;
 
   let pdfPath = '';
@@ -34,7 +34,7 @@ export async function uploadFacturaFiles(
     pdfPath = `${folder}.pdf`;
     const { error: pdfError } = await supabase.storage
       .from(BUCKET)
-      .upload(pdfPath, pdfFile, { contentType: 'application/pdf', upsert: true });
+      .upload(pdfPath, pdfFile, { contentType: 'application/pdf', upsert: false });
     if (pdfError) throw pdfError;
   }
 

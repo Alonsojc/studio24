@@ -51,7 +51,7 @@ export interface CustomerAccount {
 export interface CustomerCommand {
   id: string;
   owner: string;
-  action: 'receive' | 'apply' | 'reverse_application' | 'cancel';
+  action: 'receive' | 'apply' | 'reverse_application' | 'cancel' | 'collect';
   data: {
     clienteId: string;
     fecha: string;
@@ -65,6 +65,7 @@ export interface CustomerCommand {
     referencia?: string;
     notas?: string;
     receiptPath?: string;
+    applicationId?: string;
   };
 }
 export const movementLabel: Record<CustomerMovementKind, string> = {
@@ -222,7 +223,12 @@ export function pendingCustomerCommands(clienteId: string): CustomerCommand[] {
 export function newCustomerCommand(action: CustomerCommand['action'], data: CustomerCommand['data']): CustomerCommand {
   const owner = localStorage.getItem(ACTIVE_USER_KEY);
   if (!owner) throw new Error('Sesion requerida');
-  return { id: crypto.randomUUID(), owner, action, data };
+  return {
+    id: crypto.randomUUID(),
+    owner,
+    action,
+    data: action === 'collect' ? { ...data, applicationId: crypto.randomUUID() } : data,
+  };
 }
 async function runCustomerCommandUnlocked(command: CustomerCommand, receipt?: File): Promise<CustomerAccount> {
   if (command.owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
@@ -235,12 +241,16 @@ async function runCustomerCommandUnlocked(command: CustomerCommand, receipt?: Fi
     throw new Error('Resuelve los cambios de sincronizacion pendientes antes de mover saldos');
   if (command.owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
   const key = CUSTOMER_COMMAND_PREFIX + command.id;
-  if (receipt && command.action === 'receive')
+  if (receipt && (command.action === 'receive' || command.action === 'collect'))
     command.data.receiptPath = await uploadCustomerReceipt(command.id, receipt);
   if (command.owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
   safeSetItem(key, JSON.stringify(command));
   const { data, error } = await supabase
-    .rpc('customer_account_command', { p_action: command.action, p_operation: command.id, p_data: command.data })
+    .rpc(command.action === 'collect' ? 'collect_order_payment' : 'customer_account_command', {
+      ...(command.action === 'collect' ? {} : { p_action: command.action }),
+      p_operation: command.id,
+      p_data: command.data,
+    })
     .abortSignal(AbortSignal.timeout(20000));
   if (command.owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
   if (error) {

@@ -25,7 +25,8 @@ import { downloadCSV } from '@/lib/csv';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 import MonthBar from '@/components/MonthBar';
 import Pagination, { PAGE_SIZE } from '@/components/Pagination';
-import { deleteFacturaFiles, openFacturaFile } from '@/lib/cfdi-storage';
+import { openFacturaFile } from '@/lib/cfdi-storage';
+import ReplaceInvoiceModal from '@/components/ReplaceInvoiceModal';
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
 const formasPago: FormaPago[] = ['efectivo', 'tarjeta', 'transferencia', 'otro'];
@@ -124,34 +125,8 @@ export default function IngresosPage() {
     deleteIngreso(id);
     reload();
   };
-  const handleReplaceFactura = async (ingreso: Ingreso) => {
-    const hasCfdi = Boolean(ingreso.uuidCFDI || ingreso.xmlUrl || ingreso.pdfUrl || ingreso.numeroFactura);
-    if (!hasCfdi) {
-      alert('Este ingreso no tiene CFDI o archivos de factura guardados.');
-      return;
-    }
-    if (
-      !confirm(
-        'Se borrarán el PDF/XML guardados y se limpiará el UUID para que puedas subir la factura correcta desde Facturas. El ingreso se conserva. ¿Continuar?',
-      )
-    )
-      return;
-
-    try {
-      await deleteFacturaFiles({ pdfUrl: ingreso.pdfUrl, xmlUrl: ingreso.xmlUrl });
-      updateIngreso({
-        ...ingreso,
-        numeroFactura: '',
-        uuidCFDI: '',
-        xmlUrl: '',
-        pdfUrl: '',
-      });
-      reload();
-      alert('Listo. Ahora sube el XML/PDF nuevo desde Facturas para vincularlo otra vez.');
-    } catch (err) {
-      alert(`No se pudo borrar la factura: ${err instanceof Error ? err.message : 'error desconocido'}`);
-    }
-  };
+  const [replacement, setReplacement] = useState<string | null>(null);
+  const handleReplaceFactura = (ingreso: Ingreso) => setReplacement(ingreso.id);
 
   const clienteName = (id: string) => clientes.find((c) => c.id === id)?.nombre || '';
   const years = Array.from(
@@ -417,6 +392,9 @@ export default function IngresosPage() {
       )}
 
       <Pagination total={filtered.length} page={page} onPageChange={setPage} />
+      {replacement && (
+        <ReplaceInvoiceModal tipo="ingreso" id={replacement} onClose={() => setReplacement(null)} onSaved={reload} />
+      )}
 
       <Modal
         open={modalOpen}

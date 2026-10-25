@@ -12,7 +12,7 @@ import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolioAsync } 
 import { useCloudStore } from '@/lib/useCloudStore';
 import Pagination from '@/components/Pagination';
 import { usePedidoPage, type OrderScope } from '@/lib/usePedidoPage';
-import { Pedido, EstadoPedido, EstadoPago, ConceptoIngreso, FormaPago } from '@/lib/types';
+import { Pedido, EstadoPedido, EstadoPago, ConceptoIngreso } from '@/lib/types';
 import {
   formatCurrency,
   formatDate,
@@ -24,8 +24,6 @@ import {
 } from '@/lib/helpers';
 import {
   buildIngresoFromPedido,
-  applyPedidoPayment,
-  buildPedidoPayment,
   buildRepeatedPedido,
   calculateEstadoPago,
   calculatePedidoPaidAmount,
@@ -135,9 +133,6 @@ export default function PedidosPage() {
   const [form, setForm] = useState(emptyPedido());
   const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentForma, setPaymentForma] = useState<FormaPago>('transferencia');
-  const [paymentReferencia, setPaymentReferencia] = useState('');
   const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
   const { role } = useRole();
   const pagedPedidos = pedidos;
@@ -148,9 +143,6 @@ export default function PedidosPage() {
     setForm(initial);
     setFormSnapshot(JSON.stringify(initial));
     setFormError(null);
-    setPaymentAmount('');
-    setPaymentReferencia('');
-    setPaymentForma('transferencia');
     setModalOpen(true);
   };
   const openEdit = (p: Pedido) => {
@@ -158,9 +150,6 @@ export default function PedidosPage() {
     setForm({ ...p, pagos: p.pagos || [], inventarioUsado: p.inventarioUsado || [] });
     setFormSnapshot(JSON.stringify({ ...p, pagos: p.pagos || [], inventarioUsado: p.inventarioUsado || [] }));
     setFormError(null);
-    setPaymentAmount('');
-    setPaymentReferencia('');
-    setPaymentForma('transferencia');
     setModalOpen(true);
   };
   const handleSave = () => {
@@ -186,30 +175,6 @@ export default function PedidosPage() {
     else addPedido(data);
     setModalOpen(false);
     reload();
-  };
-  const addPaymentToForm = () => {
-    const amount = parseFloat(paymentAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setFormError('Ingresa un monto de pago válido');
-      return;
-    }
-    const total = calculatePedidoTotal(form);
-    const currentPaid = calculatePedidoPaidAmount(form);
-    if (currentPaid + amount > total + 0.01) {
-      setFormError('El pago excede el total del pedido');
-      return;
-    }
-    const pago = buildPedidoPayment({
-      id: uuid(),
-      monto: amount,
-      formaPago: paymentForma,
-      referencia: paymentReferencia.trim(),
-    });
-    const updated = applyPedidoPayment({ ...form, montoTotal: total }, pago);
-    setForm(updated);
-    setPaymentAmount('');
-    setPaymentReferencia('');
-    setFormError(null);
   };
   const handleDelete = (id: string) => {
     if (confirm('Eliminar pedido?')) {
@@ -1071,42 +1036,21 @@ export default function PedidosPage() {
                   Aplicar saldo a favor
                 </Link>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr] gap-2">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  placeholder="Monto"
-                  className={inputClass}
-                />
-                <select
-                  value={paymentForma}
-                  onChange={(e) => setPaymentForma(e.target.value as FormaPago)}
-                  className={inputClass}
+              {editingId && role === 'admin' && form.clienteId && (
+                <Link
+                  className={btnSecondary}
+                  href={`/clientes/cuenta?cliente=${encodeURIComponent(form.clienteId)}&pedido=${encodeURIComponent(editingId)}&accion=cobro`}
+                  onClick={(event) => {
+                    if (
+                      JSON.stringify(form) !== formSnapshot &&
+                      !confirm('Hay cambios sin guardar. ¿Continuar al cobro?')
+                    )
+                      event.preventDefault();
+                  }}
                 >
-                  <option value="transferencia">Transferencia</option>
-                  <option value="efectivo">Efectivo</option>
-                  <option value="tarjeta">Tarjeta</option>
-                  <option value="otro">Otro</option>
-                </select>
-                <input
-                  type="text"
-                  value={paymentReferencia}
-                  onChange={(e) => setPaymentReferencia(e.target.value)}
-                  placeholder="Referencia"
-                  className={`${inputClass} sm:col-span-2`}
-                />
-                <button
-                  type="button"
-                  onClick={addPaymentToForm}
-                  className="sm:col-span-2 px-4 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase border border-neutral-200 text-neutral-600 hover:border-[#c72a09] hover:text-[#c72a09] transition-colors"
-                >
-                  Agregar pago
-                </button>
-              </div>
+                  <Wallet size={16} /> Registrar cobro
+                </Link>
+              )}
             </div>
           </div>
 

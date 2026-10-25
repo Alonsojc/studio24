@@ -13,6 +13,7 @@ export interface DatosCFDI {
   rfcReceptor: string;
   nombreReceptor: string;
   subtotal: number;
+  descuento?: number;
   iva: number;
   total: number;
   moneda: string;
@@ -27,6 +28,7 @@ export function parseCFDI(xmlString: string): DatosCFDI | null {
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlString, 'text/xml');
+    if (doc.getElementsByTagName('parsererror').length) return null;
 
     // Handle namespace — CFDI 3.3 and 4.0
     // Helper to find elements by local name (ignores namespace prefixes)
@@ -44,8 +46,7 @@ export function parseCFDI(xmlString: string): DatosCFDI | null {
     };
 
     const findAll = (name: string): Element[] => {
-      let nodes =
-        doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/4', name);
+      let nodes = doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/4', name);
       if (nodes.length === 0) nodes = doc.getElementsByTagNameNS('http://www.sat.gob.mx/cfd/3', name);
       if (nodes.length === 0) nodes = doc.getElementsByTagName(`cfdi:${name}`);
       if (nodes.length === 0) nodes = doc.getElementsByTagName(name);
@@ -59,7 +60,16 @@ export function parseCFDI(xmlString: string): DatosCFDI | null {
     }
 
     const attr = (el: Element, name: string) => el.getAttribute(name) || el.getAttribute(`cfdi:${name}`) || '';
-    const numAttr = (el: Element, name: string) => parseFloat(attr(el, name)) || 0;
+    const numAttr = (el: Element, name: string) => (attr(el, name) ? Number(attr(el, name)) : 0);
+    if (
+      !attr(comp, 'SubTotal') ||
+      !attr(comp, 'Total') ||
+      !/^\d{4}-\d{2}-\d{2}T/.test(attr(comp, 'Fecha')) ||
+      ![numAttr(comp, 'SubTotal'), numAttr(comp, 'Total'), numAttr(comp, 'Descuento')].every(
+        (n) => Number.isFinite(n) && n >= 0,
+      )
+    )
+      return null;
 
     const emisor = find('Emisor');
     const receptor = find('Receptor');
@@ -70,22 +80,20 @@ export function parseCFDI(xmlString: string): DatosCFDI | null {
       doc.getElementsByTagName('tfd:TimbreFiscalDigital')[0] ||
       doc.getElementsByTagName('TimbreFiscalDigital')[0];
 
-    // IVA from Traslados
-    let iva = 0;
-    const allTraslados = findAll('Traslado');
-    for (const t of allTraslados) {
-      const imp = t.getAttribute('Impuesto');
-      if (imp === '002') {
-        iva += parseFloat(t.getAttribute('Importe') || '0');
-      }
-    }
-    // If no Impuesto attr found, try to get IVA from TotalImpuestosTrasladados
-    if (iva === 0) {
-      const impuestos = find('Impuestos');
-      if (impuestos) {
-        iva = parseFloat(impuestos.getAttribute('TotalImpuestosTrasladados') || '0');
-      }
-    }
+    const children = (parent: Element, name: string) =>
+      Array.from(parent.children).filter((node) => node.localName === name && node.namespaceURI === comp.namespaceURI);
+    const transfers = (parent: Element) =>
+      children(parent, 'Impuestos')
+        .flatMap((taxes) => children(taxes, 'Traslados'))
+        .flatMap((taxes) => children(taxes, 'Traslado'));
+    // A CFDI repeats concept taxes in its global summary. Read one level only;
+    // TotalImpuestosTrasladados can include IEPS and is not an IVA fallback.
+    const globalTaxes = children(comp, 'Impuestos');
+    const taxes = globalTaxes.length ? transfers(comp) : findAll('Concepto').flatMap(transfers);
+    const iva = taxes
+      .filter((tax) => attr(tax, 'Impuesto') === '002')
+      .reduce((sum, tax) => sum + numAttr(tax, 'Importe'), 0);
+    if (!Number.isFinite(iva) || iva < 0) return null;
 
     const conceptoNodes = findAll('Concepto');
 
@@ -110,6 +118,7 @@ export function parseCFDI(xmlString: string): DatosCFDI | null {
       rfcReceptor: receptor ? attr(receptor, 'Rfc') : '',
       nombreReceptor: receptor ? attr(receptor, 'Nombre') : '',
       subtotal: numAttr(comp, 'SubTotal'),
+      descuento: numAttr(comp, 'Descuento'),
       iva: Math.round(iva * 100) / 100,
       total: numAttr(comp, 'Total'),
       moneda: attr(comp, 'Moneda') || 'MXN',
@@ -132,13 +141,7 @@ export function parseXMLFile(file: File): Promise<DatosCFDI | null> {
     const reader = new FileReader();
     reader.onload = (e) => {
       const xml = e.target?.result as string;
-      const result = parseCFDI(xml);
-      if (!result) {
-        console.warn(`[CFDI] No se pudo parsear ${file.name}. Primeros 200 chars:`, xml.substring(0, 200));
-      } else {
-        console.log(`[CFDI] Parseado ${file.name}:`, result.uuid, result.total, result.nombreEmisor);
-      }
-      resolve(result);
+      resolve(parseCFDI(xml));
     };
     reader.onerror = () => resolve(null);
     reader.readAsText(file);
