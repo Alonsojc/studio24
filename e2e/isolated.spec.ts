@@ -146,6 +146,22 @@ test('recovery stays outside business screens and updates the password before re
   expect(updated).toBe(true);
 });
 
+test('a fresh recovery link opens the password form without loading business data', async ({ page }) => {
+  await isolate(page);
+  const businessReads: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/rest/v1/')) businessReads.push(request.url());
+  });
+  await page.goto(
+    'ajustes#access_token=test-token&refresh_token=test-refresh&expires_in=3600&token_type=bearer&type=recovery',
+  );
+  await expect(page.getByRole('heading', { name: 'Nueva contrasena' })).toBeVisible();
+  expect(businessReads).toEqual([]);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Nueva contrasena' })).toBeVisible();
+  expect(businessReads).toEqual([]);
+});
+
 test('invoice linking requires a choice and imports global IVA only once', async ({ page }) => {
   await login(page);
   const date = new Date().toISOString().slice(0, 10);
@@ -163,9 +179,13 @@ test('invoice linking requires a choice and imports global IVA only once', async
     factura: false,
     updated_at: version,
   };
-  await page.route('**/rest/v1/egresos?*', (route) =>
-    route.fulfill({ json: new URL(route.request().url()).searchParams.has('id') ? [] : [record] }),
-  );
+  let releaseRecords!: () => void;
+  const recordsReady = new Promise<void>((resolve) => (releaseRecords = resolve));
+  await page.route('**/rest/v1/egresos?*', async (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    if (query.getAll('fecha').includes(`gte.${date.slice(0, 4)}-01-01`)) await recordsReady;
+    await route.fulfill({ json: query.has('id') ? [] : [record] });
+  });
   const writes: Record<string, unknown>[] = [];
   await page.route('**/rest/v1/rpc/sync_write_record', async (route) => {
     const body = route.request().postDataJSON();
@@ -173,6 +193,9 @@ test('invoice linking requires a choice and imports global IVA only once', async
     await route.fulfill({ json: { ...body.p_record, updated_at: new Date().toISOString() } });
   });
   await page.goto('facturas');
+  await expect(page.locator('input[type="file"]')).toBeDisabled();
+  releaseRecords();
+  await expect(page.locator('input[type="file"]')).toBeEnabled();
   const xml = `<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" Fecha="${date}T10:00:00" SubTotal="1000" Total="1160" Moneda="MXN" TipoDeComprobante="I" FormaPago="03">
   <cfdi:Emisor Rfc="SUPPLIER" Nombre="Proveedor"/><cfdi:Receptor Rfc="BUSINESS" Nombre="Negocio" UsoCFDI="G03"/>
   <cfdi:Conceptos><cfdi:Concepto Descripcion="Bordado sintetico"><cfdi:Impuestos><cfdi:Traslados><cfdi:Traslado Impuesto="002" Importe="160"/></cfdi:Traslados></cfdi:Impuestos></cfdi:Concepto></cfdi:Conceptos>
@@ -188,6 +211,15 @@ test('invoice linking requires a choice and imports global IVA only once', async
   await expect(page.getByRole('button', { name: /Procesar todas|Procesando/ })).toHaveCount(0);
   expect(writes).toHaveLength(1);
   expect(writes[0]).toMatchObject({ id: record.id, iva: 160, monto_total: 1160 });
+  // With no available candidates, a second invoice still needs an explicit choice.
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'another.xml',
+    mimeType: 'application/xml',
+    buffer: Buffer.from(xml.replace('AAAAAAAA-1111-2222-3333-BBBBBBBBBBBB', 'CCCCCCCC-1111-2222-3333-DDDDDDDDDDDD')),
+  });
+  await expect(page.getByRole('button', { name: 'Procesar todas' })).toBeDisabled();
+  await page.getByLabel('Vincular factura').selectOption('new');
+  await expect(page.getByRole('button', { name: 'Procesar todas' })).toBeEnabled();
 });
 
 test('direct collection retries the same operation after a lost response', async ({ page }, testInfo) => {

@@ -8,6 +8,12 @@
 - La identidad de una factura es su UUID. Importe, fecha y RFC generan
   candidatos, pero la vinculacion requiere seleccion explicita. Un reintento
   conserva el ID y confirma primero su operacion pendiente.
+- La importacion espera la consulta de ingresos y egresos. Crear un registro
+  nuevo tambien requiere seleccion explicita, incluso si no hay candidatos.
+- Un cobro respaldado por el libro de adelantos admite el desglose de base e
+  IVA al vincular su primer CFDI mediante la sincronizacion transaccional.
+  Conserva importe total, cliente, pedido, fecha, forma de pago y movimientos;
+  no permite editar impuestos libremente ni generar efectivo adicional.
 - Reemplazar factura valida RFC, UUID e importe; guarda objetos nuevos y solo
   cambia las referencias cuando se han subido. No borra versiones anteriores
   ni altera importes historicos. La auditoria conserva las rutas previas.

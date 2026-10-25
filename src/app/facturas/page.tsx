@@ -42,14 +42,16 @@ export default function FacturasPage() {
   const [filterMonth, setFilterMonth] = useState<string>(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
   );
-  const { data: ingresos } = useCloudStore(getIngresos, () => cloudGetIngresosByYear(filterYear), 'bordados_ingresos', [
+  const ingresosStore = useCloudStore(getIngresos, () => cloudGetIngresosByYear(filterYear), 'bordados_ingresos', [
     filterYear,
   ]);
-  const { data: egresos, reload: reloadEgresos } = useCloudStore(
-    getEgresos,
-    () => cloudGetEgresosByYear(filterYear),
-    'bordados_egresos',
-    [filterYear],
+  const egresosStore = useCloudStore(getEgresos, () => cloudGetEgresosByYear(filterYear), 'bordados_egresos', [
+    filterYear,
+  ]);
+  const { data: ingresos } = ingresosStore;
+  const { data: egresos, reload: reloadEgresos } = egresosStore;
+  const canImport = [ingresosStore, egresosStore].every(
+    (store) => store.hasSnapshot && !store.loading && !store.syncing && !store.error,
   );
   const [config] = useState(getConfig);
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
@@ -60,6 +62,7 @@ export default function FacturasPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canImport || processing) return;
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
@@ -69,9 +72,6 @@ export default function FacturasPage() {
 
     const nuevas: FacturaPendiente[] = [];
     let skipped = 0;
-    // Track IDs already matched in this batch to prevent two XMLs from claiming the same record
-    const batchMatchedIds = new Set<string>(facturas.filter((f) => f.matchId).map((f) => f.matchId!));
-
     for (const xmlFile of xmlFiles) {
       const cfdi = await parseXMLFile(xmlFile);
       if (!cfdi || !cfdi.uuid || cfdi.tipoComprobante !== 'I' || cfdi.moneda !== 'MXN') {
@@ -153,14 +153,6 @@ export default function FacturasPage() {
         tipo = 'egreso'; // Default: assume it's a purchase
       }
 
-      // Try to find a match in existing records (excluding IDs already claimed in this batch)
-      const candidates = invoiceCandidates(
-        cfdi,
-        tipo === 'ingreso' ? ingresos : egresos,
-        batchMatchedIds,
-        getProveedores(),
-      );
-
       // Auto-classify deducibility for egresos
       const descConceptos = cfdi.conceptos.map((c) => c.descripcion).join(' ');
       const deducibilidad = tipo === 'egreso' ? clasificarDeducibilidad(cfdi.usoCFDI, descConceptos) : undefined;
@@ -172,7 +164,8 @@ export default function FacturasPage() {
         pdfFile,
         tipo,
         deducibilidad,
-        status: candidates.length ? 'pending' : 'new',
+        // Even with no candidates, creating a financial record needs a choice.
+        status: 'pending',
       });
     }
 
@@ -183,7 +176,7 @@ export default function FacturasPage() {
   };
 
   const processAll = async () => {
-    if (processing) return;
+    if (!canImport || processing) return;
     setProcessing(true);
     const updated = facturas.map((f) => ({ ...f }));
     const claimed = new Set<string>();
@@ -298,7 +291,11 @@ export default function FacturasPage() {
         title="Facturas"
         description="Comprobantes emitidos y recibidos"
         action={
-          <button onClick={() => fileRef.current?.click()} className={btnPrimary}>
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={!canImport || processing}
+            className={`${btnPrimary} disabled:opacity-50`}
+          >
             + Subir XMLs / PDFs
           </button>
         }
@@ -308,7 +305,7 @@ export default function FacturasPage() {
         type="file"
         accept=".xml,.pdf"
         multiple
-        disabled={processing}
+        disabled={!canImport || processing}
         onChange={handleUpload}
         className="hidden"
       />
@@ -338,7 +335,8 @@ export default function FacturasPage() {
           <p className="text-xs text-neutral-400 max-w-md mx-auto mb-4">XML y PDF de comprobantes CFDI</p>
           <button
             onClick={() => fileRef.current?.click()}
-            className="px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-[#0a0a0a] text-white hover:bg-[#222] transition-colors"
+            disabled={!canImport || processing}
+            className="px-5 py-2.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase bg-[#0a0a0a] text-white hover:bg-[#222] transition-colors disabled:opacity-50"
           >
             Seleccionar archivos
           </button>
@@ -359,7 +357,7 @@ export default function FacturasPage() {
             </h3>
             <button
               onClick={processAll}
-              disabled={processing || pendientes.some((f) => f.status === 'pending')}
+              disabled={!canImport || processing || pendientes.some((f) => f.status === 'pending')}
               className={`${btnPrimary} disabled:opacity-50`}
             >
               {processing ? 'Procesando...' : 'Procesar todas'}

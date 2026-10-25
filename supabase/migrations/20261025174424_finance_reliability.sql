@@ -27,6 +27,68 @@ end $$;
 revoke all on function public.collect_order_payment(uuid,jsonb) from public,anon;
 grant execute on function public.collect_order_payment(uuid,jsonb) to authenticated;
 
+-- Invoice attachment uses sync_write_record's version check and audit transaction.
+-- Only the first CFDI may supply a tax breakdown; cash and ledger identity stay fixed.
+create or replace function app_private.guard_customer_credit() returns trigger
+language plpgsql security invoker set search_path='' as $$
+declare v_old jsonb; v_new jsonb; v_credit numeric; v_paid numeric; v_other_income numeric;
+begin
+  if current_user not in ('authenticated','anon') then
+    if tg_op='DELETE' then return old; else return new; end if;
+  end if;
+  if tg_table_name='clientes' then
+    if exists(select 1 from public.customer_advances where cliente_id=old.id and team_id=old.team_id) then
+      raise exception 'CONFLICT: la clienta tiene historial de adelantos y no puede eliminarse';
+    end if;
+    return old;
+  elsif tg_table_name='ingresos' then
+    if tg_op in ('UPDATE','DELETE') and exists(select 1 from public.customer_advances where ingreso_id=old.id and team_id=old.team_id) then
+      if tg_op='DELETE' then raise exception 'CONFLICT: el ingreso pertenece a una cuenta de cliente y conserva historial'; end if;
+      if (new.cliente_id,new.pedido_id,new.monto_total,new.fecha,new.forma_pago) is distinct from
+        (old.cliente_id,old.pedido_id,old.monto_total,old.fecha,old.forma_pago) then
+        raise exception 'CONFLICT: el importe del adelanto se corrige desde la cuenta de la clienta';
+      end if;
+      if (new.monto,new.iva) is distinct from (old.monto,old.iva) and not coalesce(
+        coalesce(trim(old.uuid_cfdi),'')='' and new.factura and coalesce(trim(new.uuid_cfdi),'')<>''
+        and new.xml_url like old.team_id::text||'/%'
+        and new.monto between 0 and 999999999999.99 and new.iva between 0 and 999999999999.99,
+        false
+      ) then
+        raise exception 'CONFLICT: el desglose fiscal del cobro solo se asigna al vincular su primer CFDI';
+      end if;
+    end if;
+    if tg_op<>'DELETE' and coalesce(new.pedido_id,'')<>'' then
+      perform pg_advisory_xact_lock(hashtextextended(new.team_id::text||':pedidos:'||new.pedido_id,0));
+      select coalesce(sum(case when kind='apply' then amount else -amount end),0) into v_credit
+        from public.customer_account_movements where team_id=new.team_id and pedido_id=new.pedido_id and kind in ('apply','reverse_application');
+      select coalesce(sum(i.monto_total),0) into v_other_income from public.ingresos i
+        where i.team_id=new.team_id and i.pedido_id=new.pedido_id
+        and i.id is distinct from case when tg_op='UPDATE' then old.id else new.id end;
+      if v_credit>0 and v_other_income+new.monto_total>(select monto_total from public.pedidos where id=new.pedido_id and team_id=new.team_id)-v_credit then
+        raise exception 'CONFLICT: este pedido usa saldo a favor; registra solo el cobro adicional';
+      end if;
+    end if;
+  else
+    if tg_op='DELETE' then
+      if app_private.order_has_customer_credit(old.id) then raise exception 'CONFLICT: el pedido tiene historial de saldo y no puede eliminarse'; end if;
+      return old;
+    end if;
+    select coalesce(jsonb_agg(x order by x->>'id'),'[]'::jsonb) into v_new from jsonb_array_elements(coalesce(new.pagos,'[]'::jsonb)) x where x->>'origen'='saldo_cliente';
+    if tg_op='UPDATE' then
+      select coalesce(jsonb_agg(x order by x->>'id'),'[]'::jsonb) into v_old from jsonb_array_elements(coalesce(old.pagos,'[]'::jsonb)) x where x->>'origen'='saldo_cliente';
+    else v_old:='[]'::jsonb; end if;
+    if v_new is distinct from v_old then raise exception 'CONFLICT: los pagos con saldo a favor solo cambian desde la cuenta de cliente'; end if;
+    if app_private.order_has_customer_credit(new.id) then
+      if new.cliente_id is distinct from old.cliente_id then raise exception 'CONFLICT: no puedes cambiar la clienta de un pedido con movimientos de saldo'; end if;
+      select coalesce(sum(greatest((x->>'monto')::numeric,0)),0) into v_paid from jsonb_array_elements(coalesce(new.pagos,'[]'::jsonb)) x;
+      if new.monto_pagado is distinct from v_paid or new.monto_total<v_paid then raise exception 'CONFLICT: el total y los pagos deben coincidir con el historial del pedido'; end if;
+      if jsonb_array_length(v_new)>0 and new.estado='cancelado' then raise exception 'CONFLICT: revierte las aplicaciones de saldo antes de cancelar el pedido'; end if;
+    end if;
+  end if;
+  if tg_op='DELETE' then return old; else return new; end if;
+end $$;
+revoke all on function app_private.guard_customer_credit() from public,anon,authenticated;
+
 -- Existing history remains unchanged. New cash entries must use an atomic command,
 -- never a direct edit of the order JSON from an old browser or generic sync client.
 create function app_private.guard_direct_order_payments() returns trigger

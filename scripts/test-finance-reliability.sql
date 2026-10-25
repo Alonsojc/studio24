@@ -51,6 +51,33 @@ do $$ declare payload jsonb; failed boolean; result jsonb; count_before int; beg
  assert (public.get_customer_directory(0,'','pending','all',true)->>'total')::int=1, 'delivered debt remains visible';
  assert (public.get_customer_directory(0,'','name-asc','active')->>'total')::int=0;
 end $$;
+do $$ declare receipt public.ingresos; invoice jsonb; result jsonb; failed boolean; patch jsonb; begin
+ select * into strict receipt from public.ingresos;
+ invoice:=jsonb_build_object('id',receipt.id,'monto',172.41,'iva',27.59,'factura',true,
+   'uuid_cfdi','BBBBBBBB-1111-2222-3333-CCCCCCCCCCCC','xml_url',receipt.team_id::text||'/invoice/test.xml');
+ -- Tax fields are not a back door for changing the cash receipt or its identity.
+ for patch in select value from jsonb_array_elements('[{"monto_total":201},{"cliente_id":"directory-2"},{"fecha":"2026-10-05"},{"forma_pago":"efectivo"},{"pedido_id":"collection-order"},{"xml_url":null},{"xml_url":"another-team/test.xml"},{"monto":-1},{"iva":"NaN"}]'::jsonb) loop
+   failed:=false;
+   begin perform public.sync_write_record('ingresos',invoice||patch,receipt.updated_at,'invoice-invalid-'||patch::text);
+   exception when others then failed:=true; end;
+   assert failed, 'invoice attachment must preserve cash identity and require a valid breakdown';
+ end loop;
+ failed:=false;
+ begin update public.ingresos set monto=172.41,iva=27.59 where id=receipt.id;
+ exception when others then failed:=sqlerrm like 'CONFLICT:%'; end;
+ assert failed, 'tax breakdown cannot change without a CFDI';
+ result:=public.sync_write_record('ingresos',invoice,receipt.updated_at,'invoice-collection-operation');
+ assert result->>'uuid_cfdi'=invoice->>'uuid_cfdi' and (result->>'iva')::numeric=27.59;
+ perform public.sync_write_record('ingresos',invoice,receipt.updated_at,'invoice-collection-operation');
+ assert (select count(*)=1 and sum(monto_total)=200 from public.ingresos), 'invoice replay must not duplicate cash';
+ assert (select sum(amount)=200 from public.customer_advances), 'tax assignment preserves the deposit';
+ assert (select monto_pagado=200 from public.pedidos where id='collection-order');
+ assert (select count(*)=2 from public.customer_account_movements), 'tax assignment creates no financial movements';
+ failed:=false;
+ begin perform public.sync_write_record('ingresos',invoice||'{"iva":0}',(result->>'updated_at')::timestamptz,'invoice-rewrite-operation');
+ exception when others then failed:=sqlerrm like 'CONFLICT:%'; end;
+ assert failed, 'an already invoiced receipt cannot silently change its tax breakdown';
+end $$;
 select set_config('request.jwt.claim.sub','50000000-0000-0000-0000-000000000004',true);
 select public.collect_order_payment('51000000-0000-0000-0000-000000000003','{"clienteId":"directory-1","pedidoId":"collection-order","applicationId":"52000000-0000-0000-0000-000000000003","amount":100,"fecha":"2026-10-04","formaPago":"efectivo"}');
 do $$ begin assert (select monto_pagado=300 from public.pedidos where id='collection-order'); end $$;
