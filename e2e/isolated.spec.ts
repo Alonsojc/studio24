@@ -400,13 +400,18 @@ test('PDF exports remain available after dependency security updates', async ({ 
     notas: '',
     updated_at: version,
   };
-  await page.route('**/rest/v1/clientes?*', (route) => route.fulfill({ json: [cliente] }));
-  await page.route('**/rest/v1/pedidos?*', (route) =>
-    route.fulfill({
-      json: [pedido],
-      headers: { 'content-range': '0-0/1', 'access-control-expose-headers': 'content-range' },
-    }),
-  );
+  // List readers continue until the cursor reaches an empty page.
+  await page.route('**/rest/v1/clientes?*', (route) => {
+    const after = new URL(route.request().url()).searchParams.get('id')?.startsWith('gt.');
+    return route.fulfill({ json: after ? [] : [cliente] });
+  });
+  await page.route('**/rest/v1/pedidos?*', (route) => {
+    const after = new URL(route.request().url()).searchParams.get('id')?.startsWith('gt.');
+    return route.fulfill({
+      json: after ? [] : [pedido],
+      headers: { 'content-range': after ? '*/1' : '0-0/1', 'access-control-expose-headers': 'content-range' },
+    });
+  });
   await page.route('**/rest/v1/rpc/get_order_summary', (route) =>
     route.fulfill({
       json: {
