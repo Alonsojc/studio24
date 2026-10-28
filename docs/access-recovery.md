@@ -140,25 +140,29 @@ por si solo que una cuenta real pueda iniciar sesion en otro proyecto.
    no tienen cambios pendientes que se perderian al cambiar de proyecto.
 2. Preparar un proyecto nuevo y aislado, sin apuntar la aplicacion de produccion
    hacia el. Elegir PostgreSQL compatible, aplicar las migraciones del respaldo
-   y comprobar las columnas, funciones, triggers, permisos y RLS. No copiar claves
-   de produccion. No activar cron, webhooks o envios de correo durante el ensayo.
+   y comprobar las columnas, funciones, triggers, permisos y RLS. Bloquear el
+   registro publico durante la recuperacion. No copiar claves de produccion ni
+   activar cron, webhooks o envios de correo durante el ensayo.
 3. Verificar el `.enc`. En un entorno privado, preparar el mapa de UUID y correos
    desde `profiles`, propietarios de `teams`, `team_members` y **todas** las claves
    foraneas que apuntan a `auth.users`. Revisar duplicados o correos faltantes con
    el titular. Un correo distinto o un UUID sin identidad confirmada queda pendiente;
    no inventar usuarios, correos ni privilegios para completar la restauracion.
-4. Recrear las identidades autorizadas con los **mismos UUID**, antes de cargar
+4. **Antes de crear cualquier usuario**, tratar `on_auth_user_created`: llama a
+   `handle_new_user` y puede crear equipos/perfiles o aceptar invitaciones. En el
+   destino aislado, el tecnico debe registrar el estado previo y suspender
+   temporalmente **solo ese trigger de aplicacion**. No deshabilitar triggers
+   internos de Supabase Auth ni usar este paso sobre produccion.
+5. Recrear las identidades autorizadas con los **mismos UUID**, antes de cargar
    sus referencias. La API administrativa `auth.admin.createUser` admite `id`
    en la version instalada. Ejecutarla solo en un proceso de servidor privado,
    con una clave administrativa **del destino**; nunca desde el navegador ni
    usando la clave publica. No restaurar contrasenas conocidas ni enviar claves
    compartidas. Confirmar la identidad y establecer acceso nuevo de forma individual.
-5. Tratar explicitamente `on_auth_user_created`: llama a `handle_new_user` y puede
-   crear equipos/perfiles o aceptar invitaciones. En el destino aislado, el tecnico
-   debe suspender temporalmente **solo ese trigger de aplicacion**, registrar su
-   estado previo, recrear las identidades y restaurar su estado antes de abrir
-   accesos. No deshabilitar triggers internos de Supabase Auth ni usar este paso
-   sobre produccion. Si falla, mantener el destino aislado y detener la recuperacion.
+   Al terminar esta fase, incluso si falla parcialmente, restaurar y comprobar el
+   estado previo del trigger. Confirmar que no aparecieron equipos o membresias
+   inesperados. Ante cualquier fallo, mantener el registro bloqueado y el destino
+   aislado; detenerse sin continuar con la importacion ni borrar usuarios a ciegas.
 6. Restaurar los registros con UUID, equipos, roles y cantidades originales, y
    los objetos de Storage en sus buckets/rutas originales. Validar integridad,
    conteos, hashes, secuencias, permisos de buckets y referencias a comprobantes.
