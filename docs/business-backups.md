@@ -26,6 +26,12 @@ el artefacto. GitHub conserva catorce dias de copias cifradas fuera de Supabase.
 Conservar una copia independiente de la clave de recuperacion. Sin esa clave no
 se puede descifrar el respaldo. Nunca incluirla en Git, comentarios o logs.
 
+La ubicacion de la copia en el Llavero del Mac y el comando para comprobarla sin
+mostrar su valor estan en [Recuperacion de accesos](access-recovery.md#custodia-de-la-clave).
+Esa guia tambien cubre contrasenas, accesos a GitHub/Supabase y la recuperacion
+de identidades conservando sus UUID. No confundir el simulacro local con una
+restauracion completa de Supabase Auth.
+
 ## Comprobar una copia
 
 Descargar el artefacto cifrado de una ejecucion correcta. Proporcionar la clave
