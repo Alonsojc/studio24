@@ -14,6 +14,11 @@ https://janco.tech/sistemas/bordadoras
 - Inventario de materiales y productos.
 - Reportes para operar con mas claridad.
 
+## Operacion y recuperacion
+
+- [Respaldos cifrados y simulacro de restauracion](docs/business-backups.md).
+- [Custodia de la clave y recuperacion de accesos](docs/access-recovery.md).
+
 ## Sitio comercial
 
 Conoce mas de Janco y sus sistemas para operar negocios reales:
