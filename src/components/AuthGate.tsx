@@ -153,7 +153,9 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           if (cancelled) return;
           const nextUser = session?.user ?? null;
           setSessionError('');
-          if (nextUser && recoveryRef.current) {
+          // Auth events can arrive before boot restores recovery after a reload.
+          if (nextUser && (recoveryRef.current || sessionStorage.getItem(RECOVERY_KEY) === nextUser.id)) {
+            recoveryRef.current = true;
             sessionStorage.setItem(RECOVERY_KEY, nextUser.id);
             setRecovering(true);
             setCurrentUser(nextUser);

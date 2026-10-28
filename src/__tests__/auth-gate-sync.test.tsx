@@ -142,6 +142,53 @@ describe('AuthGate background sync', () => {
     expect(container.textContent).not.toContain('Aplicacion');
     expect(mocks.pullFromCloud).not.toHaveBeenCalled();
   });
+  it.each(['SIGNED_IN', 'TOKEN_REFRESHED', 'INITIAL_SESSION'])(
+    'resumes saved recovery when %s arrives before getSession',
+    async (event) => {
+      sessionStorage.setItem('studio24_password_recovery_user', 'user-1');
+      let completeSession!: (value: { data: { session: { user: { id: string } } } }) => void;
+      mocks.getSession.mockImplementation(() => new Promise((resolve) => (completeSession = resolve)));
+      mocks.pullFromCloud.mockResolvedValue(0);
+      await act(async () =>
+        root.render(
+          <AuthGate>
+            <div>Aplicacion</div>
+          </AuthGate>,
+        ),
+      );
+      await act(async () => {
+        authCallback(event, { user: { id: 'user-1' } });
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(container.textContent).toContain('Nueva contrasena');
+      expect(container.textContent).not.toContain('Aplicacion');
+      expect(mocks.bindLocalDataToUser).not.toHaveBeenCalled();
+      expect(mocks.flushPendingSync).not.toHaveBeenCalled();
+      expect(mocks.pullFromCloud).not.toHaveBeenCalled();
+
+      await act(async () => completeSession({ data: { session: { user: { id: 'user-1' } } } }));
+      expect(container.textContent).toContain('Nueva contrasena');
+      expect(mocks.pullFromCloud).not.toHaveBeenCalled();
+    },
+  );
+  it('does not apply a saved recovery marker to another signed-in user', async () => {
+    sessionStorage.setItem('studio24_password_recovery_user', 'another-user');
+    mocks.pullFromCloud.mockResolvedValue(0);
+    await act(async () =>
+      root.render(
+        <AuthGate>
+          <div>Aplicacion</div>
+        </AuthGate>,
+      ),
+    );
+    await act(async () => {
+      authCallback('SIGNED_IN', { user: { id: 'user-1' } });
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(container.textContent).toContain('Aplicacion');
+    expect(container.textContent).not.toContain('Nueva contrasena');
+    expect(mocks.pullFromCloud).toHaveBeenCalled();
+  });
   it('handles recovery events even for the already signed-in user', async () => {
     mocks.pullFromCloud.mockResolvedValue(0);
     await act(async () =>
