@@ -97,50 +97,58 @@ try {
     (await sql("select monto_pagado from public.pedidos where id='concurrent-order-3'")).stdout.trim(),
     '700',
   );
+  await sql(
+    authenticated(`insert into public.ingresos(id,cliente_id,descripcion,concepto,monto,monto_total,fecha)
+    values ('concurrent-cash-1','${client}','Cobro adicional','otro',300,300,'2026-10-03'),
+      ('concurrent-cash-2','${client}','Cobro adicional','otro',300,300,'2026-10-03')`),
+  );
+  const orderVersion = (await sql("select updated_at from public.pedidos where id='concurrent-order-3'")).stdout.trim();
+  const link = (id) =>
+    authenticated(`select public.link_order_income('${id}','concurrent-order-3',false,
+    (select updated_at from public.ingresos where id='${id}'),'${orderVersion}')`);
   const receiptsForOrder = await Promise.allSettled(
-    [1, 2].map((index) =>
-      sql(
-        authenticated(`do $receipt$ begin perform public.sync_write_record('ingresos',
-        jsonb_build_object('id','concurrent-cash-'||${index},'cliente_id','${client}','pedido_id','concurrent-order-3',
-          'descripcion','Cobro adicional','concepto','otro','monto',300,'monto_total',300,'fecha','2026-10-03'),
-        null,'concurrent-cash-operation-'||${index}); end $receipt$`),
-      ),
-    ),
+    ['concurrent-cash-1', 'concurrent-cash-2'].map((id) => sql(link(id))),
   );
   assert.equal(
     receiptsForOrder.filter((result) => result.status === 'fulfilled').length,
     1,
-    'stale clients cannot both collect the remaining cash on a credit-backed order',
+    'two devices cannot both apply existing receipts against the same outstanding balance',
   );
   assert.equal(
     (await sql("select sum(monto_total) from public.ingresos where pedido_id='concurrent-order-3'")).stdout.trim(),
     '300',
   );
-  await sql(authenticated(`update public.ingresos set monto=250,monto_total=250 where pedido_id='concurrent-order-3'`));
+  const winningReceipt = receiptsForOrder[0].status === 'fulfilled' ? 'concurrent-cash-1' : 'concurrent-cash-2';
+  await sql(link(winningReceipt));
+  await sql(authenticated(`update public.ingresos set notas='Conciliado' where pedido_id='concurrent-order-3'`));
   assert.equal(
-    (await sql("select sum(monto_total) from public.ingresos where pedido_id='concurrent-order-3'")).stdout.trim(),
-    '250',
-    'updating the existing receipt must exclude its old amount from the aggregate',
+    (await sql("select monto_pagado from public.pedidos where id='concurrent-order-3'")).stdout.trim(),
+    '1000',
+    'the confirmed retry must not apply the same receipt again',
   );
-  // Prove the aggregate guard independently of the one-income-per-order index.
-  // This schema change and both synthetic rows are rolled back in the local DB.
-  await sql(`begin;
-    drop index public.ingresos_team_pedido_unique;
-    set local role authenticated;
-    select set_config('request.jwt.claim.sub','${actor}',true);
-    do $aggregate$ declare failed boolean:=false; begin
-      perform public.sync_write_record('ingresos',jsonb_build_object('id','aggregate-extra-cash',
-        'cliente_id','${client}','pedido_id','concurrent-order-3','descripcion','Cobro adicional',
-        'concepto','otro','monto',50,'monto_total',50,'fecha','2026-10-03'),null,'aggregate-extra-operation');
-      begin
-        perform public.sync_write_record('ingresos',jsonb_build_object('id','aggregate-excess-cash',
-          'cliente_id','${client}','pedido_id','concurrent-order-3','descripcion','Cobro excesivo',
-          'concepto','otro','monto',1,'monto_total',1,'fecha','2026-10-03'),null,'aggregate-excess-operation');
-      exception when others then failed:=sqlerrm like 'CONFLICT:%'; end;
-      assert failed, 'aggregate cash plus credit may not exceed the order even without the unique index';
-      update public.ingresos set monto=250,monto_total=250 where pedido_id='concurrent-order-3' and id<>'aggregate-extra-cash';
-    end $aggregate$;
-    rollback;`);
+  await assert.rejects(
+    sql(
+      authenticated(`update public.ingresos set monto=250,monto_total=250
+    where id='${winningReceipt}'`),
+    ),
+    /importe, cliente, fecha y forma/,
+  );
+
+  await sql(
+    authenticated(`insert into public.cotizaciones(id,folio,cliente_id,items,subtotal,total)
+    values ('concurrent-quote','COT-CONCURRENT','${client}','[{"descripcion":"Prueba","cantidad":3,"precioUnitario":100}]',300,300)`),
+  );
+  const quoteVersion = (
+    await sql("select updated_at from public.cotizaciones where id='concurrent-quote'")
+  ).stdout.trim();
+  const convert = authenticated(
+    `select public.convert_quote_to_order('concurrent-quote','${client}','${quoteVersion}')`,
+  );
+  await Promise.all([sql(convert), sql(convert)]);
+  assert.equal(
+    (await sql("select count(*) from public.pedidos where notas='Creado desde COT-CONCURRENT'")).stdout.trim(),
+    '1',
+  );
   const collect = (n) =>
     authenticated(`do $$ begin perform public.collect_order_payment(
     '34000000-0000-0000-0000-00000000000${n}',

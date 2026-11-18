@@ -1,7 +1,8 @@
-import { act } from 'react';
+import { act, useContext } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AuthGate from '@/components/AuthGate';
+import { StartupContext } from '@/components/StartupContext';
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -20,12 +21,14 @@ vi.mock('@/lib/supabase', () => ({
 }));
 vi.mock('@/lib/store-cloud', () => ({ pullFromCloud: mocks.pullFromCloud }));
 vi.mock('@/lib/sync-flush', () => ({ flushPendingSync: mocks.flushPendingSync }));
+vi.mock('@/lib/sync-queue', () => ({ readSyncQueue: () => [] }));
 vi.mock('@/lib/store', () => ({
   bindLocalDataToUser: mocks.bindLocalDataToUser,
   hasLocalBusinessData: mocks.hasLocalBusinessData,
   clearSensitiveLocalData: mocks.clearSensitiveLocalData,
   preservePendingUserData: mocks.preservePendingUserData,
   ACTIVE_TEAM_KEY: 'bordados_active_team_id',
+  ACTIVE_USER_KEY: 'bordados_active_user_id',
 }));
 vi.mock('@/lib/sentry', () => ({ reportError: mocks.reportError }));
 vi.mock('@/lib/auth', () => ({ signIn: vi.fn(), signUp: vi.fn(), resetPassword: vi.fn() }));
@@ -49,7 +52,10 @@ describe('AuthGate background sync', () => {
       authCallback = callback;
       return { data: { subscription: { unsubscribe: vi.fn() } } };
     });
-    mocks.bindLocalDataToUser.mockReturnValue(false);
+    mocks.bindLocalDataToUser.mockImplementation((owner: string) => {
+      localStorage.setItem('bordados_active_user_id', owner);
+      return false;
+    });
     mocks.hasLocalBusinessData.mockReturnValue(true);
     mocks.flushPendingSync.mockResolvedValue(0);
     sessionStorage.setItem('bordados_boot_synced_user-1', '1');
@@ -112,7 +118,7 @@ describe('AuthGate background sync', () => {
       ),
     );
     expect(container.textContent).toContain('Aplicacion');
-    expect(mocks.pullFromCloud).toHaveBeenCalledWith({ replaceEmpty: false, bootstrap: true });
+    expect(mocks.pullFromCloud).toHaveBeenCalledWith(expect.objectContaining({ replaceEmpty: false, bootstrap: true }));
   });
   it('shows login on a new signed-out device without pulling business data', async () => {
     sessionStorage.clear();
@@ -220,9 +226,40 @@ describe('AuthGate background sync', () => {
     );
     expect(container.querySelector('[role="status"]')).not.toBeNull();
     expect(container.textContent).not.toContain('Aplicacion');
-    expect(mocks.pullFromCloud).toHaveBeenCalledWith({ replaceEmpty: true, bootstrap: true });
+    expect(mocks.pullFromCloud).toHaveBeenCalledWith(expect.objectContaining({ replaceEmpty: true, bootstrap: true }));
     await act(async () => completePull());
     expect(container.textContent).toContain('Aplicacion');
+  });
+  it('opens the dashboard after verification but blocks startup writers until the pull finishes', async () => {
+    sessionStorage.clear();
+    mocks.hasLocalBusinessData.mockReturnValue(false);
+    let finish!: () => void;
+    mocks.pullFromCloud.mockImplementation(async ({ onVerified }) => {
+      await onVerified({ id: 'user-1', email: 'test@example.invalid', role: 'admin', nombre: 'Prueba' });
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    });
+    function Dashboard() {
+      const { profile, dataReady } = useContext(StartupContext);
+      return (
+        <>
+          {profile?.role === 'admin' && 'Dashboard verificado'}
+          {dataReady && ' Escrituras de inicio habilitadas'}
+        </>
+      );
+    }
+    await act(async () =>
+      root.render(
+        <AuthGate>
+          <Dashboard />
+        </AuthGate>,
+      ),
+    );
+    expect(container.textContent).toContain('Dashboard verificado');
+    expect(container.textContent).not.toContain('Escrituras');
+    await act(async () => finish());
+    expect(container.textContent).toContain('Escrituras de inicio habilitadas');
   });
   it('preserves pending data before clearing a lost session', async () => {
     mocks.pullFromCloud.mockResolvedValue(0);

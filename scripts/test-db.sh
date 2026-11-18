@@ -20,3 +20,4 @@ psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-customer-accounts.s
 node scripts/test-customer-concurrency.mjs
 psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-operations.sql
 psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-finance-reliability.sql
+psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/test-sales-links.sql

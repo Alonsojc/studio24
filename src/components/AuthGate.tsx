@@ -4,18 +4,19 @@ import { useState, useEffect, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { signIn, signUp, resetPassword } from '@/lib/auth';
-import { pullFromCloud } from '@/lib/store-cloud';
 import {
   ACTIVE_TEAM_KEY,
+  ACTIVE_USER_KEY,
   bindLocalDataToUser,
   clearSensitiveLocalData,
   hasLocalBusinessData,
   preservePendingUserData,
 } from '@/lib/store';
 import { reportError } from '@/lib/sentry';
-import { flushPendingSync } from '@/lib/sync-flush';
+import type { UserProfile } from '@/lib/roles';
 import ConnectionScreen from '@/components/ConnectionScreen';
 import PasswordRecovery from '@/components/PasswordRecovery';
+import { StartupContext } from '@/components/StartupContext';
 
 type View = 'login' | 'register' | 'reset' | 'check-email';
 
@@ -67,6 +68,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [sessionError, setSessionError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [recovering, setRecovering] = useState(false);
+  const [verifiedProfile, setVerifiedProfile] = useState<UserProfile | null>(null);
+  const [readyUser, setReadyUser] = useState<string | null>(null);
   const recoveryRef = useRef(false);
 
   const setCurrentUser = (nextUser: User | null) => {
@@ -76,37 +79,68 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    let syncInFlight: Promise<void> | null = null;
+    let syncInFlight: { owner: string; verified: Promise<void> } | null = null;
+    let syncRun = 0;
     let bootDone = false;
     recoveryRef.current = new URLSearchParams(window.location.hash.slice(1)).get('type') === 'recovery';
 
     const syncUserSession = async (nextUser: User, kind: string): Promise<void> => {
-      if (syncInFlight) return syncInFlight;
+      if (syncInFlight?.owner === nextUser.id) return syncInFlight.verified;
       const cacheWasCleared = await bindLocalDataToUser(nextUser.id);
-      if (syncInFlight) return syncInFlight;
+      if (cancelled || recoveryRef.current) return;
+      if (syncInFlight?.owner === nextUser.id) return syncInFlight.verified;
       const hasLocalData = hasLocalBusinessData();
       const shouldWriteEmptySnapshots = cacheWasCleared || !hasLocalData;
       const canSyncInBackground =
         !cacheWasCleared &&
         hasLocalData &&
         (hasBootSync(nextUser.id) || Boolean(localStorage.getItem(ACTIVE_TEAM_KEY)));
+      const run = ++syncRun;
+      const current = () =>
+        !cancelled && !recoveryRef.current && run === syncRun && localStorage.getItem(ACTIVE_USER_KEY) === nextUser.id;
+      let resolveVerification!: () => void;
+      const verification = new Promise<void>((resolve) => {
+        resolveVerification = resolve;
+      });
+      let verified = false;
       const runSync = async () => {
-        await flushPendingSync().catch((e) => reportError(e, { kind: 'authBootstrapFlushPendingSync' }));
-        await pullFromCloud({ replaceEmpty: shouldWriteEmptySnapshots, bootstrap: true });
-        markBootSynced(nextUser.id);
+        const { pullFromCloud } = await import('@/lib/store-cloud');
+        await pullFromCloud({
+          replaceEmpty: shouldWriteEmptySnapshots,
+          bootstrap: true,
+          isCurrent: current,
+          onVerified: async (profile) => {
+            if (!current()) return;
+            verified = true;
+            setVerifiedProfile(profile);
+            resolveVerification();
+            const { readSyncQueue } = await import('@/lib/sync-queue');
+            if (current() && readSyncQueue().length) {
+              const { flushPendingSync } = await import('@/lib/sync-flush');
+              if (current())
+                await flushPendingSync().catch((e) => reportError(e, { kind: 'authBootstrapFlushPendingSync' }));
+            }
+          },
+        });
+        if (current() && verified) {
+          markBootSynced(nextUser.id);
+          setReadyUser(nextUser.id);
+        }
       };
       const running = runSync()
         .catch((e) => {
+          if (!current()) return;
           reportError(e, { kind });
-          if (!canSyncInBackground && !cancelled && !userRef.current) setSessionError(BOOT_ERROR_MESSAGE);
+          if (!canSyncInBackground && !verified) setSessionError(BOOT_ERROR_MESSAGE);
         })
         .finally(() => {
-          syncInFlight = null;
+          if (run === syncRun) syncInFlight = null;
         });
-      syncInFlight = running;
+      const untilVerified = Promise.race([verification, running]);
+      syncInFlight = { owner: nextUser.id, verified: untilVerified };
       if (canSyncInBackground) return Promise.resolve();
-      return withTimeout(running, BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE).catch((e) => {
-        if (!cancelled && !userRef.current) setSessionError(BOOT_ERROR_MESSAGE);
+      return withTimeout(untilVerified, BOOT_TIMEOUT_MS, BOOT_ERROR_MESSAGE).catch((e) => {
+        if (current() && !userRef.current) setSessionError(BOOT_ERROR_MESSAGE);
         if (e instanceof Error && e.message === BOOT_ERROR_MESSAGE) reportError(e, { kind });
       });
     };
@@ -156,6 +190,10 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           // Auth events can arrive before boot restores recovery after a reload.
           if (nextUser && (recoveryRef.current || sessionStorage.getItem(RECOVERY_KEY) === nextUser.id)) {
             recoveryRef.current = true;
+            syncRun++;
+            syncInFlight = null;
+            setReadyUser(null);
+            setVerifiedProfile(null);
             sessionStorage.setItem(RECOVERY_KEY, nextUser.id);
             setRecovering(true);
             setCurrentUser(nextUser);
@@ -164,6 +202,10 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           }
           if (_event === 'INITIAL_SESSION' && !bootDone) return;
           if (!nextUser) {
+            syncRun++;
+            syncInFlight = null;
+            setVerifiedProfile(null);
+            setReadyUser(null);
             recoveryRef.current = false;
             setRecovering(false);
             sessionStorage.removeItem(RECOVERY_KEY);
@@ -190,9 +232,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
             return;
           }
           setLoading(true);
-          if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION' || _event === 'USER_UPDATED') {
-            await syncUserSession(nextUser, 'authStatePullFromCloud');
-          }
+          await syncUserSession(nextUser, 'authStatePullFromCloud');
           if (cancelled) return;
           setCurrentUser(nextUser);
           setLoading(false);
@@ -224,7 +264,14 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       />
     );
 
-  if (user && !sessionError) return <>{children}</>;
+  if (user && !sessionError)
+    return (
+      <StartupContext.Provider
+        value={{ profile: verifiedProfile?.id === user.id ? verifiedProfile : null, dataReady: readyUser === user.id }}
+      >
+        {children}
+      </StartupContext.Provider>
+    );
 
   const handleLogin = async () => {
     setError('');

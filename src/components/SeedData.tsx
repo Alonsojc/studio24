@@ -5,6 +5,7 @@ import { generarEgresosRecurrentes } from '@/lib/recurrentes';
 import { restoreFromIDB, syncAllToIDB } from '@/lib/db';
 import { getPedidos } from '@/lib/store';
 import { formatDate } from '@/lib/helpers';
+import { addCalendarDays, todayString } from '@/lib/business-date';
 import { autoBackupIfDue } from '@/lib/auto-backup';
 import { useRole } from './RoleProvider';
 import { reportError } from '@/lib/sentry';
@@ -15,19 +16,14 @@ function checkPedidosNotification() {
   if (!('Notification' in window)) return;
 
   // Only notify once per day
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayString();
   if (localStorage.getItem(NOTIF_KEY) === today) return;
 
   const pedidos = getPedidos();
-  const now = new Date();
-  const en48h = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+  const nextTwoDays = addCalendarDays(today, 2);
   const activos = pedidos.filter((p) => p.estado !== 'entregado' && p.estado !== 'cancelado');
-  const porVencer = activos.filter((p) => {
-    if (!p.fechaEntrega) return false;
-    const entrega = new Date(p.fechaEntrega);
-    return entrega >= now && entrega <= en48h;
-  });
-  const vencidos = activos.filter((p) => p.fechaEntrega && new Date(p.fechaEntrega) < now);
+  const porVencer = activos.filter((p) => p.fechaEntrega >= today && p.fechaEntrega <= nextTwoDays);
+  const vencidos = activos.filter((p) => p.fechaEntrega && p.fechaEntrega < today);
 
   if (porVencer.length === 0 && vencidos.length === 0) return;
 
@@ -50,7 +46,7 @@ function sendNotification(porVencer: ReturnType<typeof getPedidos>, vencidos: Re
     lines.push(`${vencidos.length} vencido${vencidos.length > 1 ? 's' : ''}`);
   }
   if (porVencer.length > 0) {
-    lines.push(`${porVencer.length} por vencer en 48h`);
+    lines.push(`${porVencer.length} por entregar en los próximos días`);
     porVencer.slice(0, 3).forEach((p) => {
       lines.push(`  ${p.descripcion} — ${formatDate(p.fechaEntrega)}`);
     });

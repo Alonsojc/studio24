@@ -2,13 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { Wallet } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { ArrowLeft, ExternalLink, Wallet } from 'lucide-react';
 import { v4 as uuid } from 'uuid';
 import { getClientes, getIngresos } from '@/lib/store';
-import { cloudGetClientes, cloudGetIngresosByYear } from '@/lib/store-cloud';
-import { addPedido, updatePedido, deletePedido, addIngreso, getNextFolioAsync } from '@/lib/store-sync';
+import { cloudGetClientes, cloudGetIngresosByYear, cloudGetPedidoById } from '@/lib/store-cloud';
+import { addPedido, updatePedido, deletePedido } from '@/lib/store-sync';
 import { useCloudStore } from '@/lib/useCloudStore';
 import Pagination from '@/components/Pagination';
 import { usePedidoPage, type OrderScope } from '@/lib/usePedidoPage';
@@ -23,7 +24,6 @@ import {
   validatePedido,
 } from '@/lib/helpers';
 import {
-  buildIngresoFromPedido,
   buildRepeatedPedido,
   calculateEstadoPago,
   calculatePedidoPaidAmount,
@@ -34,10 +34,13 @@ import PageHeader from '@/components/PageHeader';
 import Modal from '@/components/Modal';
 import ActionMenu from '@/components/ActionMenu';
 import PhotoGallery from '@/components/PhotoGallery';
+import OrderIncomeModal from '@/components/OrderIncomeModal';
 import { useRole } from '@/components/RoleProvider';
 import { inputClass, labelClass, btnPrimary, btnSecondary } from '@/lib/styles';
 import { createTrackingToken, publicTrackingUrl } from '@/lib/tracking';
 import { flushPendingSync } from '@/lib/sync-flush';
+import { readSyncQueue } from '@/lib/sync-queue';
+import { normalizeWhatsAppPhone, whatsappUrl } from '@/lib/whatsapp';
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
 const pipeline: { estado: EstadoPedido; label: string; emoji: string }[] = [
@@ -104,18 +107,32 @@ const statusMessages: Record<EstadoPedido, string> = {
   cancelado: 'Tu pedido ha sido cancelado.',
 };
 
-export default function PedidosPage() {
-  const now = new Date();
+function PedidosRoute() {
+  const search = useSearchParams();
+  const selectedId = search.get('pedido') || '';
+  return <PedidosPage key={selectedId} selectedId={selectedId} />;
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<p className="py-6 text-sm text-neutral-500">Consultando pedidos...</p>}>
+      <PedidosRoute />
+    </Suspense>
+  );
+}
+
+function PedidosPage({ selectedId }: { selectedId: string }) {
+  const year = Number(todayString().slice(0, 4));
   const [page, setPage] = useState(0);
   const [scope, setScope] = useState<OrderScope>('active');
-  const { data: orderPage, reload: reloadPedidos } = usePedidoPage(scope, page);
+  const { data: orderPage, reload: reloadPedidos, loading: ordersLoading } = usePedidoPage(scope, page, selectedId);
   const pedidosRaw = orderPage.rows;
   const { data: clientes, reload: reloadClientes } = useCloudStore(getClientes, cloudGetClientes, 'bordados_clientes');
   const { data: ingresos, reload: reloadIngresos } = useCloudStore(
     getIngresos,
-    () => cloudGetIngresosByYear(now.getFullYear()),
+    () => cloudGetIngresosByYear(year),
     'bordados_ingresos',
-    [now.getFullYear()],
+    [year],
   );
   const pedidos = [...pedidosRaw].sort((a, b) => {
     if (a.urgente && !b.urgente) return -1;
@@ -133,9 +150,14 @@ export default function PedidosPage() {
   const [form, setForm] = useState(emptyPedido());
   const [formSnapshot, setFormSnapshot] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
-  const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>('pipeline');
+  const [view, setView] = useState<'pipeline' | 'lista' | 'pagos'>(selectedId ? 'lista' : 'pipeline');
+  const [orderForIncome, setOrderForIncome] = useState<Pedido | null>(null);
+  const [incomeNotice, setIncomeNotice] = useState('');
+  const [tracking, setTracking] = useState<{ order: Pedido; link?: string; url?: string; error?: string } | null>(null);
   const { role } = useRole();
   const pagedPedidos = pedidos;
+  const formTotal = calculatePedidoTotal(form);
+  const formPaid = calculatePedidoPaidAmount(form);
 
   const openNew = () => {
     setEditingId(null);
@@ -182,32 +204,11 @@ export default function PedidosPage() {
       reload();
     }
   };
-  const moveEstado = async (p: Pedido, estado: EstadoPedido) => {
+  const moveEstado = (p: Pedido, estado: EstadoPedido) => {
     const updated = { ...p, estado };
-    if (estado === 'entregado') {
-      updated.fechaEntregaReal = todayString();
-      // If fully paid, offer to create Ingreso
-      if (canCreateIngresoForPedido(role, p, ingresos)) {
-        if (confirm('Pedido entregado y pagado. ¿Crear ingreso automáticamente?')) {
-          const conFactura = confirm('¿Facturar este ingreso? (IVA 16%)');
-          await crearIngresoDePedido(p, conFactura);
-        }
-      }
-    }
+    if (estado === 'entregado') updated.fechaEntregaReal = todayString();
     updatePedido(updated);
     reload();
-  };
-
-  const crearIngresoDePedido = async (p: Pedido, conFactura: boolean) => {
-    if (!canCreateIngresoForPedido(role, p, ingresos)) return false;
-    const ingreso = buildIngresoFromPedido(p, {
-      id: uuid(),
-      conFactura,
-      numeroFactura: conFactura ? await getNextFolioAsync('ING') : '',
-    });
-    addIngreso(ingreso);
-    reloadIngresos();
-    return true;
   };
 
   const repetirPedido = (p: Pedido) => {
@@ -222,33 +223,35 @@ export default function PedidosPage() {
 
   const enviarWhatsAppEstado = (p: Pedido) => {
     const cliente = clientes.find((c) => c.id === p.clienteId);
-    const tel = cliente?.telefono?.replace(/\D/g, '') || '';
     const msg = `*STUDIO 24*\n\nHola ${cliente?.nombre || ''}!\n\n${statusMessages[p.estado]}\n\nPedido: ${p.descripcion}\nPiezas: ${p.piezas}\n${p.fechaEntrega ? `Entrega estimada: ${formatDate(p.fechaEntrega)}` : ''}\n\nGracias por tu preferencia!`;
-    const url = tel
-      ? `https://wa.me/52${tel}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(url, '_blank');
+    window.open(whatsappUrl(normalizeWhatsAppPhone(cliente?.telefono), msg), '_blank', 'noopener,noreferrer');
   };
 
   const compartirSeguimiento = async (p: Pedido) => {
-    const trackingToken = p.trackingToken || createTrackingToken();
-    if (!p.trackingToken) {
-      updatePedido({ ...p, trackingToken });
-      reloadPedidos();
-    }
+    setTracking({ order: p });
+    const pending = () => readSyncQueue().some((op) => op.table === 'pedidos' && op.recordId === p.id);
     try {
-      await flushPendingSync();
-    } catch {
-      // Si no hay conexión, el link queda listo localmente y sincronizará en cuanto vuelva la nube.
+      if (pending()) await flushPendingSync().catch(() => {});
+      if (pending()) throw new Error('El pedido tiene cambios pendientes de sincronizar.');
+      let confirmed = await cloudGetPedidoById(p.id);
+      if (!confirmed) throw new Error('El pedido aún no está disponible en la nube.');
+      if (!confirmed.trackingToken) {
+        if (role !== 'admin' && role !== 'operador')
+          throw new Error('El pedido todavía no tiene enlace de seguimiento.');
+        updatePedido({ ...confirmed, trackingToken: createTrackingToken() });
+        await flushPendingSync().catch(() => {});
+        if (pending()) throw new Error('El enlace todavía no se ha sincronizado.');
+        confirmed = await cloudGetPedidoById(p.id);
+        reloadPedidos();
+      }
+      if (!confirmed?.trackingToken) throw new Error('El enlace todavía no está confirmado.');
+      const link = publicTrackingUrl(confirmed.trackingToken);
+      const cliente = clientes.find((c) => c.id === confirmed.clienteId);
+      const message = `*STUDIO 24*\n\nHola ${cliente?.nombre || ''}! Aquí puedes ver el estado de tu pedido:\n\n${link}\n\nPedido: ${confirmed.descripcion}`;
+      setTracking({ order: confirmed, link, url: whatsappUrl(normalizeWhatsAppPhone(cliente?.telefono), message) });
+    } catch (error) {
+      setTracking({ order: p, error: error instanceof Error ? error.message : 'No se pudo confirmar el enlace.' });
     }
-    const link = publicTrackingUrl(trackingToken);
-    const cliente = clientes.find((c) => c.id === p.clienteId);
-    const tel = cliente?.telefono?.replace(/\D/g, '') || '';
-    const msg = `*STUDIO 24*\n\nHola ${cliente?.nombre || ''}! Aquí puedes ver el estado de tu pedido:\n\n${link}\n\nPedido: ${p.descripcion}`;
-    const waUrl = tel
-      ? `https://wa.me/52${tel}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(waUrl, '_blank');
   };
 
   const imprimirOrdenTrabajo = async (p: Pedido) => {
@@ -419,21 +422,34 @@ export default function PedidosPage() {
     <div>
       <PageHeader
         title="Pedidos"
-        description={`${orderPage.summary.activeCount} activos · ${formatCurrency(totalActivos)} en producción`}
+        description={
+          selectedId
+            ? pedidos[0]?.descripcion || (ordersLoading ? 'Consultando pedido…' : 'Pedido no disponible')
+            : `${orderPage.summary.activeCount} activos · ${formatCurrency(totalActivos)} en producción`
+        }
         action={
-          <div className="flex gap-2">
-            <select
-              aria-label="Mostrar pedidos"
-              value={scope}
-              onChange={(event) => {
-                setScope(event.target.value as OrderScope);
-                setPage(0);
-              }}
-              className={inputClass}
-            >
-              <option value="active">Activos</option>
-              <option value="all">Todos</option>
-            </select>
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedId ? (
+              <Link
+                href="/pedidos"
+                className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-neutral-600"
+              >
+                <ArrowLeft size={16} aria-hidden /> Ver todos
+              </Link>
+            ) : (
+              <select
+                aria-label="Mostrar pedidos"
+                value={scope}
+                onChange={(event) => {
+                  setScope(event.target.value as OrderScope);
+                  setPage(0);
+                }}
+                className={inputClass}
+              >
+                <option value="active">Activos</option>
+                <option value="all">Todos</option>
+              </select>
+            )}
             <div className="flex bg-neutral-100 rounded-xl p-0.5">
               {(['pipeline', 'lista', 'pagos'] as const).map((v) => (
                 <button
@@ -445,12 +461,19 @@ export default function PedidosPage() {
                 </button>
               ))}
             </div>
-            <button onClick={openNew} className={btnPrimary}>
-              + Nuevo
-            </button>
+            {!selectedId && (
+              <button onClick={openNew} className={btnPrimary}>
+                + Nuevo
+              </button>
+            )}
           </div>
         }
       />
+      {incomeNotice && (
+        <p role="status" className="mb-4 text-sm font-semibold text-green-700">
+          {incomeNotice}
+        </p>
+      )}
 
       {/* Pipeline View */}
       {view === 'pipeline' && (
@@ -512,7 +535,7 @@ export default function PedidosPage() {
                       )}
                       {p.fechaEntrega && (
                         <p
-                          className={`text-[10px] mt-1 font-semibold ${new Date(p.fechaEntrega) < new Date() && p.estado !== 'entregado' ? 'text-red-500' : 'text-neutral-300'}`}
+                          className={`text-[10px] mt-1 font-semibold ${p.fechaEntrega < todayString() && !['entregado', 'cancelado'].includes(p.estado) ? 'text-red-500' : 'text-neutral-300'}`}
                         >
                           Entrega: {formatDate(p.fechaEntrega)}
                         </p>
@@ -786,23 +809,22 @@ export default function PedidosPage() {
                           </span>
                         </td>
                         <td className="px-5 py-4">
-                          <div className="flex justify-end">
+                          <div className="flex items-center justify-end gap-1">
+                            {canCreateIngresoForPedido(role, p, ingresos) && (
+                              <button
+                                className="min-h-10 px-2 text-xs font-semibold text-[#a82207] hover:underline"
+                                onClick={() => {
+                                  setIncomeNotice('');
+                                  setOrderForIncome(p);
+                                }}
+                              >
+                                Registrar ingreso
+                              </button>
+                            )}
                             <ActionMenu
                               items={[
                                 { label: 'Editar', onClick: () => openEdit(p) },
                                 { label: 'Imprimir orden', onClick: () => imprimirOrdenTrabajo(p) },
-                                ...(canCreateIngresoForPedido(role, p, ingresos)
-                                  ? [
-                                      {
-                                        label: 'Crear Ingreso',
-                                        onClick: async () => {
-                                          const conFactura = confirm('¿Facturar este ingreso? (IVA 16%)');
-                                          const created = await crearIngresoDePedido(p, conFactura);
-                                          alert(created ? 'Ingreso creado!' : 'Este pedido ya tiene un ingreso.');
-                                        },
-                                      },
-                                    ]
-                                  : []),
                                 { label: 'Eliminar', onClick: () => handleDelete(p.id), danger: true },
                               ]}
                             />
@@ -815,6 +837,61 @@ export default function PedidosPage() {
             </table>
           </div>
         </div>
+      )}
+
+      {tracking && (
+        <Modal open onClose={() => (tracking.error || tracking.url) && setTracking(null)} title="Compartir seguimiento">
+          <div className="space-y-3">
+            <p className="break-words text-sm font-semibold">{tracking.order.descripcion}</p>
+            {tracking.error ? (
+              <>
+                <p role="alert" className="text-sm text-red-600">
+                  {tracking.error}
+                </p>
+                <button className={btnSecondary} onClick={() => compartirSeguimiento(tracking.order)}>
+                  Reintentar
+                </button>
+              </>
+            ) : tracking.url ? (
+              <>
+                <label className="block">
+                  <span className={labelClass}>Enlace confirmado</span>
+                  <input
+                    type="url"
+                    value={tracking.link}
+                    readOnly
+                    onFocus={(event) => event.currentTarget.select()}
+                    className={inputClass}
+                  />
+                </label>
+                <a
+                  className={`${btnPrimary} inline-flex min-h-10 items-center gap-2`}
+                  href={tracking.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink size={15} aria-hidden /> Abrir WhatsApp
+                </a>
+              </>
+            ) : (
+              <p role="status" className="text-sm text-neutral-500">
+                Confirmando enlace en la nube…
+              </p>
+            )}
+          </div>
+        </Modal>
+      )}
+      {orderForIncome && (
+        <OrderIncomeModal
+          key={orderForIncome.id}
+          order={orderForIncome}
+          onClose={() => setOrderForIncome(null)}
+          onSaved={(message) => {
+            setOrderForIncome(null);
+            setIncomeNotice(message);
+            reloadIngresos();
+          }}
+        />
       )}
 
       <Modal
@@ -839,6 +916,7 @@ export default function PedidosPage() {
               <label className={labelClass}>Cliente</label>
               <select
                 value={form.clienteId}
+                disabled={Boolean(form.partidasCotizacion)}
                 onChange={(e) => {
                   if (e.target.value === '__new__') {
                     window.open('/studio24/clientes', '_blank');
@@ -879,19 +957,23 @@ export default function PedidosPage() {
                 type="number"
                 inputMode="numeric"
                 min="1"
+                readOnly={Boolean(form.partidasCotizacion)}
                 value={form.piezas}
                 onChange={(e) => setForm({ ...form, piezas: Math.max(1, parseInt(e.target.value) || 1) })}
                 className={inputClass}
               />
             </div>
             <div>
-              <label className={labelClass}>Precio unitario</label>
+              <label className={labelClass}>
+                {form.partidasCotizacion ? 'Precio medio por pieza' : 'Precio unitario'}
+              </label>
               <input
                 type="number"
                 inputMode="decimal"
                 step="0.01"
                 min="0"
-                value={form.precioUnitario || ''}
+                readOnly={Boolean(form.partidasCotizacion)}
+                value={form.partidasCotizacion ? form.precioUnitario.toFixed(2) : form.precioUnitario || ''}
                 onChange={(e) => setForm({ ...form, precioUnitario: parseFloat(e.target.value) || 0 })}
                 className={inputClass}
               />
@@ -899,10 +981,25 @@ export default function PedidosPage() {
             <div>
               <label className={labelClass}>Total</label>
               <div className="h-[42px] flex items-center text-lg font-black text-[#c72a09]">
-                {formatCurrency(form.piezas * form.precioUnitario)}
+                {formatCurrency(formTotal)}
               </div>
             </div>
           </div>
+          {form.partidasCotizacion && (
+            <div className="border-y border-neutral-100 py-3">
+              <p className={labelClass}>Partidas de la cotización</p>
+              <ul className="space-y-1">
+                {form.partidasCotizacion.map((item, index) => (
+                  <li key={index} className="flex flex-wrap justify-between gap-2 text-sm">
+                    <span className="min-w-0 break-words">
+                      {item.cantidad} × {item.descripcion}
+                    </span>
+                    <span className="text-neutral-500">{formatCurrency(item.precioUnitario)} c/u</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Fecha de pedido</label>
@@ -976,25 +1073,18 @@ export default function PedidosPage() {
                   inputMode="decimal"
                   step="0.01"
                   min="0"
-                  value={calculatePedidoPaidAmount(form) || ''}
+                  value={formPaid || ''}
                   readOnly
                   className={inputClass}
                 />
               </div>
               <div>
-                <label className="text-[10px] text-neutral-400 font-medium">
-                  de {formatCurrency(form.piezas * form.precioUnitario)}
-                </label>
+                <label className="text-[10px] text-neutral-400 font-medium">de {formatCurrency(formTotal)}</label>
                 <div className="h-[42px] flex items-center">
                   <span
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${calculatePedidoPaidAmount(form) >= form.piezas * form.precioUnitario && form.piezas * form.precioUnitario > 0 ? 'bg-green-100 text-green-700' : calculatePedidoPaidAmount(form) > 0 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${formPaid >= formTotal && formTotal > 0 ? 'bg-green-100 text-green-700' : formPaid > 0 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}
                   >
-                    {calculatePedidoPaidAmount(form) >= form.piezas * form.precioUnitario &&
-                    form.piezas * form.precioUnitario > 0
-                      ? 'Pagado'
-                      : calculatePedidoPaidAmount(form) > 0
-                        ? 'Parcial'
-                        : 'Sin pago'}
+                    {formPaid >= formTotal && formTotal > 0 ? 'Pagado' : formPaid > 0 ? 'Parcial' : 'Sin pago'}
                   </span>
                 </div>
               </div>
@@ -1010,7 +1100,7 @@ export default function PedidosPage() {
                       <span className="text-neutral-500">
                         {pago.origen === 'saldo_inicial'
                           ? 'Saldo anterior'
-                          : `${formatDate(pago.fecha)} · ${pago.origen === 'saldo_cliente' ? 'Saldo a favor' : pago.formaPago}`}
+                          : `${formatDate(pago.fecha)} · ${pago.origen === 'saldo_cliente' ? 'Saldo a favor' : pago.origen === 'ingreso_existente' ? 'Ingreso vinculado' : pago.formaPago}`}
                         {pago.referencia ? ` · ${pago.referencia}` : ''}
                       </span>
                       <span className="font-bold text-[#0a0a0a]">{formatCurrency(pago.monto)}</span>
@@ -1073,14 +1163,12 @@ export default function PedidosPage() {
               </div>
               <div>
                 <label className="text-[10px] text-neutral-400 font-medium">Venta total</label>
-                <div className="h-[42px] flex items-center text-sm font-bold">
-                  {formatCurrency(form.piezas * form.precioUnitario)}
-                </div>
+                <div className="h-[42px] flex items-center text-sm font-bold">{formatCurrency(formTotal)}</div>
               </div>
               <div>
                 <label className="text-[10px] text-neutral-400 font-medium">Ganancia</label>
                 <div className="h-[42px] flex items-center text-sm font-bold text-green-600">
-                  {formatCurrency(form.piezas * form.precioUnitario - (form.costoMateriales || 0))}
+                  {formatCurrency(formTotal - (form.costoMateriales || 0))}
                 </div>
               </div>
             </div>

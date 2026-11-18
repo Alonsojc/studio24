@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { Link2, Unlink2 } from 'lucide-react';
 import { useRole } from '@/components/RoleProvider';
 import { v4 as uuid } from 'uuid';
 import { getIngresos, getClientes } from '@/lib/store';
@@ -27,6 +29,8 @@ import MonthBar from '@/components/MonthBar';
 import Pagination, { PAGE_SIZE } from '@/components/Pagination';
 import { openFacturaFile } from '@/lib/cfdi-storage';
 import ReplaceInvoiceModal from '@/components/ReplaceInvoiceModal';
+import IncomeOrderLinkModal from '@/components/IncomeOrderLinkModal';
+import { orderPath } from '@/lib/sales-cloud';
 
 const conceptos: ConceptoIngreso[] = ['solo_bordado', 'bordado_y_prenda', 'diseno', 'reparacion', 'otro'];
 const formasPago: FormaPago[] = ['efectivo', 'tarjeta', 'transferencia', 'otro'];
@@ -49,11 +53,9 @@ function emptyIngreso(): Omit<Ingreso, 'id' | 'createdAt'> {
 
 export default function IngresosPage() {
   const { role } = useRole();
-  const now = new Date();
-  const [filterMonth, setFilterMonth] = useState<string>(
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-  );
-  const [filterYear, setFilterYear] = useState(now.getFullYear());
+  const today = todayString();
+  const [filterMonth, setFilterMonth] = useState(today.slice(0, 7));
+  const [filterYear, setFilterYear] = useState(Number(today.slice(0, 4)));
   const { data: ingresosRaw, reload } = useCloudStore(
     getIngresos,
     () => cloudGetIngresosByYear(filterYear),
@@ -69,6 +71,9 @@ export default function IngresosPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [filterConcepto, setFilterConcepto] = useState<string>('all');
   const [page, setPage] = useState(0);
+  const [incomeToLink, setIncomeToLink] = useState<Ingreso | null>(null);
+  const [linkNotice, setLinkNotice] = useState('');
+  const linked = Boolean(form.pedidoId);
 
   const openNew = () => {
     setEditingId(null);
@@ -96,12 +101,12 @@ export default function IngresosPage() {
       return;
     }
     setFormError(null);
-    const iva = nextForm.factura ? calcIVA(nextForm.monto) : 0;
+    const iva = linked ? nextForm.iva : nextForm.factura ? calcIVA(nextForm.monto) : 0;
     const data: Ingreso = {
       ...(nextForm as Ingreso),
       id: editingId || uuid(),
       iva,
-      montoTotal: nextForm.monto + iva,
+      montoTotal: linked ? nextForm.montoTotal : Math.round((nextForm.monto + iva) * 100) / 100,
       createdAt: editingId ? (form as Ingreso).createdAt : new Date().toISOString(),
     };
     if (editingId) updateIngreso(data);
@@ -130,7 +135,7 @@ export default function IngresosPage() {
 
   const clienteName = (id: string) => clientes.find((c) => c.id === id)?.nombre || '';
   const years = Array.from(
-    new Set(ingresos.map((i) => parseInt(i.fecha.substring(0, 4), 10)).concat(new Date().getFullYear())),
+    new Set(ingresos.map((i) => parseInt(i.fecha.substring(0, 4), 10)).concat(Number(today.slice(0, 4)))),
   )
     .sort()
     .reverse();
@@ -211,7 +216,7 @@ export default function IngresosPage() {
             <button
               onClick={() =>
                 downloadCSV(
-                  `ingresos_${new Date().toISOString().slice(0, 10)}`,
+                  `ingresos_${today}`,
                   [
                     'Fecha',
                     'Descripción',
@@ -304,9 +309,16 @@ export default function IngresosPage() {
                     <td className="px-5 py-4 font-semibold text-[#0a0a0a]">
                       {i.descripcion}
                       {i.pedidoId && (
-                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-orange-50 text-orange-500 uppercase">
-                          Pedido
-                        </span>
+                        <Link
+                          className="ml-2 inline-flex rounded px-1.5 py-1 text-[10px] font-semibold bg-orange-50 text-[#a82207] hover:underline"
+                          href={
+                            role === 'contador'
+                              ? `/clientes/cuenta?cliente=${encodeURIComponent(i.clienteId)}&pedido=${encodeURIComponent(i.pedidoId)}`
+                              : orderPath(i.pedidoId)
+                          }
+                        >
+                          Pedido vinculado
+                        </Link>
                       )}
                     </td>
                     <td className="px-5 py-4 text-neutral-400 text-xs">{clienteName(i.clienteId) || '—'}</td>
@@ -363,7 +375,35 @@ export default function IngresosPage() {
                       )}
                     </td>
                     <td className="px-5 py-4">
-                      <div className="flex justify-end">
+                      <div className="flex items-center justify-end gap-1">
+                        {!i.pedidoId && i.clienteId && i.montoTotal > 0 && (
+                          <button
+                            type="button"
+                            title="Vincular a un pedido"
+                            aria-label="Vincular a un pedido"
+                            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#a82207] hover:bg-orange-50"
+                            onClick={() => {
+                              setLinkNotice('');
+                              setIncomeToLink(i);
+                            }}
+                          >
+                            <Link2 size={17} aria-hidden />
+                          </button>
+                        )}
+                        {i.pedidoId && i.pedidoVinculo === 'existente' && (
+                          <button
+                            type="button"
+                            title="Desvincular del pedido"
+                            aria-label="Desvincular del pedido"
+                            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-neutral-500 hover:bg-neutral-100"
+                            onClick={() => {
+                              setLinkNotice('');
+                              setIncomeToLink(i);
+                            }}
+                          >
+                            <Unlink2 size={17} aria-hidden />
+                          </button>
+                        )}
                         <ActionMenu
                           items={[
                             { label: 'Editar', onClick: () => openEdit(i) },
@@ -376,7 +416,7 @@ export default function IngresosPage() {
                                   },
                                 ]
                               : []),
-                            ...(role === 'admin'
+                            ...(role === 'admin' && !i.pedidoId
                               ? [{ label: 'Eliminar', onClick: () => handleDelete(i.id), danger: true }]
                               : []),
                           ]}
@@ -392,6 +432,23 @@ export default function IngresosPage() {
       )}
 
       <Pagination total={filtered.length} page={page} onPageChange={setPage} />
+      {linkNotice && (
+        <p role="status" className="mt-3 text-sm font-semibold text-green-700">
+          {linkNotice}
+        </p>
+      )}
+      {incomeToLink && (
+        <IncomeOrderLinkModal
+          key={incomeToLink.id}
+          income={incomeToLink}
+          onClose={() => setIncomeToLink(null)}
+          onSaved={(message) => {
+            setLinkNotice(message);
+            setIncomeToLink(null);
+            reload();
+          }}
+        />
+      )}
       {replacement && (
         <ReplaceInvoiceModal tipo="ingreso" id={replacement} onClose={() => setReplacement(null)} onSaved={reload} />
       )}
@@ -408,6 +465,7 @@ export default function IngresosPage() {
               <label className={labelClass}>Fecha</label>
               <input
                 type="date"
+                readOnly={linked}
                 value={form.fecha}
                 onChange={(e) => setForm({ ...form, fecha: e.target.value })}
                 className={inputClass}
@@ -442,6 +500,7 @@ export default function IngresosPage() {
             <label className={labelClass}>Cliente</label>
             <select
               value={form.clienteId}
+              disabled={linked}
               onChange={(e) => {
                 if (e.target.value === '__new__') {
                   window.open('/studio24/clientes', '_blank');
@@ -468,6 +527,7 @@ export default function IngresosPage() {
                 inputMode="decimal"
                 step="0.01"
                 min="0"
+                readOnly={linked}
                 value={form.monto || ''}
                 onChange={(e) => setForm({ ...form, monto: parseFloat(e.target.value) || 0 })}
                 className={inputClass}
@@ -477,6 +537,7 @@ export default function IngresosPage() {
               <label className={labelClass}>Forma de Pago</label>
               <select
                 value={form.formaPago}
+                disabled={linked}
                 onChange={(e) => setForm({ ...form, formaPago: e.target.value as FormaPago })}
                 className={inputClass}
               >
@@ -493,6 +554,7 @@ export default function IngresosPage() {
               <input
                 type="checkbox"
                 checked={form.factura}
+                disabled={linked}
                 onChange={(e) => {
                   setForm({ ...form, factura: e.target.checked });
                 }}
@@ -502,8 +564,8 @@ export default function IngresosPage() {
             </label>
             {form.factura && form.monto > 0 && (
               <span className="text-xs text-neutral-400">
-                IVA: {formatCurrency(calcIVA(form.monto))} &middot; Total:{' '}
-                {formatCurrency(form.monto + calcIVA(form.monto))}
+                IVA: {formatCurrency(linked ? form.iva : calcIVA(form.monto))} &middot; Total:{' '}
+                {formatCurrency(linked ? form.montoTotal : form.monto + calcIVA(form.monto))}
               </span>
             )}
           </div>

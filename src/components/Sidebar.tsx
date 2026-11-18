@@ -222,19 +222,7 @@ export default function Sidebar() {
     .map((g) => ({ ...g, items: g.items.filter((item) => canAccess(role, item.href)) }))
     .filter((g) => visibleGroups.includes(g.label) && g.items.length > 0);
 
-  // Auto-open group that contains active route
-  const activeGroup = filteredGroups.findIndex((g) => g.items.some((i) => pathname.startsWith(i.href)));
-  const [openGroups, setOpenGroups] = useState<Record<number, boolean>>(() => {
-    const initial: Record<number, boolean> = {};
-    filteredGroups.forEach((_, i) => {
-      initial[i] = i === activeGroup;
-    });
-    return initial;
-  });
-
-  const toggleGroup = (idx: number) => {
-    setOpenGroups((prev) => ({ ...prev, [idx]: !prev[idx] }));
-  };
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const [online, setOnline] = useState(true);
   useEffect(() => {
@@ -303,13 +291,14 @@ export default function Sidebar() {
         {renderLink(dashboard)}
 
         {/* Groups */}
-        {filteredGroups.map((group, gIdx) => {
-          const isOpen = openGroups[gIdx] ?? false;
+        {filteredGroups.map((group) => {
           const hasActive = group.items.some((i) => pathname.startsWith(i.href));
+          const isOpen = openGroups[group.label] ?? hasActive;
           return (
             <div key={group.label}>
               <button
-                onClick={() => toggleGroup(gIdx)}
+                aria-expanded={isOpen}
+                onClick={() => setOpenGroups((previous) => ({ ...previous, [group.label]: !isOpen }))}
                 className={`w-full flex items-center justify-between px-4 py-2 rounded-lg text-[9px] font-bold tracking-[0.12em] uppercase transition-all ${
                   hasActive ? 'text-[#c72a09]' : 'text-neutral-400 hover:text-neutral-300'
                 }`}

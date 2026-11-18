@@ -6,7 +6,7 @@ import { getIngresos, getEgresos, getConfig, getProveedores } from '@/lib/store'
 import { cloudGetIngresosByYear, cloudGetEgresosByYear } from '@/lib/store-cloud';
 import { useCloudStore } from '@/lib/useCloudStore';
 import { updateEgreso, updateProveedor } from '@/lib/store-sync';
-import { formatCurrency, formatDate } from '@/lib/helpers';
+import { formatCurrency, formatDate, todayString } from '@/lib/helpers';
 import { parseXMLFile, type DatosCFDI } from '@/lib/cfdi';
 import { openFacturaFile } from '@/lib/cfdi-storage';
 import { invoiceCandidates, normalizedUuid } from '@/lib/invoice-matching';
@@ -37,11 +37,10 @@ interface FacturaPendiente {
 }
 
 export default function FacturasPage() {
-  const now = new Date();
-  const [filterYear, setFilterYear] = useState(now.getFullYear());
-  const [filterMonth, setFilterMonth] = useState<string>(
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-  );
+  const today = todayString();
+  const todayYear = Number(today.slice(0, 4));
+  const [filterYear, setFilterYear] = useState(todayYear);
+  const [filterMonth, setFilterMonth] = useState(today.slice(0, 7));
   const ingresosStore = useCloudStore(getIngresos, () => cloudGetIngresosByYear(filterYear), 'bordados_ingresos', [
     filterYear,
   ]);
@@ -265,7 +264,7 @@ export default function FacturasPage() {
 
   // Available years across all facturas (plus current year)
   const facturaYears = Array.from(
-    new Set([...facturasVinculadas.map((f) => parseInt(f.fecha.substring(0, 4), 10)), now.getFullYear()]),
+    new Set([...facturasVinculadas.map((f) => parseInt(f.fecha.substring(0, 4), 10)), todayYear]),
   )
     .sort()
     .reverse();

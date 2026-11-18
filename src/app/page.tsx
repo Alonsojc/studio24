@@ -17,10 +17,12 @@ import {
   conceptoLabel,
   categoriaLabel,
   estadoPedidoLabel,
+  todayString,
 } from '@/lib/helpers';
 import { useCloudStore } from '@/lib/useCloudStore';
 import StatCard from '@/components/StatCard';
 import PageHeader from '@/components/PageHeader';
+import { BUSINESS_TIME_ZONE } from '@/lib/business-date';
 
 type DashFilter = 'mes' | 'año' | 'todo';
 const filterLabels: Record<DashFilter, string> = { mes: 'Mes actual', año: 'Año actual', todo: 'Histórico' };
@@ -39,10 +41,10 @@ export default function Dashboard() {
   const { data: pedidos } = useCloudStore<Pedido>(getPedidos, cloudGetActivePedidos, KEYS.pedidos);
   const { data: clientes } = useCloudStore<Cliente>(getClientes, cloudGetClientes, KEYS.clientes);
 
-  const now = new Date();
-  const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
-  const currentYear = String(now.getFullYear());
-  const currentYearMonth = `${currentYear}-${currentMonth}`;
+  const today = todayString();
+  const currentYear = today.slice(0, 4);
+  const currentMonth = today.slice(5, 7);
+  const currentYearMonth = today.slice(0, 7);
 
   const filterFn = (fecha: string) => {
     if (filter === 'todo') return true;
@@ -94,7 +96,11 @@ export default function Dashboard() {
   const recentIngresos = [...ingresos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
   const recentEgresos = [...egresos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
 
-  const monthName = now.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+  const monthName = new Date().toLocaleDateString('es-MX', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: BUSINESS_TIME_ZONE,
+  });
   const description =
     filter === 'mes' ? `Resumen de ${monthName}` : filter === 'año' ? `Resumen ${currentYear}` : 'Resumen histórico';
 

@@ -8,6 +8,7 @@ import { useCloudStore } from '@/lib/useCloudStore';
 import { Pedido, Cliente } from '@/lib/types';
 import { formatCurrency, estadoPedidoLabel, estadoPedidoColor } from '@/lib/helpers';
 import PageHeader from '@/components/PageHeader';
+import { addCalendarDays, todayString } from '@/lib/business-date';
 
 const MONTH_NAMES = [
   'Enero',
@@ -29,9 +30,10 @@ export default function AgendaPage() {
   const { data: pedidos } = useCloudStore<Pedido>(getPedidos, cloudGetPedidos, KEYS.pedidos);
   const { data: clientes } = useCloudStore<Cliente>(getClientes, cloudGetClientes, KEYS.clientes);
 
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth());
+  const today = todayString();
+  const [todayYear, todayMonth, todayDay] = today.split('-').map(Number);
+  const [year, setYear] = useState(todayYear);
+  const [month, setMonth] = useState(todayMonth - 1);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   const clienteName = (id: string) => clientes.find((c) => c.id === id)?.nombre || '';
@@ -44,17 +46,16 @@ export default function AgendaPage() {
   let startDow = firstDay.getDay() - 1;
   if (startDow < 0) startDow = 6;
 
-  const today = new Date();
-  const isToday = (d: number) => d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
+  const isToday = (d: number) => d === todayDay && month + 1 === todayMonth && year === todayYear;
+  const overdue = (p: Pedido) => p.estado !== 'entregado' && Boolean(p.fechaEntrega && p.fechaEntrega < today);
 
   // Pedidos by day (entrega)
   const pedidosByDay = new Map<number, Pedido[]>();
   const activePedidos = pedidos.filter((p) => p.estado !== 'cancelado');
   for (const p of activePedidos) {
-    if (!p.fechaEntrega) continue;
-    const d = new Date(p.fechaEntrega);
-    if (d.getFullYear() === year && d.getMonth() === month) {
-      const day = d.getDate();
+    if (p.fechaEntrega?.startsWith(monthPrefix)) {
+      const day = Number(p.fechaEntrega.slice(8, 10));
       if (!pedidosByDay.has(day)) pedidosByDay.set(day, []);
       pedidosByDay.get(day)!.push(p);
     }
@@ -63,10 +64,8 @@ export default function AgendaPage() {
   // Also track pedido dates (fechaPedido) with a different style
   const pedidoStartByDay = new Map<number, Pedido[]>();
   for (const p of activePedidos) {
-    if (!p.fechaPedido) continue;
-    const d = new Date(p.fechaPedido);
-    if (d.getFullYear() === year && d.getMonth() === month) {
-      const day = d.getDate();
+    if (p.fechaPedido?.startsWith(monthPrefix)) {
+      const day = Number(p.fechaPedido.slice(8, 10));
       if (!pedidoStartByDay.has(day)) pedidoStartByDay.set(day, []);
       pedidoStartByDay.get(day)!.push(p);
     }
@@ -87,9 +86,9 @@ export default function AgendaPage() {
     setSelectedDay(null);
   };
   const goToday = () => {
-    setYear(today.getFullYear());
-    setMonth(today.getMonth());
-    setSelectedDay(today.getDate());
+    setYear(todayYear);
+    setMonth(todayMonth - 1);
+    setSelectedDay(todayDay);
   };
 
   // Build calendar grid
@@ -112,7 +111,7 @@ export default function AgendaPage() {
         return [
           'BEGIN:VEVENT',
           `DTSTART;VALUE=DATE:${d}`,
-          `DTEND;VALUE=DATE:${d}`,
+          `DTEND;VALUE=DATE:${addCalendarDays(p.fechaEntrega, 1).replace(/-/g, '')}`,
           `SUMMARY:${p.urgente ? '🔴 ' : ''}${p.descripcion}`,
           `DESCRIPTION:${name ? `Cliente: ${name}\\n` : ''}Piezas: ${p.piezas}\\nTotal: ${formatCurrency(p.montoTotal)}\\nEstado: ${estadoPedidoLabel(p.estado)}`,
           `STATUS:${p.estado === 'entregado' ? 'COMPLETED' : 'CONFIRMED'}`,
@@ -140,13 +139,8 @@ export default function AgendaPage() {
   };
 
   // Stats
-  const entregas = activePedidos.filter(
-    (p) =>
-      p.fechaEntrega &&
-      new Date(p.fechaEntrega).getFullYear() === year &&
-      new Date(p.fechaEntrega).getMonth() === month,
-  );
-  const vencidos = entregas.filter((p) => new Date(p.fechaEntrega) < today && p.estado !== 'entregado');
+  const entregas = [...pedidosByDay.values()].flat();
+  const vencidos = entregas.filter(overdue);
 
   return (
     <div>
@@ -221,7 +215,7 @@ export default function AgendaPage() {
               if (day === null) return <div key={i} />;
               const entregas = pedidosByDay.get(day) || [];
               const urgentes = entregas.filter((p) => p.urgente);
-              const vencido = entregas.some((p) => new Date(p.fechaEntrega) < today && p.estado !== 'entregado');
+              const vencido = entregas.some(overdue);
               const isSelected = selectedDay === day;
               return (
                 <button

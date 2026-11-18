@@ -1,15 +1,20 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import Link from 'next/link';
+import { ArrowUpRight, ShoppingBag } from 'lucide-react';
 import { formatCurrency, calcIVA } from '@/lib/helpers';
+import { BUSINESS_TIME_ZONE, todayString } from '@/lib/business-date';
 import { v4 as uuid } from 'uuid';
 import { getClientes, getConfig, getCotizaciones, getProductos, KEYS } from '@/lib/store';
 import { cloudGetClientes, cloudGetConfig, cloudGetCotizaciones, cloudGetProductos } from '@/lib/store-cloud';
-import { addCotizacion, updateCotizacion, getNextFolioAsync, addPedido } from '@/lib/store-sync';
-import { Cotizacion, Pedido } from '@/lib/types';
+import { addCotizacion, updateCotizacion, getNextFolioAsync } from '@/lib/store-sync';
+import type { Cotizacion } from '@/lib/types';
 import { useCloudStore, useCloudStoreOne } from '@/lib/useCloudStore';
 import PageHeader from '@/components/PageHeader';
-import { inputClass, labelClass } from '@/lib/styles';
+import Modal from '@/components/Modal';
+import { btnPrimary, inputClass, labelClass } from '@/lib/styles';
+import { convertQuote, orderPath } from '@/lib/sales-cloud';
 
 interface LineItem {
   id: string;
@@ -43,9 +48,19 @@ export default function CotizadorPage() {
   const [copied, setCopied] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
   const [createdPedidoMsg, setCreatedPedidoMsg] = useState('');
+  const [convertedOrders, setConvertedOrders] = useState<Record<string, string>>({});
+  const [quoteToConvert, setQuoteToConvert] = useState<Cotizacion | null>(null);
+  const [conversionClient, setConversionClient] = useState('');
+  const [conversionError, setConversionError] = useState('');
+  const [converting, setConverting] = useState(false);
+  const conversionInFlight = useRef(false);
   const [editingCotId, setEditingCotId] = useState<string | null>(null);
   const [showHistorial, setShowHistorial] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+  const editingConverted = Boolean(
+    editingCotId &&
+    (convertedOrders[editingCotId] || cotizaciones.find((quote) => quote.id === editingCotId)?.pedidoId),
+  );
 
   const cfg = config;
 
@@ -102,9 +117,12 @@ export default function CotizadorPage() {
     setItems(items.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
   };
 
-  const subtotal = items.reduce((s, i) => s + i.cantidad * i.precioUnitario, 0);
+  const validItems = items
+    .filter((i) => i.descripcion.trim() && Number.isInteger(i.cantidad) && i.cantidad > 0 && i.precioUnitario > 0)
+    .map((i) => ({ descripcion: i.descripcion.trim(), cantidad: i.cantidad, precioUnitario: i.precioUnitario }));
+  const subtotal = Math.round(validItems.reduce((s, i) => s + i.cantidad * i.precioUnitario, 0) * 100) / 100;
   const iva = conIVA ? calcIVA(subtotal) : 0;
-  const total = subtotal + iva;
+  const total = Math.round((subtotal + iva) * 100) / 100;
 
   const fmtMoney = (amount: number) => {
     if (moneda === 'USD') {
@@ -114,18 +132,21 @@ export default function CotizadorPage() {
     return formatCurrency(amount);
   };
 
-  const today = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+  const today = new Date().toLocaleDateString('es-MX', {
+    timeZone: BUSINESS_TIME_ZONE,
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
 
   const guardarCotizacion = async () => {
-    if (items.filter((i) => i.descripcion && i.precioUnitario > 0).length === 0) return;
-    const validItems = items
-      .filter((i) => i.descripcion && i.precioUnitario > 0)
-      .map((i) => ({ descripcion: i.descripcion, cantidad: i.cantidad, precioUnitario: i.precioUnitario }));
-    if (editingCotId) {
+    if (!validItems.length) return;
+    if (editingCotId && !editingConverted) {
       const existing = cotizaciones.find((c) => c.id === editingCotId);
       if (existing) {
         const updated: Cotizacion = {
           ...existing,
+          clienteId: clienteId || null,
           clienteNombre,
           clienteEmpresa,
           items: validItems,
@@ -142,6 +163,7 @@ export default function CotizadorPage() {
       const cot: Cotizacion = {
         id: uuid(),
         folio: await getNextFolioAsync('COT'),
+        clienteId: clienteId || null,
         clienteNombre,
         clienteEmpresa,
         items: validItems,
@@ -162,6 +184,7 @@ export default function CotizadorPage() {
 
   const loadCotizacion = (c: Cotizacion) => {
     setEditingCotId(c.id);
+    setClienteId(c.clienteId || '');
     setClienteNombre(c.clienteNombre);
     setClienteEmpresa(c.clienteEmpresa);
     setItems(c.items.map((i) => ({ id: String(nextIdRef.current++), ...i })));
@@ -170,46 +193,37 @@ export default function CotizadorPage() {
     setShowHistorial(false);
   };
 
-  const crearPedidoDesdeCotizacion = (c: Cotizacion) => {
-    const matchedCliente = clientes.find((cliente) => cliente.nombre === c.clienteNombre);
-    const descripcion =
-      c.items.length === 1
-        ? c.items[0].descripcion
-        : `Cotización ${c.folio}: ${c.items.map((item) => item.descripcion).join(', ')}`;
-    const pedido: Pedido = {
-      id: uuid(),
-      clienteId: clienteId || matchedCliente?.id || '',
-      descripcion,
-      concepto: 'bordado_y_prenda',
-      piezas: 1,
-      precioUnitario: c.total,
-      montoTotal: c.total,
-      costoMateriales: 0,
-      estado: 'pendiente',
-      estadoPago: 'pendiente',
-      montoPagado: 0,
-      pagos: [],
-      maquina: '',
-      archivoDiseno: '',
-      fotos: [],
-      inventarioUsado: [],
-      checklist: {
-        archivoListo: false,
-        hilosCargados: false,
-        aroColocado: false,
-        estabilizador: false,
-        pruebaHecha: false,
-      },
-      fechaPedido: new Date().toISOString().split('T')[0],
-      fechaEntrega: '',
-      fechaEntregaReal: '',
-      urgente: false,
-      notas: `Creado desde ${c.folio}${c.notas ? `\n\nNotas de cotización: ${c.notas}` : ''}`,
-      createdAt: new Date().toISOString(),
-    };
-    addPedido(pedido);
-    setCreatedPedidoMsg(`Pedido creado desde ${c.folio}.`);
-    setTimeout(() => setCreatedPedidoMsg(''), 2500);
+  const openConversion = (quote: Cotizacion) => {
+    setConversionClient(quote.clienteId || '');
+    setConversionError('');
+    setQuoteToConvert(quote);
+  };
+  const crearPedidoDesdeCotizacion = async () => {
+    if (!quoteToConvert || !conversionClient || conversionInFlight.current) return;
+    conversionInFlight.current = true;
+    setConverting(true);
+    setConversionError('');
+    try {
+      const current = cotizaciones.find((quote) => quote.id === quoteToConvert.id);
+      if (!current) throw new Error('La cotización no está disponible.');
+      if (current.updatedAt !== quoteToConvert.updatedAt) {
+        setQuoteToConvert(current);
+        setConversionClient(current.clienteId || '');
+        throw new Error('La cotización cambió. Revisa los datos antes de continuar.');
+      }
+      const result = await convertQuote(current, conversionClient);
+      setConvertedOrders((prev) => ({ ...prev, [current.id]: result.order.id }));
+      setCreatedPedidoMsg(
+        result.created ? `Pedido creado desde ${current.folio}.` : `${current.folio} ya tiene un pedido.`,
+      );
+      setQuoteToConvert(null);
+    } catch (error) {
+      setConversionError(error instanceof Error ? error.message : 'No se pudo confirmar el pedido.');
+    } finally {
+      reloadCotizaciones();
+      conversionInFlight.current = false;
+      setConverting(false);
+    }
   };
 
   const generarTexto = () => {
@@ -410,7 +424,7 @@ export default function CotizadorPage() {
     doc.text(cfg.nombreNegocio || 'STCH', w - 20, y, { align: 'right' });
 
     // Save
-    const filename = `cotizacion_${clienteNombre ? clienteNombre.replace(/\s+/g, '_').toLowerCase() : 'studio24'}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    const filename = `cotizacion_${clienteNombre ? clienteNombre.replace(/\s+/g, '_').toLowerCase() : 'studio24'}_${todayString()}.pdf`;
     doc.save(filename);
   };
 
@@ -782,10 +796,16 @@ export default function CotizadorPage() {
               onClick={guardarCotizacion}
               className={`w-full py-3.5 rounded-xl text-xs font-bold tracking-[0.05em] uppercase transition-colors ${savedMsg ? 'bg-green-500 text-white' : 'bg-[#c72a09] text-white hover:bg-[#a82207]'}`}
             >
-              {savedMsg ? '¡Guardada!' : editingCotId ? 'Actualizar Cotización' : 'Guardar Cotización'}
+              {savedMsg
+                ? '¡Guardada!'
+                : editingConverted
+                  ? 'Guardar como nueva cotización'
+                  : editingCotId
+                    ? 'Actualizar Cotización'
+                    : 'Guardar Cotización'}
             </button>
             {createdPedidoMsg && (
-              <p className="rounded-xl bg-green-50 px-3.5 py-2.5 text-xs font-semibold text-green-600">
+              <p role="status" className="rounded-xl bg-green-50 px-3.5 py-2.5 text-xs font-semibold text-green-600">
                 {createdPedidoMsg}
               </p>
             )}
@@ -799,28 +819,40 @@ export default function CotizadorPage() {
 
             {showHistorial && cotizaciones.length > 0 && (
               <div className="bg-white rounded-xl border border-neutral-100 max-h-60 overflow-y-auto">
-                {cotizaciones.map((c) => (
-                  <div key={c.id} className="border-b border-neutral-50 last:border-0 px-4 py-3">
-                    <button onClick={() => loadCotizacion(c)} className="w-full text-left hover:opacity-80">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-[#c72a09]">{c.folio}</span>
-                        <span className="text-xs font-bold">{formatCurrency(c.total)}</span>
-                      </div>
-                      <p className="text-xs text-neutral-600 mt-0.5">{c.clienteNombre || 'Sin cliente'}</p>
-                      <p className="text-[10px] text-neutral-300">
-                        {new Date(c.createdAt).toLocaleDateString('es-MX')}
-                      </p>
-                    </button>
-                    <div className="mt-2 flex justify-end">
-                      <button
-                        onClick={() => crearPedidoDesdeCotizacion(c)}
-                        className="text-[10px] font-bold uppercase tracking-wide text-neutral-400 hover:text-[#c72a09]"
-                      >
-                        Crear pedido
+                {cotizaciones.map((c) => {
+                  const pedidoId = c.pedidoId || convertedOrders[c.id];
+                  return (
+                    <div key={c.id} className="border-b border-neutral-50 last:border-0 px-4 py-3">
+                      <button onClick={() => loadCotizacion(c)} className="w-full text-left hover:opacity-80">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-bold text-[#c72a09]">{c.folio}</span>
+                          <span className="text-xs font-bold">{formatCurrency(c.total)}</span>
+                        </div>
+                        <p className="text-xs text-neutral-600 mt-0.5">{c.clienteNombre || 'Sin cliente'}</p>
+                        <p className="text-[10px] text-neutral-300">
+                          {new Date(c.createdAt).toLocaleDateString('es-MX', { timeZone: BUSINESS_TIME_ZONE })}
+                        </p>
                       </button>
+                      <div className="mt-1 flex justify-end">
+                        {pedidoId ? (
+                          <Link
+                            href={orderPath(pedidoId)}
+                            className="inline-flex min-h-10 items-center gap-1 text-xs font-semibold text-[#c72a09]"
+                          >
+                            Ver pedido <ArrowUpRight size={14} aria-hidden />
+                          </Link>
+                        ) : (
+                          <button
+                            onClick={() => openConversion(c)}
+                            className="inline-flex min-h-10 items-center gap-1 text-xs font-semibold text-[#c72a09]"
+                          >
+                            <ShoppingBag size={14} aria-hidden /> Crear pedido
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -857,6 +889,66 @@ export default function CotizadorPage() {
           </div>
         </div>
       </div>
+      {quoteToConvert && (
+        <Modal
+          open
+          onClose={() => !conversionInFlight.current && setQuoteToConvert(null)}
+          title={`Crear pedido · ${quoteToConvert.folio}`}
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 border-b border-neutral-100 pb-4">
+              <div>
+                <p className={labelClass}>Piezas</p>
+                <p className="font-semibold">{quoteToConvert.items.reduce((sum, item) => sum + item.cantidad, 0)}</p>
+              </div>
+              <div>
+                <p className={labelClass}>Total del pedido</p>
+                <p className="font-semibold">{formatCurrency(quoteToConvert.total)}</p>
+              </div>
+            </div>
+            <label className="block">
+              <span className={labelClass}>Clienta de la cotización</span>
+              {quoteToConvert.clienteId ? (
+                <span className="block break-words text-sm font-medium">
+                  {clientes.find((client) => client.id === quoteToConvert.clienteId)?.nombre ||
+                    quoteToConvert.clienteNombre}
+                </span>
+              ) : (
+                <select
+                  className={inputClass}
+                  value={conversionClient}
+                  onChange={(event) => setConversionClient(event.target.value)}
+                  disabled={converting}
+                >
+                  <option value="">
+                    Confirmar clienta{quoteToConvert.clienteNombre ? ` para ${quoteToConvert.clienteNombre}` : ''}
+                  </option>
+                  {clientes.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.nombre}
+                      {client.telefono ? ` · ${client.telefono}` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </label>
+            {conversionError && (
+              <p role="alert" className="text-sm text-red-600">
+                {conversionError}
+              </p>
+            )}
+            <div className="flex flex-wrap justify-end">
+              <button
+                onClick={crearPedidoDesdeCotizacion}
+                disabled={!conversionClient || converting}
+                className={`${btnPrimary} disabled:opacity-50`}
+              >
+                {converting ? 'Confirmando…' : 'Crear pedido'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

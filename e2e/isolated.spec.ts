@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { todayString } from '../src/lib/business-date';
 
 const id = '10000000-0000-0000-0000-000000000001';
 const version = '2026-09-13T12:00:00Z';
@@ -86,6 +87,261 @@ async function login(page: Page, role: 'admin' | 'operador' | 'contador' = 'admi
   await page.getByRole('button', { name: /iniciar sesión/i }).click();
   await expect(page.getByRole('link', { name: /^ajustes$/i })).toBeVisible();
 }
+
+const salesClient = {
+  id: 'fixture-client-a',
+  nombre: 'Clienta de prueba A',
+  telefono: '+52 55 1234 5678',
+  updated_at: version,
+};
+const salesItems = [
+  { descripcion: 'Gorras de prueba', cantidad: 4, precioUnitario: 100 },
+  { descripcion: 'Playeras de prueba', cantidad: 3, precioUnitario: 200 },
+];
+function salesOrder(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'fixture-order',
+    cliente_id: salesClient.id,
+    descripcion: 'Pedido de prueba A',
+    concepto: 'bordado_y_prenda',
+    piezas: 7,
+    precio_unitario: 1160 / 7,
+    monto_total: 1160,
+    monto_pagado: 0,
+    estado: 'pendiente',
+    estado_pago: 'pendiente',
+    fecha_pedido: todayString(),
+    fecha_entrega: '',
+    fecha_entrega_real: '',
+    urgente: false,
+    checklist: {},
+    pagos: [],
+    fotos: [],
+    costo_materiales: 0,
+    notas: '',
+    created_at: version,
+    updated_at: version,
+    tracking_token: 'b'.repeat(64),
+    partidas_cotizacion: salesItems,
+    ...overrides,
+  };
+}
+
+async function mockSalesList(page: Page, table: string, rows: () => Record<string, unknown>[]) {
+  await page.route(`**/rest/v1/${table}?*`, async (route) => {
+    const idFilter = new URL(route.request().url()).searchParams.get('id');
+    const items = idFilter?.startsWith('gt.')
+      ? []
+      : idFilter?.startsWith('eq.')
+        ? rows().filter((item) => item.id === idFilter.slice(3))
+        : rows();
+    await route.fulfill({
+      json: items,
+      headers: { 'content-range': `0-0/${items.length}`, 'access-control-expose-headers': 'content-range' },
+    });
+  });
+}
+
+test('converts the saved quote, not the customer currently selected in the form', async ({ page }) => {
+  await login(page);
+  const quote = {
+    id: 'fixture-quote',
+    folio: 'COT-TEST',
+    cliente_id: salesClient.id,
+    cliente_nombre: salesClient.nombre,
+    items: salesItems,
+    subtotal: 1000,
+    con_iva: true,
+    iva: 160,
+    total: 1160,
+    created_at: version,
+    updated_at: version,
+    pedido_id: null as string | null,
+  };
+  const order = salesOrder();
+  await mockSalesList(page, 'clientes', () => [
+    salesClient,
+    { id: 'fixture-client-b', nombre: 'Clienta de prueba B', updated_at: version },
+  ]);
+  await mockSalesList(page, 'cotizaciones', () => [quote]);
+  await mockSalesList(page, 'pedidos', () => [order]);
+  let conversions = 0;
+  await page.route('**/rest/v1/rpc/convert_quote_to_order', async (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      p_quote: quote.id,
+      p_client: salesClient.id,
+      p_expected: version,
+    });
+    conversions++;
+    quote.pedido_id = order.id;
+    await route.fulfill({ json: { quote: { ...quote, updated_at: '2026-11-18T12:00:00Z' }, order, created: true } });
+  });
+  await page.goto('cotizador');
+  await page.getByRole('combobox').first().selectOption('fixture-client-b');
+  await page.getByRole('button', { name: /historial \(1\)/i }).click();
+  await page.getByRole('button', { name: 'Crear pedido', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Crear pedido · COT-TEST' });
+  await expect(dialog.getByText(salesClient.nombre)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Crear pedido', exact: true }).click();
+  await page.getByRole('link', { name: 'Ver pedido', exact: true }).click();
+  await expect(page).toHaveURL(/pedidos\?pedido=fixture-order/);
+  await expect(page.getByText('Pedido de prueba A', { exact: true }).first()).toBeVisible();
+  expect(conversions).toBe(1);
+});
+
+test('links a receipt already counted on the order without registering cash again', async ({ page }) => {
+  await login(page);
+  const income = {
+    id: 'fixture-income',
+    cliente_id: salesClient.id,
+    pedido_id: '',
+    fecha: todayString(),
+    descripcion: 'Ingreso existente de prueba',
+    concepto: 'otro',
+    monto: 86.21,
+    iva: 13.79,
+    monto_total: 100,
+    forma_pago: 'tarjeta',
+    factura: false,
+    updated_at: version,
+  };
+  const order = salesOrder({ monto_pagado: 600, estado_pago: 'parcial' });
+  await mockSalesList(page, 'clientes', () => [salesClient]);
+  await mockSalesList(page, 'ingresos', () => [income]);
+  await page.route('**/rest/v1/rpc/get_customer_account', (route) =>
+    route.fulfill({
+      json: { cliente: salesClient, pedidos: [order], ingresos: [income], advances: [], movements: [] },
+    }),
+  );
+  let links = 0;
+  await page.route('**/rest/v1/rpc/link_order_income', async (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      p_income: income.id,
+      p_order: order.id,
+      p_counted: true,
+      p_expected: version,
+      p_order_version: version,
+    });
+    links++;
+    income.pedido_id = order.id;
+    await route.fulfill({ json: { income: { ...income, pedido_vinculo: 'existente' }, order } });
+  });
+  const regularWrites: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/rpc/sync_write_record')) regularWrites.push(request.postDataJSON().p_table);
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('ingresos');
+  await page.getByRole('button', { name: 'Vincular a un pedido' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Vincular a un pedido' });
+  await dialog.getByRole('combobox').selectOption(order.id);
+  await dialog.getByRole('radio', { name: 'Sí, ya está incluido en lo pagado' }).check();
+  await expect(dialog.getByText('$560.00', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Vincular ingreso' }).click();
+  await expect(page.getByText('Ingreso vinculado. No se registró otro cobro.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Pedido vinculado' })).toBeVisible();
+  await expect(page.getByRole('row').filter({ hasText: 'Ingreso existente de prueba' })).toHaveCount(1);
+  expect(links).toBe(1);
+  expect(regularWrites).not.toContain('ingresos');
+});
+
+test('previews IVA inside the collected amount before recording an older payment', async ({ page }) => {
+  await login(page);
+  const order = salesOrder({
+    monto_pagado: 1160,
+    estado_pago: 'pagado',
+    pagos: [{ id: 'receipt', monto: 1160, formaPago: 'efectivo', fecha: todayString() }],
+  });
+  await mockSalesList(page, 'pedidos', () => [order]);
+  await page.route('**/rest/v1/rpc/register_order_income', async (route) => {
+    expect(route.request().postDataJSON()).toMatchObject({
+      p_order: order.id,
+      p_iva: true,
+      p_legacy_date: null,
+      p_legacy_method: null,
+    });
+    await route.fulfill({
+      json: {
+        rows: [
+          { id: 'fixture-income', pedido_id: order.id, monto_total: 1160, monto: 1000, iva: 160, updated_at: version },
+        ],
+        created: true,
+      },
+    });
+  });
+  await page.goto('pedidos');
+  await page.getByRole('button', { name: 'Pagos', exact: true }).click();
+  await page.getByRole('button', { name: 'Registrar ingreso', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText(/efectivo/i)).toBeVisible();
+  await expect(dialog.getByText('$1,160.00')).toBeVisible();
+  await dialog.getByRole('checkbox', { name: /iva del 16% ya incluido/i }).check();
+  await expect(dialog.getByText('$160.00')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Registrar ingreso' })).toBeDisabled();
+  await dialog.getByRole('checkbox', { name: /no están registrados/i }).check();
+  await dialog.getByRole('button', { name: 'Registrar ingreso' }).click();
+  await expect(page.getByText('Ingreso registrado.', { exact: true })).toBeVisible();
+});
+
+test('a fresh login loads confirmed dashboard balances without waiting for recurring history', async ({ page }) => {
+  await isolate(page);
+  let release!: () => void;
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/rest/v1/recurrentes_log?*', async (route) => {
+    await delayed;
+    await route.fulfill({ json: [] });
+  });
+  await mockSalesList(page, 'ingresos', () => [
+    {
+      id: 'new-device-income',
+      fecha: todayString(),
+      monto_total: 815,
+      monto: 815,
+      iva: 0,
+      cliente_id: '',
+      descripcion: 'Ingreso de primera carga',
+      updated_at: version,
+    },
+  ]);
+  try {
+    await page.goto('./');
+    await page.getByPlaceholder('Email').fill('test@example.invalid');
+    await page.getByPlaceholder('Contraseña').fill('isolated-test-password');
+    await page.getByRole('button', { name: /iniciar sesión/i }).click();
+    await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
+    await expect(page.getByText('$815.00', { exact: true }).first()).toBeVisible();
+  } finally {
+    release();
+  }
+});
+
+test('only offers a WhatsApp link after confirming the order in the cloud', async ({ page }) => {
+  await login(page);
+  const order = salesOrder();
+  await mockSalesList(page, 'clientes', () => [salesClient]);
+  await mockSalesList(page, 'pedidos', () => [order]);
+  let published = false;
+  await page.route('**/rest/v1/pedidos?*', async (route) => {
+    const idFilter = new URL(route.request().url()).searchParams.get('id') || '';
+    if (!idFilter.startsWith('eq.')) return route.fallback();
+    await route.fulfill({ json: published ? [order] : [] });
+  });
+  await page.goto('pedidos');
+  await expect(page.getByText(order.descripcion)).toBeVisible();
+  await page.getByRole('button', { name: 'Más acciones' }).first().click();
+  await page.getByRole('button', { name: 'Enviar seguimiento' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Compartir seguimiento' });
+  await expect(dialog.getByRole('alert')).toContainText('no está disponible');
+  await expect(dialog.getByRole('link', { name: 'Abrir WhatsApp' })).toHaveCount(0);
+  published = true;
+  await dialog.getByRole('button', { name: 'Reintentar' }).click();
+  await expect(dialog.getByRole('link', { name: 'Abrir WhatsApp' })).toHaveAttribute(
+    'href',
+    /^https:\/\/wa\.me\/525512345678\?text=/,
+  );
+});
 test('static build renders login without runtime exceptions', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -454,7 +710,7 @@ test('cached records survive navigation without repeating the auth screen', asyn
   await login(page);
   await page.goto('egresos');
   await expect(page.getByRole('heading', { name: /^egresos$/i })).toBeVisible();
-  await page.getByRole('button', { name: 'FINANZAS', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'FINANZAS', exact: true })).toHaveAttribute('aria-expanded', 'true');
   await page.getByRole('link', { name: /^ingresos$/i }).click();
   await expect(page.getByRole('heading', { name: /^ingresos$/i })).toBeVisible();
   await expect(page.getByText('Conectando con Studio 24...')).toHaveCount(0);

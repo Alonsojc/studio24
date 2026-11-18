@@ -2,7 +2,7 @@ import { v4 as uuid } from 'uuid';
 import { getEgresos, getEgresosRecurrentes, getRecurrentesLog } from './store';
 import { addRecurrenteLog, createRecurrenteEgreso, deleteEgreso } from './store-sync';
 import { Egreso } from './types';
-import { calcIVA } from './helpers';
+import { calcIVA, todayString } from './helpers';
 
 function isAutomaticEgreso(egreso: Egreso): boolean {
   return egreso.descripcion.endsWith(' (automático)') || egreso.notas.includes('Generado automáticamente');
@@ -33,7 +33,7 @@ function automaticSignature(
 export function limpiarEgresosAutomaticosDuplicados(now = new Date()): number {
   if (typeof window === 'undefined') return 0;
 
-  const today = now.toISOString().split('T')[0];
+  const today = todayString(now);
   const seen = new Set<string>();
   let removed = 0;
 
@@ -66,10 +66,8 @@ export async function generarEgresosRecurrentes(): Promise<number> {
   const recurrentes = getEgresosRecurrentes().filter((r) => r.activo);
   if (recurrentes.length === 0) return 0;
 
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth(); // 0-indexed
-  const currentDay = now.getDate();
+  const [currentYear, month, currentDay] = todayString().split('-').map(Number);
+  const currentMonth = month - 1;
   const log = new Set(getRecurrentesLog());
   const existingAutomaticSignatures = new Set(getEgresos().filter(isAutomaticEgreso).map(automaticSignature));
   let generados = 0;
@@ -80,7 +78,7 @@ export async function generarEgresosRecurrentes(): Promise<number> {
 
     for (const rec of recurrentes) {
       // Only backfill months after the recurrente was created
-      const createdMonth = rec.createdAt ? rec.createdAt.substring(0, 7) : '2000-01';
+      const createdMonth = rec.createdAt ? todayString(new Date(rec.createdAt)).slice(0, 7) : '2000-01';
       if (mes < createdMonth) continue;
 
       const diaNum = Math.min(rec.diaDelMes, 28);

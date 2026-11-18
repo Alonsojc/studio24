@@ -2,7 +2,7 @@
 
 import { supabase } from './supabase';
 import { ACTIVE_USER_KEY, getPedidos, KEYS } from './store';
-import { fromCloudRecord } from './store-cloud';
+import { cloudGetPedidoById, fromCloudRecord } from './store-cloud';
 import { mergeCloudList, readSyncQueue, writeLocalJSON } from './sync-queue';
 import { useCloudResource } from './useCloudStore';
 import type { EstadoPedido, EstadoPago, Pedido } from './types';
@@ -100,14 +100,26 @@ export async function fetchOrderPage(scope: OrderScope, page: number): Promise<O
   writeLocalJSON(KEYS.pedidos, mergeCloudList(KEYS.pedidos, getPedidos(), rows));
   return { rows, total, summary: data };
 }
-export function usePedidoPage(scope: OrderScope, page: number) {
-  const key = `bordados_order_page:${scope}:${page}`;
+export function usePedidoPage(scope: OrderScope, page: number, orderId = '') {
+  const key = orderId ? `bordados_order_page:order:${orderId}` : `bordados_order_page:${scope}:${page}`;
+  const single = (row?: Pedido | null): OrderPage => ({
+    rows: row ? [row] : [],
+    total: row ? 1 : 0,
+    summary: emptySummary,
+  });
   return useCloudResource(
-    () => localPage(key, scope, page),
-    () => fetchOrderPage(scope, page),
+    () => (orderId ? single(getPedidos().find((row) => row.id === orderId)) : localPage(key, scope, page)),
+    async () => {
+      if (!orderId) return fetchOrderPage(scope, page);
+      const row = await cloudGetPedidoById(orderId);
+      if (!row) return single();
+      const merged = mergeCloudList(KEYS.pedidos, getPedidos(), [row]);
+      writeLocalJSON(KEYS.pedidos, merged);
+      return single(merged.find((item) => item.id === orderId));
+    },
     key,
-    [scope, page],
-    (_local, cloud) => resolveLocal(cloud, scope, page),
+    [scope, page, orderId],
+    (_local, cloud) => (orderId ? cloud : resolveLocal(cloud, scope, page)),
     [KEYS.pedidos],
   );
 }

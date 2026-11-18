@@ -14,11 +14,13 @@ import { getFinanceEntries } from '@/lib/finance-entries';
 import { cloudGetFinanceEntries } from '@/lib/store-cloud';
 import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
+import { todayString } from '@/lib/business-date';
 
 export default function FiscalPage() {
   useCloudStore(getFinanceEntries, cloudGetFinanceEntries, 'bordados_finance_entries');
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth());
+  const [todayYear, todayMonth, todayDay] = todayString().split('-').map(Number);
+  const [year, setYear] = useState(todayYear);
+  const [selectedMonth, setSelectedMonth] = useState(todayMonth - 1);
   const { data: ingresos } = useCloudStore(getIngresos, () => cloudGetIngresosByYear(year), 'bordados_ingresos', [
     year,
   ]);
@@ -65,7 +67,7 @@ export default function FiscalPage() {
     new Set([
       ...ingresos.map((i) => parseInt(i.fecha.substring(0, 4), 10)),
       ...egresos.map((e) => parseInt(e.fecha.substring(0, 4), 10)),
-      new Date().getFullYear(),
+      todayYear,
     ]),
   )
     .sort()
@@ -258,13 +260,11 @@ export default function FiscalPage() {
 
       {/* SAT Deadline Alert */}
       {(() => {
-        const hoy = new Date();
-        if (hoy.getFullYear() !== year) return null;
-        const mesActual = hoy.getMonth(); // 0-indexed
+        if (todayYear !== year) return null;
+        const mesActual = todayMonth - 1;
         const mesPrevio = mesActual === 0 ? 11 : mesActual - 1;
         const diaLimite = 17;
-        const diasRestantes =
-          mesActual === (mesPrevio + 1) % 12 && hoy.getDate() <= diaLimite ? diaLimite - hoy.getDate() : -1;
+        const diasRestantes = mesActual === (mesPrevio + 1) % 12 && todayDay <= diaLimite ? diaLimite - todayDay : -1;
         const mesNombre = MESES[mesPrevio];
         if (diasRestantes < 0) return null;
         const urgente = diasRestantes <= 3;
@@ -606,7 +606,7 @@ export default function FiscalPage() {
       </div>
 
       {/* Year-end loss saved notice */}
-      {year < new Date().getFullYear() && (
+      {year < todayYear && (
         <button
           className="text-sm font-semibold text-red-700"
           onClick={() => {
@@ -627,7 +627,7 @@ export default function FiscalPage() {
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
           <p className="text-xs text-amber-700">
             <span className="font-bold">Pérdida fiscal del ejercicio {year}:</span> {formatCurrency(perdidaAcum)}.
-            {year < new Date().getFullYear()
+            {year < todayYear
               ? ' Se arrastrará automáticamente a ejercicios posteriores (hasta 10 años, Art. 57 LISR).'
               : ' Al cierre del año se guardará para arrastrar al siguiente ejercicio.'}
           </p>
