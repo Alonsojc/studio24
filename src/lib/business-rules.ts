@@ -1,8 +1,11 @@
 import type { EstadoPago, FormaPago, Ingreso, ItemInventario, PagoPedido, Pedido } from './types';
 import type { UserRole } from './roles';
-import { calcIVA } from './helpers';
+import { todayString } from './business-date';
 
-export function calculatePedidoTotal(pedido: Pick<Pedido, 'piezas' | 'precioUnitario'>): number {
+export function calculatePedidoTotal(
+  pedido: Pick<Pedido, 'piezas' | 'precioUnitario'> & Partial<Pick<Pedido, 'partidasCotizacion' | 'montoTotal'>>,
+): number {
+  if (pedido.partidasCotizacion?.length && typeof pedido.montoTotal === 'number') return pedido.montoTotal;
   return Math.round(pedido.piezas * pedido.precioUnitario * 100) / 100;
 }
 
@@ -37,7 +40,7 @@ export function buildPedidoPayment(opts: {
   now?: Date;
 }): PagoPedido {
   const now = opts.now ?? new Date();
-  const fecha = opts.fecha || now.toISOString().split('T')[0];
+  const fecha = opts.fecha || todayString(now);
   return {
     id: opts.id,
     fecha,
@@ -108,6 +111,7 @@ export function buildRepeatedPedido(
     ...source,
     id: options.id,
     trackingToken: options.trackingToken,
+    partidasCotizacion: null,
     estado: 'pendiente',
     estadoPago: 'pendiente',
     montoPagado: 0,
@@ -120,6 +124,7 @@ export function buildRepeatedPedido(
     paymentDueDate: null,
     nextFollowupDate: null,
     collectionNotes: '',
+    notas: pedido.notas.replace(/^Creado desde COT-[^\n]*(?:\n+|$)/, ''),
     checklist: {
       archivoListo: false,
       hilosCargados: false,
@@ -139,39 +144,34 @@ export function canCreateIngresoForPedido(
   if (role !== 'admin' && role !== 'contador') return false;
   if (pedido.estado === 'cancelado') return false;
   if (pedido.montoTotal <= 0) return false;
-  if (calculatePedidoCreditApplied(pedido) >= pedido.montoTotal) return false;
+  if (calculatePedidoPaidAmount(pedido) !== pedido.montoTotal) return false;
   if (hasIngresoForPedido(ingresos, pedido.id)) return false;
-  return pedido.estadoPago === 'pagado' || pedido.montoPagado >= pedido.montoTotal;
+  return unrecordedOrderPayments(pedido).length > 0;
 }
 
-export function buildIngresoFromPedido(
-  pedido: Pick<Pedido, 'id' | 'clienteId' | 'descripcion' | 'concepto' | 'montoTotal' | 'pagos'>,
-  opts: { id: string; conFactura: boolean; numeroFactura?: string; now?: Date },
-): Ingreso {
-  const credit = calculatePedidoCreditApplied(pedido);
-  const cash = Math.round((pedido.montoTotal - credit) * 100) / 100;
-  if (cash <= 0) throw new Error('El pedido ya esta cubierto por adelantos registrados');
-  // Credit already entered cash when received. Only the additional collection is new.
-  const monto = credit > 0 && opts.conFactura ? Math.round((cash / 1.16) * 100) / 100 : cash;
-  const iva = opts.conFactura ? (credit > 0 ? Math.round((cash - monto) * 100) / 100 : calcIVA(monto)) : 0;
-  const now = opts.now ?? new Date();
-  return {
-    id: opts.id,
-    fecha: now.toISOString().split('T')[0],
-    clienteId: pedido.clienteId,
-    pedidoId: pedido.id,
-    descripcion: pedido.descripcion,
-    concepto: pedido.concepto,
-    monto,
-    iva,
-    montoTotal: Math.round((monto + iva) * 100) / 100,
-    formaPago: 'transferencia',
-    factura: opts.conFactura,
-    numeroFactura: opts.conFactura ? opts.numeroFactura || '' : '',
-    notas:
-      credit > 0
-        ? `Cobro adicional del pedido; ${credit.toFixed(2)} cubiertos con adelantos ya registrados`
-        : 'Generado desde pedido',
-    createdAt: now.toISOString(),
-  };
+export function unrecordedOrderPayments(pedido: Pick<Pedido, 'montoPagado' | 'pagos'>) {
+  const pagos = pedido.pagos?.length
+    ? pedido.pagos
+    : [
+        {
+          id: 'legacy',
+          origen: 'saldo_inicial',
+          monto: pedido.montoPagado,
+          fecha: '',
+          formaPago: 'otro',
+          referencia: '',
+        } as const,
+      ];
+  return pagos
+    .filter((pago) => pago.monto > 0 && !['saldo_cliente', 'ingreso_existente'].includes(pago.origen || ''))
+    .map((pago) => ({
+      ...pago,
+      needsDetails: !pago.fecha || pago.origen === 'saldo_inicial' || pago.referencia === 'Pago previo registrado',
+    }));
+}
+
+export function splitIncludedIVA(total: number) {
+  const cents = Math.round(total * 100);
+  const base = Math.round(cents / 1.16);
+  return { monto: base / 100, iva: (cents - base) / 100 };
 }

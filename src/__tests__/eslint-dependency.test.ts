@@ -80,7 +80,7 @@ describe('Next ESLint dependency boundary', () => {
       realpathSync(path.join(projectRoot, 'vendor/braces/index.js')),
     );
     expect(pluginRequire('fast-glob/package.json').version).toBe('3.3.1');
-    expect(pluginRequire('@next/eslint-plugin-next/package.json').version).toBe('16.4.2');
+    expect(pluginRequire('@next/eslint-plugin-next/package.json').version).toBe('16.4.6');
     const lock = JSON.parse(readFileSync(path.join(projectRoot, 'package-lock.json'), 'utf8')) as {
       packages: Record<string, { version?: string; link?: boolean; resolved?: string }>;
     };

@@ -9,7 +9,7 @@ import { removeFromIDB } from './db';
 import { supabase } from './supabase';
 import { invalidateCloudCache } from './cloud-cache';
 import { flushPendingSync } from './sync-flush';
-import { calculatePedidoPaidAmount } from './business-rules';
+import { calculatePedidoCreditApplied, calculatePedidoPaidAmount } from './business-rules';
 import { reportError } from './sentry';
 import { uploadCustomerReceipt } from './customer-receipts';
 
@@ -75,19 +75,7 @@ export const movementLabel: Record<CustomerMovementKind, string> = {
   cancel: 'Adelanto anulado',
 };
 export const toCents = (amount: number) => Math.round(amount * 100);
-export function customerAccountToday(now = new Date()): string {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Mexico_City',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-      .formatToParts(now)
-      .map(({ type, value }) => [type, value]),
-  );
-  return `${parts.year}-${parts.month}-${parts.day}`;
-}
+export { todayString as customerAccountToday } from './business-date';
 export const movementCredit = (movement: CustomerMovement) =>
   ['deposit', 'reverse_application'].includes(movement.kind);
 export const movementDelta = (movement: CustomerMovement) =>
@@ -103,6 +91,24 @@ export const pendingOrderAmount = (pedido: Pedido) =>
 export function availableIncomes(account: CustomerAccount): Ingreso[] {
   const used = new Set(account.advances.filter((advance) => !advance.voidedAt).map((advance) => advance.ingresoId));
   return account.ingresos.filter((income) => !income.pedidoId && income.montoTotal > 0 && !used.has(income.id));
+}
+
+export function incomeOrderChoices(account: CustomerAccount, income: Ingreso) {
+  if (!availableIncomes(account).some((row) => row.id === income.id) || !income.clienteId) return [];
+  const linked = new Map<string, number>();
+  for (const row of account.ingresos)
+    if (row.pedidoId) linked.set(row.pedidoId, (linked.get(row.pedidoId) || 0) + toCents(row.montoTotal));
+  const amount = toCents(income.montoTotal);
+  return account.pedidos.flatMap((order) => {
+    if (order.clienteId !== income.clienteId || order.estado === 'cancelado') return [];
+    const paid = toCents(calculatePedidoPaidAmount(order));
+    if (paid !== toCents(order.montoPagado)) return [];
+    const unlinkedPaid = paid - toCents(calculatePedidoCreditApplied(order)) - (linked.get(order.id) || 0);
+    const pending = toCents(pendingOrderAmount(order));
+    const apply = unlinkedPaid >= 0 && amount <= pending;
+    const counted = amount <= unlinkedPaid;
+    return apply || counted ? [{ order, apply, counted, pending: pending / 100 }] : [];
+  });
 }
 
 export function buildCustomerStatement(account: CustomerAccount, from = '', to = '') {

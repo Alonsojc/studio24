@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 import { collectionAccountPath, collectionWhatsApp, daysOverdue, type CollectionRow } from '@/lib/collections';
+import { normalizeWhatsAppPhone } from '@/lib/whatsapp';
 it('does not link an order to a missing customer account', () => {
   expect(collectionAccountPath({ clienteId: 'deleted-client', clienteNombre: null })).toBeNull();
   expect(collectionAccountPath({ clienteId: 'deleted-client', clienteNombre: ' ' })).toBeNull();
@@ -26,4 +27,11 @@ it('prepares the actual balance and safely encodes a WhatsApp draft without send
   expect(url.searchParams.get('text')).toContain('Ana & Sofia');
   expect(url.searchParams.get('text')).toContain('$125.50');
   expect(collectionWhatsApp({ ...row, clienteTelefono: '' })).toBeNull();
+  expect(new URL(collectionWhatsApp({ ...row, clienteTelefono: '+52 444 123 4567' })!).pathname).toBe(url.pathname);
+});
+it('does not add a Mexican prefix to numbers that already have a country code', () => {
+  expect(normalizeWhatsAppPhone('+52 55 1234 5678')).toBe('525512345678');
+  expect(normalizeWhatsAppPhone('+1 (415) 555-0135')).toBe('14155550135');
+  expect(normalizeWhatsAppPhone('5512345678')).toBe('525512345678');
+  expect(normalizeWhatsAppPhone('55 12345')).toBe('');
 });

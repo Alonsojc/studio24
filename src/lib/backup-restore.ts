@@ -2,7 +2,7 @@
 
 import { ACTIVE_USER_KEY, KEYS, exportAllData, importAllData, previewImportData } from './store';
 import { hasPendingSync, pauseCloudPulls, readSyncQueue } from './sync-queue';
-import { migrateLocalToCloud, cloudGetCustomerCreditLedger } from './store-cloud';
+import { migrateLocalToCloud, cloudGetCustomerCreditLedger, cloudGetSalesLinksSnapshot } from './store-cloud';
 import { getMyProfile } from './roles';
 import { invalidateCloudCache } from './cloud-cache';
 import { writeLocalJSON, type VersionedRecord } from './sync-queue';
@@ -32,6 +32,28 @@ export async function protectCustomerLedgerRestore(restored: Record<string, unkn
   restored.customerMovements = movements;
 }
 
+export async function protectSalesLinksRestore(restored: Record<string, unknown>): Promise<void> {
+  const confirmed = await cloudGetSalesLinksSnapshot();
+  for (const key of ['cotizaciones', 'ingresos', 'pedidos'] as const) {
+    const canonical = new Map(confirmed[key].map((row) => [row.id, row]));
+    const imported = restored[key];
+    if (!Array.isArray(imported)) continue;
+    const ordinary = imported.filter((row) => {
+      if (canonical.has(row.id)) return false;
+      if (
+        row.pedidoId ||
+        row.partidasCotizacion ||
+        row.pagos?.some((payment: { origen?: string }) => payment.origen === 'ingreso_existente')
+      )
+        throw new Error(
+          'El respaldo tiene vinculos no confirmados en esta nube. Requiere recuperacion de base de datos; no se recrearan cobros.',
+        );
+      return true;
+    });
+    restored[key] = [...ordinary, ...canonical.values()];
+  }
+}
+
 export async function restoreBackup(json: string): Promise<void> {
   const owner = localStorage.getItem(ACTIVE_USER_KEY);
   if ((await getMyProfile())?.role !== 'admin') throw new Error('Solo administradores pueden restaurar respaldos');
@@ -50,6 +72,7 @@ export async function restoreBackup(json: string): Promise<void> {
   }
   if (restored.config && current.config) restored.config.serverUpdatedAt = current.config.serverUpdatedAt;
   await protectCustomerLedgerRestore(restored);
+  await protectSalesLinksRestore(restored);
   if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio antes de restaurar');
   // Keep a recovery snapshot before changing any business data.
   sessionStorage.setItem('studio24:before-restore', exportAllData());

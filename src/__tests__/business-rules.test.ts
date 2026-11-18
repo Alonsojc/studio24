@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   applyInventoryConsumption,
   applyPedidoPayment,
-  buildIngresoFromPedido,
   buildPedidoPayment,
   buildRepeatedPedido,
   calculateEstadoPago,
@@ -10,6 +9,8 @@ import {
   calculatePedidoTotal,
   canCreateIngresoForPedido,
   hasIngresoForPedido,
+  splitIncludedIVA,
+  unrecordedOrderPayments,
 } from '@/lib/business-rules';
 import type { Ingreso, Pedido } from '@/lib/types';
 
@@ -194,24 +195,11 @@ describe('reglas de negocio de pedidos e ingresos', () => {
     expect(canCreateIngresoForPedido('admin', { ...pedido, estado: 'cancelado' }, [])).toBe(false);
   });
 
-  it('construye ingreso desde pedido con IVA opcional', () => {
-    const built = buildIngresoFromPedido(pedido, {
-      id: 'ingreso-2',
-      conFactura: true,
-      numeroFactura: 'ING-123',
-      now: new Date('2026-04-10T12:00:00.000Z'),
-    });
-
-    expect(built).toMatchObject({
-      id: 'ingreso-2',
-      fecha: '2026-04-10',
-      pedidoId: 'pedido-1',
-      monto: 1500,
-      iva: 240,
-      montoTotal: 1740,
-      numeroFactura: 'ING-123',
-      factura: true,
-    });
+  it('separa el IVA del cobro sin aumentar el total ni perder centavos', () => {
+    expect(splitIncludedIVA(1160)).toEqual({ monto: 1000, iva: 160 });
+    expect(splitIncludedIVA(100)).toEqual({ monto: 86.21, iva: 13.79 });
+    expect(unrecordedOrderPayments(pedido)).toEqual([expect.objectContaining({ monto: 1500, needsDetails: true })]);
+    expect(canCreateIngresoForPedido('admin', { ...pedido, montoPagado: 0 }, [])).toBe(false);
   });
   it('does not generate a second income when a deposit fully paid the order', () => {
     const prepaid: Pedido = {
@@ -230,7 +218,7 @@ describe('reglas de negocio de pedidos e ingresos', () => {
       ],
     };
     expect(canCreateIngresoForPedido('admin', prepaid, [])).toBe(false);
-    expect(() => buildIngresoFromPedido(prepaid, { id: 'duplicate', conFactura: false })).toThrow('ya esta cubierto');
+    expect(unrecordedOrderPayments(prepaid)).toHaveLength(0);
   });
   it('generates only the additional collection for a partly prepaid order', () => {
     const partlyPrepaid: Pedido = {
@@ -245,11 +233,17 @@ describe('reglas de negocio de pedidos e ingresos', () => {
           referencia: '',
           createdAt: '',
         },
+        { id: 'cash', fecha: '2026-10-02', monto: 500, formaPago: 'efectivo', referencia: '', createdAt: '' },
       ],
     };
-    expect(buildIngresoFromPedido(partlyPrepaid, { id: 'cash-only', conFactura: false }).montoTotal).toBe(500);
-    const invoiced = buildIngresoFromPedido(partlyPrepaid, { id: 'cash-only', conFactura: true });
-    expect(invoiced.montoTotal).toBe(500);
-    expect(invoiced.monto + invoiced.iva).toBe(500);
+    expect(unrecordedOrderPayments(partlyPrepaid)).toEqual([
+      expect.objectContaining({ monto: 500, formaPago: 'efectivo', fecha: '2026-10-02', needsDetails: false }),
+    ]);
+    expect(
+      unrecordedOrderPayments({
+        ...partlyPrepaid,
+        pagos: partlyPrepaid.pagos?.map((p) => (p.id === 'cash' ? { ...p, origen: 'ingreso_existente' } : p)),
+      }),
+    ).toHaveLength(0);
   });
 });

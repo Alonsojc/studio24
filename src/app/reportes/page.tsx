@@ -7,7 +7,7 @@ import { cloudGetIngresosByYear, cloudGetEgresosByYear, cloudGetClientes } from 
 import { useCloudStore, useCloudResource } from '@/lib/useCloudStore';
 import { cloudGetAdvanceReport } from '@/lib/store-cloud';
 import { operatingReport, type AdvanceReportMonth } from '@/lib/operating-report';
-import { formatCurrency, categoriaLabel, conceptoLabel } from '@/lib/helpers';
+import { formatCurrency, categoriaLabel, conceptoLabel, todayString } from '@/lib/helpers';
 import { calcApartadoUtilidad } from '@/lib/utilidad';
 import PageHeader from '@/components/PageHeader';
 import StatCard from '@/components/StatCard';
@@ -63,7 +63,8 @@ function StatusButton({
 }
 
 export default function ReportesPage() {
-  const [year, setYear] = useState(new Date().getFullYear());
+  const todayYear = Number(todayString().slice(0, 4));
+  const [year, setYear] = useState(todayYear);
   const [mesInicio, setMesInicio] = useState(0);
   const [mesFin, setMesFin] = useState(11);
   const { data: ingresos } = useCloudStore(getIngresos, () => cloudGetIngresosByYear(year), 'bordados_ingresos', [
@@ -97,7 +98,7 @@ export default function ReportesPage() {
     new Set([
       ...ingresos.map((i) => parseInt(i.fecha.substring(0, 4), 10)),
       ...egresos.map((e) => parseInt(e.fecha.substring(0, 4), 10)),
-      new Date().getFullYear(),
+      todayYear,
     ]),
   )
     .sort()

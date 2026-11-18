@@ -1,5 +1,7 @@
 'use client';
 
+import { normalizeWhatsAppPhone, whatsappUrl } from './whatsapp';
+
 import type { Pedido } from './types';
 import { supabase } from './supabase';
 import { ACTIVE_USER_KEY, KEYS, getPedidos } from './store';
@@ -53,10 +55,10 @@ export function collectionAccountPath(row: Pick<CollectionRow, 'clienteId' | 'cl
   return `/clientes/cuenta?cliente=${encodeURIComponent(row.clienteId)}`;
 }
 export function collectionWhatsApp(row: CollectionRow): string | null {
-  const phone = (row.clienteTelefono || '').replace(/\D/g, '');
-  if (phone.length < 10 || phone.length > 15) return null;
+  const phone = normalizeWhatsAppPhone(row.clienteTelefono);
+  if (!phone) return null;
   const message = `Hola ${row.clienteNombre || ''}, te comparto el seguimiento de tu pedido ${row.descripcion}. El saldo pendiente es ${formatCurrency(row.pending)}. ¿Nos ayudas a confirmar tu fecha de pago? Gracias.`;
-  return `https://wa.me/${phone.length === 10 ? `52${phone}` : phone}?text=${encodeURIComponent(message)}`;
+  return whatsappUrl(phone, message);
 }
 export async function saveCollectionFollowup(
   row: CollectionRow,

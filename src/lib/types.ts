@@ -88,7 +88,7 @@ export interface PagoPedido {
   formaPago: FormaPago;
   monto: number;
   referencia: string;
-  origen?: 'saldo_cliente' | 'saldo_inicial';
+  origen?: 'saldo_cliente' | 'saldo_inicial' | 'ingreso_existente';
   anticipoId?: string;
   createdAt: string;
   updatedAt?: string;
@@ -113,6 +113,7 @@ export interface Pedido {
   estadoPago: EstadoPago;
   montoPagado: number;
   pagos?: PagoPedido[];
+  partidasCotizacion?: Cotizacion['items'] | null;
   maquina: string;
   archivoDiseno: string;
   fotos: string[];
@@ -142,6 +143,7 @@ export interface Ingreso {
   fecha: string;
   clienteId: string;
   pedidoId?: string;
+  pedidoVinculo?: 'existente' | 'desde_pedido' | null;
   descripcion: string;
   concepto: ConceptoIngreso;
   monto: number;
@@ -161,6 +163,8 @@ export interface Ingreso {
 export interface Cotizacion {
   id: string;
   folio: string;
+  clienteId?: string | null;
+  pedidoId?: string | null;
   clienteNombre: string;
   clienteEmpresa: string;
   items: { descripcion: string; cantidad: number; precioUnitario: number }[];

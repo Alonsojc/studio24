@@ -1,5 +1,7 @@
 'use client';
 
+import { normalizeWhatsAppPhone, whatsappUrl } from '@/lib/whatsapp';
+
 import { useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getPlantillas, getPedidos, getClientes, getConfig, KEYS } from '@/lib/store';
@@ -170,11 +172,8 @@ export default function PlantillasPage() {
   const enviarWhatsApp = () => {
     const ped = pedidos.find((p) => p.id === sendPedidoId) || null;
     const cli = ped ? clientes.find((c) => c.id === ped.clienteId) || null : null;
-    const tel = cli?.telefono?.replace(/\D/g, '') || '';
-    const url = tel
-      ? `https://wa.me/52${tel}?text=${encodeURIComponent(preview)}`
-      : `https://wa.me/?text=${encodeURIComponent(preview)}`;
-    window.open(url, '_blank');
+    const url = whatsappUrl(normalizeWhatsAppPhone(cli?.telefono), preview);
+    window.open(url, '_blank', 'noopener,noreferrer');
     setSendOpen(false);
   };
 

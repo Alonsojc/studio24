@@ -10,5 +10,6 @@ export function createTrackingToken(): string {
 
 export function publicTrackingUrl(token: string): string {
   const base = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${base}/studio24/seguimiento?t=${encodeURIComponent(token)}`;
+  const prefix = process.env.NODE_ENV === 'production' ? '/studio24' : '';
+  return `${base}${prefix}/seguimiento?t=${encodeURIComponent(token)}`;
 }

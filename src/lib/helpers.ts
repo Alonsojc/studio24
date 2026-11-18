@@ -65,9 +65,7 @@ export function categoriaLabel(c: CategoriaEgreso): string {
   return map[c] || c;
 }
 
-export function todayString(): string {
-  return new Date().toISOString().split('T')[0];
-}
+export { todayString } from './business-date';
 
 export function calcIVA(monto: number): number {
   return Math.round(monto * 0.16 * 100) / 100;

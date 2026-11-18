@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect } from 'react';
 import { getMyProfile, type UserProfile, type UserRole } from '@/lib/roles';
+import { StartupContext } from './StartupContext';
 
 interface RoleContextType {
   profile: UserProfile | null;
@@ -24,12 +25,14 @@ export function useRole() {
 }
 
 export default function RoleProvider({ children }: { children: React.ReactNode }) {
+  const initialProfile = useContext(StartupContext).profile;
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    if (attempt === 0 && initialProfile) return;
     let finished = false;
     const fail = () => {
       if (finished) return;
@@ -55,7 +58,7 @@ export default function RoleProvider({ children }: { children: React.ReactNode }
       finished = true;
       clearTimeout(timer);
     };
-  }, [attempt]);
+  }, [attempt, initialProfile]);
 
   const retry = () => {
     setError(null);
@@ -63,7 +66,15 @@ export default function RoleProvider({ children }: { children: React.ReactNode }
     setAttempt((previous) => previous + 1);
   };
 
-  const role = profile?.role || 'operador';
+  const verified = attempt === 0 ? initialProfile : null;
+  const resolvedProfile = verified || profile;
+  const role = resolvedProfile?.role || 'operador';
 
-  return <RoleContext.Provider value={{ profile, role, loading, error, retry }}>{children}</RoleContext.Provider>;
+  return (
+    <RoleContext.Provider
+      value={{ profile: resolvedProfile, role, loading: !verified && loading, error: verified ? null : error, retry }}
+    >
+      {children}
+    </RoleContext.Provider>
+  );
 }

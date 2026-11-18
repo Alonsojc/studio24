@@ -94,11 +94,9 @@ function emptyRecurrente(): Omit<EgresoRecurrente, 'id' | 'createdAt'> {
 
 export default function EgresosPage() {
   const { role } = useRole();
-  const now = new Date();
-  const [filterMonth, setFilterMonth] = useState<string>(
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-  );
-  const [filterYear, setFilterYear] = useState(now.getFullYear());
+  const today = todayString();
+  const [filterMonth, setFilterMonth] = useState(today.slice(0, 7));
+  const [filterYear, setFilterYear] = useState(Number(today.slice(0, 4)));
   const { data: egresosRaw, reload: reloadEgresos } = useCloudStore(
     getEgresos,
     () => cloudGetEgresosByYear(filterYear),
@@ -233,7 +231,7 @@ export default function EgresosPage() {
 
   const proveedorName = (id: string) => proveedores.find((p) => p.id === id)?.nombre || '';
   const years = Array.from(
-    new Set(egresos.map((e) => parseInt(e.fecha.substring(0, 4), 10)).concat(new Date().getFullYear())),
+    new Set(egresos.map((e) => parseInt(e.fecha.substring(0, 4), 10)).concat(Number(today.slice(0, 4)))),
   )
     .sort()
     .reverse();
@@ -421,7 +419,7 @@ export default function EgresosPage() {
             <button
               onClick={() =>
                 downloadCSV(
-                  `egresos_${new Date().toISOString().slice(0, 10)}`,
+                  `egresos_${today}`,
                   [
                     'Fecha',
                     'Descripción',

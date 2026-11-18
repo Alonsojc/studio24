@@ -15,6 +15,8 @@ import {
 } from './sync-queue';
 import { cachedCloudRequest, invalidateCloudCache } from './cloud-cache';
 import { ACTIVE_USER_KEY, ACTIVE_TEAM_KEY } from './store';
+import { todayString } from './business-date';
+import type { UserProfile } from './roles';
 import type {
   Cliente,
   Proveedor,
@@ -333,6 +335,23 @@ export async function cloudGetCustomerCreditLedger() {
   };
 }
 
+export async function cloudGetSalesLinksSnapshot() {
+  const owner = localStorage.getItem(ACTIVE_USER_KEY);
+  const team = localStorage.getItem(ACTIVE_TEAM_KEY);
+  const { data, error } = await supabase.rpc('get_sales_links_snapshot').abortSignal(AbortSignal.timeout(20000));
+  if (error) throw error;
+  if (owner !== localStorage.getItem(ACTIVE_USER_KEY) || team !== localStorage.getItem(ACTIVE_TEAM_KEY))
+    throw new Error('La sesion cambio al consultar los vinculos');
+  const raw = data as Record<string, Record<string, unknown>[]> | null;
+  if (!raw || !['cotizaciones', 'ingresos', 'pedidos'].every((key) => Array.isArray(raw[key])))
+    throw new Error('No se pudieron verificar los vinculos de pedidos en la nube');
+  return {
+    cotizaciones: raw.cotizaciones.map(toCamel<Cotizacion>),
+    ingresos: raw.ingresos.map(toCamel<Ingreso>),
+    pedidos: raw.pedidos.map(toCamel<Pedido>),
+  };
+}
+
 // Clientes
 export const cloudGetClientes = () => getAll<Cliente>('clientes');
 export const cloudUpsertCliente = (c: Cliente) => upsertOne('clientes', c);
@@ -367,12 +386,11 @@ export const cloudGetActivePedidos = () => getAll<Pedido>('pedidos', { dateColum
 
 export function dashboardBounds(period: 'mes' | 'año' | 'todo', now = new Date()): DateFilter | undefined {
   if (period === 'todo') return undefined;
-  const year = now.getFullYear();
-  const month = now.getMonth();
+  const [year, month] = todayString(now).split('-').map(Number);
   if (period === 'año') return { dateColumn: 'fecha', dateFrom: `${year - 1}-01-01`, dateTo: `${year + 1}-01-01` };
-  const from = new Date(year, month - 1, 1);
-  const to = new Date(year, month + 1, 1);
-  const date = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-01`;
+  const from = new Date(Date.UTC(year, month - 2, 1));
+  const to = new Date(Date.UTC(year, month, 1));
+  const date = (value: Date) => value.toISOString().slice(0, 10);
   return { dateColumn: 'fecha', dateFrom: date(from), dateTo: date(to) };
 }
 async function dashboardEntries<T>(table: 'ingresos' | 'egresos', period: 'mes' | 'año' | 'todo'): Promise<T[]> {
@@ -390,6 +408,20 @@ export const cloudGetDashboardIngresos = (period: 'mes' | 'año' | 'todo') =>
 export const cloudGetDashboardEgresos = (period: 'mes' | 'año' | 'todo') => dashboardEntries<Egreso>('egresos', period);
 export const cloudUpsertPedido = (p: Pedido) => upsertOne('pedidos', p);
 export const cloudDeletePedido = (id: string) => deleteOne('pedidos', id);
+export async function cloudGetPedidoById(id: string): Promise<Pedido | null> {
+  const owner = localStorage.getItem(ACTIVE_USER_KEY);
+  const team = localStorage.getItem(ACTIVE_TEAM_KEY);
+  const { data, error } = await supabase
+    .from('pedidos')
+    .select('*')
+    .eq('id', id)
+    .abortSignal(AbortSignal.timeout(10000))
+    .maybeSingle();
+  if (owner !== localStorage.getItem(ACTIVE_USER_KEY) || team !== localStorage.getItem(ACTIVE_TEAM_KEY))
+    throw new Error('La sesión cambió.');
+  if (error) throw error;
+  return data ? toCamel<Pedido>(data) : null;
+}
 
 // Productos
 export const cloudGetProductos = () => getAll<Producto>('productos');
@@ -583,14 +615,26 @@ export async function migrateLocalToCloud(): Promise<number> {
 
 // Pull from cloud: download all Supabase data into localStorage
 // Used when logging in on a new device
-export async function pullFromCloud(opts: { replaceEmpty?: boolean; bootstrap?: boolean } = {}): Promise<number> {
+export async function pullFromCloud(
+  opts: {
+    replaceEmpty?: boolean;
+    bootstrap?: boolean;
+    isCurrent?: () => boolean;
+    onVerified?: (profile: UserProfile) => Promise<void>;
+  } = {},
+): Promise<number> {
   if (shouldSkipCloudPull()) return 0;
   const owner = localStorage.getItem(ACTIVE_USER_KEY);
+  const checkSession = () => {
+    if (owner !== localStorage.getItem(ACTIVE_USER_KEY) || opts.isCurrent?.() === false)
+      throw new Error('La sesion cambio');
+  };
   const profile = await (await import('./roles')).getMyProfile();
-  const teamId = await getMyTeamId();
-  if (owner !== localStorage.getItem(ACTIVE_USER_KEY) || !teamId) throw new Error('Equipo no disponible');
+  if (!profile || profile.id !== owner) throw new Error('No se pudo verificar el perfil');
+  const teamId = profile.teamId || (await getMyTeamId());
+  checkSession();
+  if (!teamId) throw new Error('Equipo no disponible');
   localStorage.setItem(ACTIVE_TEAM_KEY, teamId);
-  if (!profile) throw new Error('No se pudo verificar el equipo');
   const finance = profile.role === 'admin' || profile.role === 'contador';
   let count = 0;
 
@@ -599,7 +643,7 @@ export async function pullFromCloud(opts: { replaceEmpty?: boolean; bootstrap?: 
     localKey: string,
   ) => {
     const items = await getAll<T>(table);
-    if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
+    checkSession();
     const localItems = readLocalArray<T>(localKey);
     const merged = mergeCloudList(localKey, localItems, items);
     if (merged.length > 0 || opts.replaceEmpty) {
@@ -622,41 +666,39 @@ export async function pullFromCloud(opts: { replaceEmpty?: boolean; bootstrap?: 
     writeLocalJSON('bordados_customer_advances', []);
     writeLocalJSON('bordados_customer_movements', []);
   }
-  const results = await Promise.allSettled(tables.map((table) => pull(table, localKeyForTable(table as SyncTable))));
-  const failure = results.find((result) => result.status === 'rejected');
-  if (failure?.status === 'rejected') throw failure.reason;
-  if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
-  if (finance) {
-    // Fetch the canonical entries before migrating legacy marks, even on a light boot.
-    if (opts.bootstrap) await pull('finance_entries', localKeyForTable('finance_entries'));
-    const migrated = (await import('./finance-entries')).migrateLegacyFinance();
-    if (migrated > 0) await (await import('./sync-flush')).flushPendingSync();
-  }
-
-  // Config — merge cloud into local so we don't overwrite fields
-  // that may not exist in Supabase yet (e.g. rfc, regimenFiscal)
-  const cloudConfig = await cloudGetConfig();
-  if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
-  if (cloudConfig.nombreNegocio || cloudConfig.titular) {
+  await opts.onVerified?.(profile);
+  checkSession();
+  if (finance && opts.bootstrap) tables.push('finance_entries');
+  const configTask = async () => {
+    const cloudConfig = await cloudGetConfig();
+    checkSession();
+    if (!cloudConfig.nombreNegocio && !cloudConfig.titular) return;
     const localRaw = localStorage.getItem('bordados_config');
     const localConfig = localRaw ? JSON.parse(localRaw) : {};
-    // Cloud wins for non-empty fields; local preserved for fields cloud doesn't have
     const merged = { ...localConfig };
     for (const [key, value] of Object.entries(cloudConfig)) {
-      if (value !== '' && value !== null && value !== undefined) {
-        merged[key] = value;
-      }
+      if (value !== '' && value !== null && value !== undefined) merged[key] = value;
     }
     writeLocalJSON('bordados_config', mergeCloudObject('bordados_config', localConfig, merged));
     count++;
+  };
+  const logTask = async () => {
+    if (!finance) return;
+    const log = await cloudGetRecurrentesLog();
+    checkSession();
+    if (log.length > 0 || opts.replaceEmpty) writeLocalJSON('bordados_recurrentes_log', log);
+  };
+  const results = await Promise.allSettled([
+    ...tables.map((table) => pull(table, localKeyForTable(table as SyncTable))),
+    configTask(),
+    logTask(),
+  ]);
+  const failure = results.find((result) => result.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
+  checkSession();
+  if (finance) {
+    const migrated = (await import('./finance-entries')).migrateLegacyFinance();
+    if (migrated > 0) await (await import('./sync-flush')).flushPendingSync();
   }
-
-  // Recurrentes log
-  const log = finance ? await cloudGetRecurrentesLog() : [];
-  if (owner !== localStorage.getItem(ACTIVE_USER_KEY)) throw new Error('La sesion cambio');
-  if (log.length > 0 || opts.replaceEmpty) {
-    writeLocalJSON('bordados_recurrentes_log', log);
-  }
-
   return count;
 }

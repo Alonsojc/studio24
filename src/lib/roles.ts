@@ -7,6 +7,7 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   nombre: string;
+  teamId?: string;
 }
 
 // Get current user's profile/role
@@ -21,7 +22,7 @@ export async function getMyProfile(): Promise<UserProfile | null> {
     supabase.from('profiles').select('id, email, role, nombre').eq('id', user.id).maybeSingle(),
     supabase
       .from('team_members')
-      .select('role')
+      .select('role, team_id')
       .eq('user_id', user.id)
       .order('joined_at', { ascending: false })
       .limit(1)
@@ -35,6 +36,7 @@ export async function getMyProfile(): Promise<UserProfile | null> {
     email: (profile?.email as string) || user.email || '',
     role: (member?.role as UserRole | undefined) || (profile?.role as UserRole | undefined) || 'operador',
     nombre: (profile?.nombre as string) || '',
+    teamId: (member?.team_id as string | undefined) || undefined,
   };
 }
 
@@ -48,6 +50,7 @@ export async function updateProfile(profile: Partial<UserProfile>): Promise<void
   const safeProfile: Partial<UserProfile> = { ...profile };
   delete safeProfile.id;
   delete safeProfile.role;
+  delete safeProfile.teamId;
   await supabase.from('profiles').upsert({ id: user.id, email: user.email || '', ...safeProfile });
 }
 
